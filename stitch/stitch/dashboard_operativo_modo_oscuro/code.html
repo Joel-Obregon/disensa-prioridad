@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Dashboard Operativo - Disensa Prioridad</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "outline": "#7e7576",
+                "on-secondary-container": "#541d00",
+                "outline-variant": "#cfc4c5",
+                "on-error-container": "#93000a",
+                "on-surface-variant": "#4c4546",
+                "surface-variant": "#e3e1ec",
+                "surface-container": "#eeedf7",
+                "secondary-fixed": "#ffdbcd",
+                "on-tertiary-container": "#848484",
+                "on-secondary": "#ffffff",
+                "primary": "#000000",
+                "surface-dim": "#dad9e3",
+                "inverse-surface": "#2f3038",
+                "primary-fixed-dim": "#c6c6c6",
+                "tertiary-fixed": "#e2e2e2",
+                "on-error": "#ffffff",
+                "secondary": "#a33e00",
+                "background": "#fbf8ff",
+                "on-surface": "#1a1b22",
+                "on-primary-fixed": "#1b1b1b",
+                "primary-fixed": "#e2e2e2",
+                "primary-container": "#1b1b1b",
+                "surface-container-high": "#e8e7f1",
+                "on-tertiary-fixed-variant": "#474747",
+                "on-secondary-fixed": "#360f00",
+                "tertiary-container": "#1b1b1b",
+                "error": "#ba1a1a",
+                "on-background": "#1a1b22",
+                "secondary-container": "#fe6500",
+                "on-tertiary": "#ffffff",
+                "error-container": "#ffdad6",
+                "on-tertiary-fixed": "#1b1b1b",
+                "tertiary": "#000000",
+                "on-primary-fixed-variant": "#474747",
+                "surface-bright": "#fbf8ff",
+                "inverse-primary": "#c6c6c6",
+                "inverse-on-surface": "#f1effa",
+                "surface": "#fbf8ff",
+                "secondary-fixed-dim": "#ffb596",
+                "tertiary-fixed-dim": "#c6c6c6",
+                "surface-container-highest": "#e3e1ec",
+                "on-secondary-fixed-variant": "#7c2e00",
+                "on-primary": "#ffffff",
+                "surface-container-low": "#f4f2fd",
+                "surface-tint": "#5e5e5e",
+                "on-primary-container": "#848484",
+                "surface-container-lowest": "#ffffff"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+        },
+        "spacing": {
+                "lg": "24px",
+                "margin": "24px",
+                "md": "16px",
+                "sm": "8px",
+                "gutter": "16px",
+                "base": "4px",
+                "xs": "4px",
+                "xl": "40px",
+                "sidebar_width": "260px",
+                "stack_sm": "8px",
+                "grid_gutter": "16px",
+                "stack_md": "16px",
+                "table_cell_padding": "12px 16px",
+                "container_padding": "24px"
+        },
+        "fontFamily": {
+                "headline-sm": [
+                        "Geist"
+                ],
+                "label-md": [
+                        "Geist"
+                ],
+                "body-lg": [
+                        "Geist"
+                ],
+                "body-md": [
+                        "Geist"
+                ],
+                "label-sm": [
+                        "Geist"
+                ],
+                "body-sm": [
+                        "Geist"
+                ],
+                "headline-lg": [
+                        "Geist"
+                ],
+                "headline-md": [
+                        "Geist"
+                ],
+                "data-mono": ["Geist"]
+        },
+        "fontSize": {
+                "headline-sm": [
+                        "20px",
+                        {
+                                "lineHeight": "28px",
+                                "letterSpacing": "0",
+                                "fontWeight": "600"
+                        }
+                ],
+                "label-md": [
+                        "12px",
+                        {
+                                "lineHeight": "16px",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "body-lg": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "letterSpacing": "0",
+                                "fontWeight": "400"
+                        }
+                ],
+                "body-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "letterSpacing": "0",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label-sm": [
+                        "11px",
+                        {
+                                "lineHeight": "14px",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "body-sm": [
+                        "13px",
+                        {
+                                "lineHeight": "18px",
+                                "letterSpacing": "0.01em",
+                                "fontWeight": "400"
+                        }
+                ],
+                "headline-lg": [
+                        "30px",
+                        {
+                                "lineHeight": "36px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "headline-md": [
+                        "24px",
+                        {
+                                "lineHeight": "32px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "data-mono": ["14px", {"lineHeight": "20px", "fontWeight": "500"}]
+        }
+},
+    },
+  }
+</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Dark mode overrides for monochrome palette */
+        .dark {
+            --tw-bg-opacity: 1;
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .dark .bg-background { background-color: #121212; }
+        .dark .bg-surface { background-color: #1e1e1e; }
+        .dark .bg-surface-container-lowest { background-color: #242424; }
+        .dark .bg-surface-container-low { background-color: #2a2a2a; }
+        .dark .bg-surface-container-high { background-color: #333333; }
+        .dark .border-outline-variant { border-color: #404040; }
+        .dark .text-on-background, .dark .text-on-surface { color: #ffffff; }
+        .dark .text-on-surface-variant { color: #a0a0a0; }
+        .dark .bg-primary { background-color: #ffffff; }
+        .dark .text-primary { color: #ffffff; }
+        .dark .bg-primary-container { background-color: #333333; }
+        .dark .text-on-primary-container { color: #ffffff; }
+        .dark .border-primary { border-color: #ffffff; }
+        .dark .bg-secondary-fixed { background-color: #555555; }
+        .dark .bg-tertiary { background-color: #ffffff; }
+        .dark .text-on-tertiary { color: #000000; }
+        .dark .hover\:bg-surface-container-high:hover { background-color: #333333; }
+        .dark .hover\:text-primary:hover { color: #ffffff; }
+        .dark .bg-error { background-color: #ff5555; }
+        .dark .text-error { color: #ff5555; }
+        .dark .bg-error-container { background-color: rgba(255, 85, 85, 0.2); }
+        .dark .text-on-error-container { color: #ff5555; }
+        .dark .bg-secondary-container { background-color: #fe6500; } /* Accent orange */
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md h-screen overflow-hidden flex">
+<!-- SideNavBar -->
+<nav class="bg-surface border-r border-outline-variant docked left-0 h-full w-[260px] fixed left-0 top-0 h-full flex flex-col py-container_padding z-20 hidden md:flex">
+<div class="px-6 mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Disensa Prioridad</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Logistics Management</p>
+</div>
+<ul class="flex flex-col flex-1 overflow-y-auto px-4 space-y-1">
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT bg-primary-container text-on-primary-container font-bold border-l-4 border-primary transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="dashboard">dashboard</span>
+<span class="font-body-md text-body-md">Dashboard</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="local_shipping">local_shipping</span>
+<span class="font-body-md text-body-md">Pedidos</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="inventory_2">inventory_2</span>
+<span class="font-body-md text-body-md">Inventario</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="notifications_active">notifications_active</span>
+<span class="font-body-md text-body-md">Alertas</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="rule">rule</span>
+<span class="font-body-md text-body-md">Reglas</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="assessment">assessment</span>
+<span class="font-body-md text-body-md">Reportes</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="calendar_month">calendar_month</span>
+<span class="font-body-md text-body-md">Calendario</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="dns">dns</span>
+<span class="font-body-md text-body-md">Estado del sistema</span>
+</a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" data-icon="group">group</span>
+<span class="font-body-md text-body-md">Usuarios</span>
+</a>
+</li>
+</ul>
+<div class="px-6 mt-auto pt-6 border-t border-outline-variant">
+<div class="flex items-center cursor-pointer hover:bg-surface-container-high p-2 rounded-DEFAULT transition-colors">
+<div class="w-8 h-8 rounded-full bg-tertiary flex items-center justify-center text-on-tertiary mr-3 font-bold font-body-sm text-body-sm">DO</div>
+<div class="flex-1 min-w-0">
+<p class="font-body-sm text-body-sm font-bold text-on-surface truncate">Dispatcher Ops</p>
+<p class="font-label-md text-label-md text-on-surface-variant truncate">dispatcher@disensa.com</p>
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="flex-1 flex flex-col md:pl-[260px] h-full overflow-hidden bg-background">
+<!-- TopNavBar -->
+<header class="bg-surface border-b border-outline-variant docked top-0 w-full flex justify-between items-center h-16 px-container_padding z-10 shrink-0">
+<div class="flex items-center gap-4 flex-1">
+<button class="md:hidden text-on-surface-variant p-2 -ml-2 rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Dashboard Operativo</h2>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-on-surface-variant hover:text-primary rounded-full hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 relative">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary rounded-full hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 relative">
+<span class="material-symbols-outlined" data-icon="sensors">sensors</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary rounded-full hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 relative">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary rounded-full hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 relative ml-2">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="flex-1 overflow-y-auto p-container_padding">
+<div class="max-w-7xl mx-auto space-y-grid_gutter">
+<!-- Top Row KPIs -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-grid_gutter">
+<!-- KPI 1 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 flex flex-col relative overflow-hidden">
+<div class="absolute top-0 left-0 bottom-0 w-1 bg-green-500"></div>
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase mb-2 pl-2">OTIF Suministrador a Bodega</h3>
+<div class="flex items-end justify-between pl-2 mt-auto">
+<span class="font-headline-lg text-headline-lg text-on-surface">94.2%</span>
+<div class="flex items-center text-green-400 bg-green-900/30 px-2 py-0.5 rounded font-label-md text-label-md">
+<span class="material-symbols-outlined text-sm mr-1" data-icon="arrow_upward">arrow_upward</span>
+                                1.2%
+                            </div>
+</div>
+</div>
+<!-- KPI 2 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 flex flex-col relative overflow-hidden">
+<div class="absolute top-0 left-0 bottom-0 w-1 bg-yellow-500"></div>
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase mb-2 pl-2">OTIF Bodega a Franquiciado</h3>
+<div class="flex items-end justify-between pl-2 mt-auto">
+<span class="font-headline-lg text-headline-lg text-on-surface">88.7%</span>
+<div class="flex items-center text-yellow-400 bg-yellow-900/30 px-2 py-0.5 rounded font-label-md text-label-md">
+<span class="material-symbols-outlined text-sm mr-1" data-icon="arrow_downward">arrow_downward</span>
+                                0.5%
+                            </div>
+</div>
+</div>
+<!-- KPI 3 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 flex flex-col relative overflow-hidden">
+<div class="absolute top-0 left-0 bottom-0 w-1 bg-primary"></div>
+<div class="flex items-center gap-2 mb-2 pl-2">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="schedule">schedule</span>
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase">Pedidos Pendientes</h3>
+</div>
+<div class="flex items-end justify-between pl-2 mt-auto">
+<span class="font-headline-lg text-headline-lg text-on-surface">142</span>
+<div class="flex items-center text-on-surface-variant font-label-md text-label-md">
+                                42 críticos
+                            </div>
+</div>
+</div>
+<!-- KPI 4 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 flex flex-col relative overflow-hidden">
+<div class="absolute top-0 left-0 bottom-0 w-1 bg-error"></div>
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase mb-2 pl-2">Alertas Activas</h3>
+<div class="flex items-end justify-between pl-2 mt-auto">
+<span class="font-headline-lg text-headline-lg text-on-surface text-error">28</span>
+<button class="text-primary hover:bg-surface-container-high px-2 py-1 rounded transition-colors font-label-md text-label-md uppercase">Ver Todas</button>
+</div>
+</div>
+</div>
+<!-- Second Row: Chart -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-6">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Evolución Mensual</h3>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-secondary-fixed"></div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Creados</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-primary"></div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Entregados</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-error"></div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Alertas</span>
+</div>
+</div>
+</div>
+<!-- Faux Bar Chart -->
+<div class="h-64 flex items-end justify-between gap-2 border-b border-l border-outline-variant pb-2 pl-2">
+<!-- Chart Columns -->
+<div class="w-full flex justify-around h-full items-end">
+<div class="flex flex-col items-center gap-1 group w-1/6">
+<div class="flex items-end gap-1 w-full justify-center h-[200px]">
+<div class="w-1/3 bg-secondary-fixed h-[60%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-primary h-[55%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-error h-[10%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Ene</span>
+</div>
+<div class="flex flex-col items-center gap-1 group w-1/6">
+<div class="flex items-end gap-1 w-full justify-center h-[200px]">
+<div class="w-1/3 bg-secondary-fixed h-[75%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-primary h-[70%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-error h-[15%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Feb</span>
+</div>
+<div class="flex flex-col items-center gap-1 group w-1/6">
+<div class="flex items-end gap-1 w-full justify-center h-[200px]">
+<div class="w-1/3 bg-secondary-fixed h-[85%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-primary h-[75%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-error h-[20%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Mar</span>
+</div>
+<div class="flex flex-col items-center gap-1 group w-1/6">
+<div class="flex items-end gap-1 w-full justify-center h-[200px]">
+<div class="w-1/3 bg-secondary-fixed h-[65%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-primary h-[60%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-error h-[12%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Abr</span>
+</div>
+<div class="flex flex-col items-center gap-1 group w-1/6">
+<div class="flex items-end gap-1 w-full justify-center h-[200px]">
+<div class="w-1/3 bg-secondary-fixed h-[90%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-primary h-[88%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+<div class="w-1/3 bg-error h-[8%] rounded-t-sm group-hover:opacity-80 transition-opacity"></div>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">May</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Split Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-grid_gutter">
+<!-- Cola Priorizada Table (2/3 width) -->
+<div class="lg:col-span-2 bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden flex flex-col">
+<div class="p-4 border-b border-outline-variant bg-surface flex justify-between items-center">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Cola Priorizada</h3>
+<button class="font-label-md text-label-md text-primary hover:bg-surface-container-high px-3 py-1.5 rounded transition-colors uppercase">Ver Todos</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant border-b border-outline-variant">
+<tr>
+<th class="p-table_cell_padding font-semibold">ID Pedido</th>
+<th class="p-table_cell_padding font-semibold">Destino</th>
+<th class="p-table_cell_padding font-semibold">Suministrador</th>
+<th class="p-table_cell_padding font-semibold">SLA</th>
+<th class="p-table_cell_padding font-semibold text-right">Acción</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm text-on-surface">
+<tr class="border-b border-outline-variant hover:bg-surface-container-low transition-colors relative">
+<td class="p-table_cell_padding">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
+<span class="font-data-mono text-data-mono pl-2">#ORD-9921</span>
+</td>
+<td class="p-table_cell_padding">Franquicia Norte</td>
+<td class="p-table_cell_padding">Holcim Planta 1</td>
+<td class="p-table_cell_padding text-error font-medium">Vencido (2h)</td>
+<td class="p-table_cell_padding text-right">
+<button class="text-primary hover:bg-surface-container-high p-1 rounded"><span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span></button>
+</td>
+</tr>
+<tr class="border-b border-outline-variant hover:bg-surface-container-low transition-colors relative">
+<td class="p-table_cell_padding">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
+<span class="font-data-mono text-data-mono pl-2">#ORD-9924</span>
+</td>
+<td class="p-table_cell_padding">ConstruMarket Sur</td>
+<td class="p-table_cell_padding">Sika Dist.</td>
+<td class="p-table_cell_padding text-error font-medium">Vencido (45m)</td>
+<td class="p-table_cell_padding text-right">
+<button class="text-primary hover:bg-surface-container-high p-1 rounded"><span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span></button>
+</td>
+</tr>
+<tr class="border-b border-outline-variant hover:bg-surface-container-low transition-colors relative">
+<td class="p-table_cell_padding">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500"></div>
+<span class="font-data-mono text-data-mono pl-2">#ORD-9930</span>
+</td>
+<td class="p-table_cell_padding">Ferretería Central</td>
+<td class="p-table_cell_padding">Holcim Planta 2</td>
+<td class="p-table_cell_padding text-yellow-400 font-medium">&lt; 1h restante</td>
+<td class="p-table_cell_padding text-right">
+<button class="text-primary hover:bg-surface-container-high p-1 rounded"><span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span></button>
+</td>
+</tr>
+<tr class="border-b border-outline-variant hover:bg-surface-container-low transition-colors relative">
+<td class="p-table_cell_padding">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500"></div>
+<span class="font-data-mono text-data-mono pl-2">#ORD-9932</span>
+</td>
+<td class="p-table_cell_padding">MegaObra Este</td>
+<td class="p-table_cell_padding">AceroCorp</td>
+<td class="p-table_cell_padding text-yellow-400 font-medium">&lt; 2h restante</td>
+<td class="p-table_cell_padding text-right">
+<button class="text-primary hover:bg-surface-container-high p-1 rounded"><span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors relative">
+<td class="p-table_cell_padding">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-green-500"></div>
+<span class="font-data-mono text-data-mono pl-2">#ORD-9945</span>
+</td>
+<td class="p-table_cell_padding">Franquicia Oeste</td>
+<td class="p-table_cell_padding">Pinturas Unidas</td>
+<td class="p-table_cell_padding text-green-400 font-medium">A tiempo</td>
+<td class="p-table_cell_padding text-right">
+<button class="text-primary hover:bg-surface-container-high p-1 rounded"><span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Materiales en Riesgo (1/3 width) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg flex flex-col">
+<div class="p-4 border-b border-outline-variant bg-surface flex justify-between items-center">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Materiales en Riesgo de Stock</h3>
+</div>
+<ul class="flex flex-col">
+<li class="p-4 border-b border-outline-variant flex items-start gap-3 hover:bg-surface-container-low transition-colors">
+<div class="bg-error-container text-on-error-container p-2 rounded-full mt-0.5">
+<span class="material-symbols-outlined text-sm" data-icon="warning">warning</span>
+</div>
+<div class="flex-1">
+<h4 class="font-body-md text-body-md font-semibold text-on-surface">Cemento Tipo GU 50kg</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Bodega Central</p>
+<div class="mt-2 flex items-center justify-between">
+<span class="font-label-md text-label-md text-error bg-error-container px-2 py-0.5 rounded">Stock Crítico: 12 uds</span>
+</div>
+</div>
+</li>
+<li class="p-4 border-b border-outline-variant flex items-start gap-3 hover:bg-surface-container-low transition-colors">
+<div class="bg-error-container text-on-error-container p-2 rounded-full mt-0.5">
+<span class="material-symbols-outlined text-sm" data-icon="warning">warning</span>
+</div>
+<div class="flex-1">
+<h4 class="font-body-md text-body-md font-semibold text-on-surface">Varilla Corrugada 12mm</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Bodega Norte</p>
+<div class="mt-2 flex items-center justify-between">
+<span class="font-label-md text-label-md text-error bg-error-container px-2 py-0.5 rounded">Stock Crítico: 45 uds</span>
+</div>
+</div>
+</li>
+<li class="p-4 flex items-start gap-3 hover:bg-surface-container-low transition-colors">
+<div class="bg-yellow-900/30 text-yellow-400 p-2 rounded-full mt-0.5">
+<span class="material-symbols-outlined text-sm" data-icon="inventory">inventory</span>
+</div>
+<div class="flex-1">
+<h4 class="font-body-md text-body-md font-semibold text-on-surface">Pintura Exterior Blanca 1Gl</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Bodega Sur</p>
+<div class="mt-2 flex items-center justify-between">
+<span class="font-label-md text-label-md text-yellow-400 bg-yellow-900/30 px-2 py-0.5 rounded">Riesgo Bajo: 120 uds</span>
+</div>
+</div>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

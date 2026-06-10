@@ -1,0 +1,32 @@
+Administrador
+-quitar salud general y poner otif que es el porcentaje de espera de suministrador a mi bodega y otro para ver de bodega a franquiciado
+- pedidos pendientes añadir un icono de reloj
+- pedidos que seam mayores de 2 meses de retraso pasan a estado critico no antes
+- las alertas no están funcionando al momento de que el material decae por debajo del stock, ni cuando se hace un pedido y se descuenta material se debe validar esto (que se envie un correo al departamento para que verifique la falta de stock)
+- en el modulo de pedidos en la lista de pedidos sale consulta: en letras rojas eso modifícalo y cambiarlo por las zonas ya que en un lugar pueden existir varias números de zonas y debajo del nombre del cliente agregar el código del cliente
+-en información del material poner el código del material-nombre del material
+-remplazar stock mínimo en detalles del pedido por mínimo en venta y agregar multiplo de venta y también el nombre del suministrador ya que a cada suministrador suministra productos diferentes
+-validar las alertas relacionadas en los detalles de los pedidos, que se refleje que sea funcional y quita el historial que aparece abajo
+-en Información del Material agrega Estado planificable y debería salir si es planificable, no planificable, agotar stock
+-quitar acciones sugeridas en la parte de detalles del pedido
+-en pedidos donde sale el nombre del material debe aparecer el código del material el nombre del material y abajo el nombre del suministrador
+-en cantidad de pedidos solo deja el numero --------
+- en Stock si aprueba reemplázalo por resolución (revisar imagen las resoluciones)
+-validar lo de suministrador a bodega ya que eso es algo que nos venden y del bodega a franquiciado es lo que vendemos entonces cada cosa relacionalo como debería ser y dale las acciones no serian las mismas a demás cada accion debe ser usada por un usuario diferente
+-en pedidos reemplazar stock con stock disponible y que solo salga el numero
+-para el estado del producto la medición para el rango del semáforo sera si el stock disponible es inferior que sea rojo, cuando exista el proceso de reabastecer el material pero aun no se refleje porque el material no ha llegado que sea en amarillo y cuando el material este disponible en verde, es decir que debes agregar otra columna de reabestecimiento pendiente para saber cuanto material va a entrar y debajo de cada numero que vaya la fecha que se hizo el reabestimiento y el numero de la orden de compra
+-revisa el estado de prioridad ya que la criticidad debe manejarse según el tiempo de retraso, pasado de los 2 meses debería ser critico en rojo si se retrasa 1 dia hasta antes de los 2 meses seria amarillo y si esta dentro del tiempo estimado en verde
+-la prioridad mantenerla en pero que no sea visible quita la columna de prioridad en estado cambia lo que dice critico con la condición de semáforo por solo un circulo el estado que sale pendiente, revision.. etc, cámbialo por resolución.
+-en el filtro de pedidos la parte de impacto lo cambiamos por nombre del suministrador, en condición operativa reemplázalo por planificable que seria si es planificable, no planificable, agotar stock y en despacho cámbialo por un filtro de mes y año
+- em inventario cambia lo de bajo mínimo por numero de suministradores, quita movimientos
+- en el filtro de inventario en categoría reemplázalo por catman (la información esta dentro de un excel) en la parte de estado pon si es planificable, no planificable, agotar stock y el de orden reemplázalo por estado de stock donde ira si hay stock negativo, estoy disponible y reabastecimiento, agrega filtro de suministrador
+-inventario y materiales deberían ser un solo modulo deja el de inventario pero añade que se pueda eliminar o editar los materiales, la parte de agregar materiales que esta en la parteinferior súbelo
+-(botón para actualizar materiales)
+-quita el historial de inventario y la auditoria reciente
+-en material debajo de cada nombre agrega el código del material
+-añade un campo mas en inventario que sea de suministrador y salga el nombre de cada suministrador que nos vendio ese material y abajo su código y abajo la marca del material
+-remplaza en inventario la categoría por catman, en esos campos irían el nombre del catman y su categoría
+-en inventario quitar el stock mini, remplazar unidad por UMB si el producto se vende por unidad UND si es por saco SAC si es tonelada T
+- en inventario en el estado cámbialo por estado planificable(plani.. no plani... agotatar ....)
+-en inventario aumenta unos campos mas que serian Stock disponible(solo reemplaza el que dice stock actual), Stock LU, Stock Bloqueado, Stock Tránsito
+-agrega en inventario  Min Compra, Mult Compra, Min Vta, Mult Vta

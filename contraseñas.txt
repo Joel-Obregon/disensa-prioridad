@@ -1,0 +1,8 @@
+Administrador
+joelobre123@gmail.com : admin123
+
+bodega
+joelobr123@gmail.com : bodega123
+
+suministrador
+joel_obregon@hotmail.com : suministros123

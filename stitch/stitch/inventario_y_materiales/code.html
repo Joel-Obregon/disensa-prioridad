@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Inventario y Materiales - Disensa Prioridad</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#ffdbcd",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-highest": "#f8ddd2",
+                        "surface-container-high": "#fee2d8",
+                        "on-secondary": "#ffffff",
+                        "surface": "#fff8f6",
+                        "on-tertiary-container": "#003155",
+                        "tertiary-fixed-dim": "#9ccaff",
+                        "inverse-surface": "#3d2d26",
+                        "on-secondary-container": "#5c647a",
+                        "secondary": "#565e74",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "on-primary-container": "#561d00",
+                        "on-surface-variant": "#5a4136",
+                        "on-primary-fixed": "#360f00",
+                        "surface-dim": "#f0d4ca",
+                        "tertiary-fixed": "#d0e4ff",
+                        "outline": "#8e7164",
+                        "tertiary": "#0062a1",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#ffe9e1",
+                        "error": "#ba1a1a",
+                        "primary": "#a33e00",
+                        "on-error": "#ffffff",
+                        "surface-tint": "#a33e00",
+                        "on-tertiary-fixed-variant": "#00497b",
+                        "on-secondary-fixed": "#131b2e",
+                        "secondary-container": "#dae2fd",
+                        "inverse-primary": "#ffb596",
+                        "primary-container": "#ff6600",
+                        "secondary-fixed": "#dae2fd",
+                        "outline-variant": "#e3bfb1",
+                        "inverse-on-surface": "#ffede7",
+                        "on-primary-fixed-variant": "#7c2e00",
+                        "on-tertiary": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "background": "#fff8f6",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "on-primary": "#ffffff",
+                        "surface-container-low": "#fff1ec",
+                        "surface-bright": "#fff8f6",
+                        "surface-variant": "#f8ddd2",
+                        "on-tertiary-fixed": "#001d35",
+                        "tertiary-container": "#009cfc",
+                        "on-surface": "#261812",
+                        "primary-fixed-dim": "#ffb596",
+                        "on-background": "#261812"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sidebar_width": "260px",
+                        "stack_sm": "8px",
+                        "grid_gutter": "16px",
+                        "stack_md": "16px",
+                        "table_cell_padding": "12px 16px",
+                        "container_padding": "24px"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "data-mono": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-sm": ["16px", { "lineHeight": "24px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "data-mono": ["14px", { "lineHeight": "20px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .bg-slate-50 { background-color: #f8fafc; }
+        .bg-slate-100 { background-color: #f1f5f9; }
+        .bg-slate-200 { background-color: #e2e8f0; }
+        .border-slate-200 { border-color: #e2e8f0; }
+        .text-slate-500 { color: #64748b; }
+        .text-slate-700 { color: #334155; }
+        .text-red-700 { color: #b91c1c; }
+        .bg-red-100 { background-color: #fee2e2; }
+        .text-yellow-700 { color: #a16207; }
+        .bg-yellow-100 { background-color: #fef9c3; }
+        .text-green-700 { color: #15803d; }
+        .bg-green-100 { background-color: #dcfce3; }
+        
+        /* Sidebar Active State Mapping: Inventario -> index 2 */
+    </style>
+</head>
+<body class="bg-slate-50 text-on-background font-body-sm h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col bg-surface docked left-0 h-full w-[260px] border-r border-outline-variant flat no shadows py-spacing-container_padding z-20 flex-shrink-0">
+<div class="px-container_padding mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Disensa Prioridad</h1>
+<p class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mt-1">Logistics Management</p>
+</div>
+<ul class="flex-1 overflow-y-auto space-y-1 px-4">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-body-md text-body-md">Dashboard</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="local_shipping">local_shipping</span>
+<span class="font-body-md text-body-md">Pedidos</span>
+</a>
+</li>
+<!-- Active State: Inventario -->
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-container text-primary font-bold border-r-4 border-primary transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-body-md text-body-md">Inventario</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="notifications_active">notifications_active</span>
+<span class="font-body-md text-body-md">Alertas</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="rule">rule</span>
+<span class="font-body-md text-body-md">Reglas</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-body-md text-body-md">Reportes</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="calendar_month">calendar_month</span>
+<span class="font-body-md text-body-md">Calendario</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dns">dns</span>
+<span class="font-body-md text-body-md">Estado del sistema</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-body-md text-body-md">Usuarios</span>
+</a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-full overflow-hidden w-full relative">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center h-16 px-spacing-container_padding w-full bg-surface border-b border-outline-variant flat no shadows z-10 flex-shrink-0">
+<div class="flex items-center gap-4">
+<button class="md:hidden text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h2 class="font-headline-sm text-headline-sm text-on-surface md:hidden">Disensa Prioridad</h2>
+</div>
+<div class="flex items-center gap-4">
+<button aria-label="account_circle" class="text-on-surface-variant hover:text-primary cursor-pointer transition-opacity active:opacity-80">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+<button aria-label="settings" class="text-on-surface-variant hover:text-primary cursor-pointer transition-opacity active:opacity-80">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button aria-label="sensors" class="text-on-surface-variant hover:text-primary cursor-pointer transition-opacity active:opacity-80">
+<span class="material-symbols-outlined" data-icon="sensors">sensors</span>
+</button>
+</div>
+</header>
+<!-- Scrollable Content Canvas -->
+<main class="flex-1 overflow-y-auto p-spacing-container_padding bg-slate-50">
+<!-- Page Header -->
+<div class="mb-stack_md flex justify-between items-end">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-1">Inventario y Materiales</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Gestión centralizada de stock, proveedores y reabastecimiento.</p>
+</div>
+</div>
+<!-- KPI Row (Bento/Card style) -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-grid_gutter mb-stack_md">
+<div class="bg-surface-container-lowest border border-slate-200 rounded-lg p-4 flex flex-col justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Total Materiales</span>
+<div class="mt-2 flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-on-surface">1,245</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-slate-200 rounded-lg p-4 flex flex-col justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Stock Disponible Total</span>
+<div class="mt-2 flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-on-surface">845,920</span>
+<span class="font-body-sm text-body-sm text-slate-500">UND</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-slate-200 rounded-lg p-4 flex flex-col justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Suministradores</span>
+<div class="mt-2 flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-on-surface">42</span>
+<span class="font-body-sm text-body-sm text-green-700 bg-green-100 px-2 py-0.5 rounded-full text-xs font-semibold">+3 Active</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-slate-200 rounded-lg p-4 flex flex-col justify-between border-l-4 border-l-primary">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Reabastecimientos Pendientes</span>
+<div class="mt-2 flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-primary">18</span>
+<span class="font-body-sm text-body-sm text-slate-500">Órdenes</span>
+</div>
+</div>
+</div>
+<!-- Add Material Form (Inline Top) -->
+<div class="bg-surface-container-lowest border border-slate-200 rounded-lg p-4 mb-stack_md">
+<div class="flex items-center gap-2 mb-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="add_circle">add_circle</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Añadir Nuevo Material</h3>
+</div>
+<form class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+<div class="col-span-1 md:col-span-2">
+<label class="block font-label-md text-label-md text-on-surface mb-1">Código &amp; Nombre Material</label>
+<input class="w-full bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-2 focus:border-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Ej: CEM-001 Cemento Gris" type="text"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1">Proveedor (Cód)</label>
+<input class="w-full bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-2 focus:border-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Ej: HOLC" type="text"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1">UMB</label>
+<select class="w-full bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-2 focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+<option>SAC</option>
+<option>UND</option>
+<option>T</option>
+</select>
+</div>
+<div>
+<button class="w-full bg-primary text-on-primary font-label-md text-label-md h-[38px] rounded px-4 hover:bg-surface-tint transition-colors flex items-center justify-center gap-2" type="button">
+                            Guardar
+                        </button>
+</div>
+</form>
+</div>
+<!-- Filters Bar -->
+<div class="bg-surface-container-lowest border border-slate-200 rounded-t-lg p-4 flex flex-col md:flex-row gap-4 items-center justify-between border-b-0">
+<div class="relative w-full md:w-96">
+<span class="material-symbols-outlined absolute left-3 top-2 text-slate-400" data-icon="search">search</span>
+<input class="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm focus:border-primary outline-none" placeholder="Buscar material, código, catman, supplier..." type="text"/>
+</div>
+<div class="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+<select class="bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-1.5 focus:border-primary outline-none">
+<option value="">Catman (Todos)</option>
+<option>Obra Gruesa</option>
+<option>Terminaciones</option>
+</select>
+<select class="bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-1.5 focus:border-primary outline-none">
+<option value="">Planifiable</option>
+<option>Sí</option>
+<option>No</option>
+</select>
+<select class="bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-1.5 focus:border-primary outline-none">
+<option value="">Estado Stock</option>
+<option>Disponible</option>
+<option>Pendiente</option>
+<option>Crítico (Neg/None)</option>
+</select>
+<select class="bg-slate-50 border border-slate-200 rounded font-body-sm text-body-sm px-3 py-1.5 focus:border-primary outline-none">
+<option value="">Supplier</option>
+<option>Holcim</option>
+<option>Sika</option>
+</select>
+</div>
+</div>
+<!-- Data Table -->
+<div class="bg-surface-container-lowest border border-slate-200 rounded-b-lg overflow-x-auto relative">
+<table class="w-full text-left border-collapse min-w-[1000px]">
+<thead class="bg-slate-100 border-b border-slate-200 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider sticky top-0 z-10">
+<tr>
+<th class="p-table_cell_padding w-1"></th><!-- Status Accent -->
+<th class="p-table_cell_padding">Material &amp; Código</th>
+<th class="p-table_cell_padding">Supplier</th>
+<th class="p-table_cell_padding">Catman &amp; Cat.</th>
+<th class="p-table_cell_padding">Stock (Disp/LU/Lock/Trans)</th>
+<th class="p-table_cell_padding w-16">UMB</th>
+<th class="p-table_cell_padding w-24">Planif.</th>
+<th class="p-table_cell_padding text-right">Min/Mult Compra</th>
+<th class="p-table_cell_padding text-right">Min/Mult Venta</th>
+<th class="p-table_cell_padding text-center">Estado</th>
+<th class="p-table_cell_padding text-center w-20">Acciones</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm text-on-surface divide-y divide-slate-100">
+<!-- Row 1: Healthy -->
+<tr class="hover:bg-slate-50 transition-colors group">
+<td class="p-0 w-1"><div class="h-10 w-1 bg-green-500 mx-auto rounded-full"></div></td>
+<td class="p-table_cell_padding">
+<div class="font-data-mono text-slate-500 text-xs">CEM-001</div>
+<div class="font-medium">Cemento Gris Fuerte 50kg</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">Holcim (HOLC)</div>
+<div class="text-xs text-slate-500">Fuerte</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">10 - Obra Gruesa</div>
+<div class="text-xs text-slate-500">Cementos</div>
+</td>
+<td class="p-table_cell_padding font-data-mono text-xs">
+<span class="text-green-700 font-semibold">1,200</span> / 0 / 50 / 200
+                            </td>
+<td class="p-table_cell_padding text-slate-500">SAC</td>
+<td class="p-table_cell_padding">
+<span class="bg-tertiary-fixed text-on-tertiary-fixed px-2 py-0.5 rounded text-xs">SÍ</span>
+</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">100 / 50</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">10 / 10</td>
+<td class="p-table_cell_padding text-center">
+<div class="w-3 h-3 rounded-full bg-green-500 mx-auto shadow-sm" title="Disponible"></div>
+</td>
+<td class="p-table_cell_padding text-center opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary"><span class="material-symbols-outlined text-sm" data-icon="edit">edit</span></button>
+</td>
+</tr>
+<!-- Row 2: Warning (Restocking) -->
+<tr class="hover:bg-slate-50 transition-colors group">
+<td class="p-0 w-1"><div class="h-10 w-1 bg-yellow-400 mx-auto rounded-full"></div></td>
+<td class="p-table_cell_padding">
+<div class="font-data-mono text-slate-500 text-xs">HIE-042</div>
+<div class="font-medium">Hierro Corrugado 12mm</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">Aceros (ACE)</div>
+<div class="text-xs text-slate-500">Genérico</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">10 - Obra Gruesa</div>
+<div class="text-xs text-slate-500">Fierros</div>
+</td>
+<td class="p-table_cell_padding font-data-mono text-xs">
+<span class="text-yellow-700 font-semibold">150</span> / 20 / 0 / 500
+                            </td>
+<td class="p-table_cell_padding text-slate-500">UND</td>
+<td class="p-table_cell_padding">
+<span class="bg-tertiary-fixed text-on-tertiary-fixed px-2 py-0.5 rounded text-xs">SÍ</span>
+</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">500 / 100</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">50 / 50</td>
+<td class="p-table_cell_padding text-center">
+<div class="w-3 h-3 rounded-full bg-yellow-400 mx-auto shadow-sm" title="Reabastecimiento Pendiente"></div>
+</td>
+<td class="p-table_cell_padding text-center opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary"><span class="material-symbols-outlined text-sm" data-icon="edit">edit</span></button>
+</td>
+</tr>
+<!-- Row 3: Critical (None/Negative) -->
+<tr class="hover:bg-slate-50 transition-colors group bg-red-50/30">
+<td class="p-0 w-1"><div class="h-10 w-1 bg-red-600 mx-auto rounded-full"></div></td>
+<td class="p-table_cell_padding">
+<div class="font-data-mono text-slate-500 text-xs">SIK-009</div>
+<div class="font-medium">Sikaflex 1A Plus Gris</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">Sika SA (SIK)</div>
+<div class="text-xs text-slate-500">Sika</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">20 - Terminaciones</div>
+<div class="text-xs text-slate-500">Selladores</div>
+</td>
+<td class="p-table_cell_padding font-data-mono text-xs">
+<span class="text-red-700 font-bold">-5</span> / 0 / 10 / 0
+                            </td>
+<td class="p-table_cell_padding text-slate-500">UND</td>
+<td class="p-table_cell_padding">
+<span class="bg-slate-200 text-slate-600 px-2 py-0.5 rounded text-xs">NO</span>
+</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">24 / 12</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">1 / 1</td>
+<td class="p-table_cell_padding text-center">
+<div class="w-3 h-3 rounded-full bg-red-600 mx-auto shadow-sm" title="Crítico (Negativo)"></div>
+</td>
+<td class="p-table_cell_padding text-center opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 justify-center">
+<button class="text-slate-400 hover:text-primary"><span class="material-symbols-outlined text-sm" data-icon="edit">edit</span></button>
+<button class="text-slate-400 hover:text-red-600"><span class="material-symbols-outlined text-sm" data-icon="delete">delete</span></button>
+</td>
+</tr>
+<!-- Row 4: Healthy -->
+<tr class="hover:bg-slate-50 transition-colors group">
+<td class="p-0 w-1"><div class="h-10 w-1 bg-green-500 mx-auto rounded-full"></div></td>
+<td class="p-table_cell_padding">
+<div class="font-data-mono text-slate-500 text-xs">PLY-012</div>
+<div class="font-medium">Placa Yeso Estandar 12.5mm</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">Gyplac (GYP)</div>
+<div class="text-xs text-slate-500">Gyplac</div>
+</td>
+<td class="p-table_cell_padding">
+<div class="font-medium text-xs">20 - Terminaciones</div>
+<div class="text-xs text-slate-500">Tabiquería</div>
+</td>
+<td class="p-table_cell_padding font-data-mono text-xs">
+<span class="text-green-700 font-semibold">450</span> / 10 / 0 / 0
+                            </td>
+<td class="p-table_cell_padding text-slate-500">UND</td>
+<td class="p-table_cell_padding">
+<span class="bg-tertiary-fixed text-on-tertiary-fixed px-2 py-0.5 rounded text-xs">SÍ</span>
+</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">100 / 50</td>
+<td class="p-table_cell_padding text-right font-data-mono text-xs text-slate-600">10 / 5</td>
+<td class="p-table_cell_padding text-center">
+<div class="w-3 h-3 rounded-full bg-green-500 mx-auto shadow-sm" title="Disponible"></div>
+</td>
+<td class="p-table_cell_padding text-center opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary"><span class="material-symbols-outlined text-sm" data-icon="edit">edit</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</main>
+</div>
+</body></html>

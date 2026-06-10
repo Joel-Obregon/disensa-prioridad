@@ -1,0 +1,2238 @@
+{
+  "files": {
+    "pendientes_bodega_fq": {
+      "path": "C:\\Users\\Joel\\Downloads\\BASE_PENDIENTES_BODEGA_A_FQ_EDITADO.xlsx",
+      "sheet_names": [
+        "Hoja1"
+      ],
+      "sheets": [
+        {
+          "sheet": "Hoja1",
+          "filas": 61,
+          "columnas_total": 48,
+          "columnas": [
+            "validacion_bodega",
+            "lider",
+            "observacion_despacho",
+            "tipo_de_caso",
+            "responsable",
+            "resolucion",
+            "estado",
+            "base",
+            "cod_pedido",
+            "zona_cliente",
+            "cod_cliente",
+            "cliente",
+            "zona",
+            "posicion",
+            "cod_proveedor",
+            "cod_holcim",
+            "descripcion",
+            "cantidad",
+            "unidad",
+            "peso_kg",
+            "m3",
+            "linea_de_producto",
+            "placa",
+            "cod_trans",
+            "fecha_solicitud",
+            "fecha_limite",
+            "observaciones_general",
+            "validacion_lizbeth_nicola",
+            "fecha_reportado",
+            "fecha_revision",
+            "fecha_de_entrega",
+            "dias_entregados",
+            "sla",
+            "validacion_y_aux",
+            "pedidos_dp",
+            "fecha_compra",
+            "stock_disponible",
+            "stock_en_transito",
+            "bloqueado",
+            "validacion_planning",
+            "validado_por",
+            "oc",
+            "fecha_oc",
+            "mes",
+            "dia",
+            "ano",
+            "excluidos",
+            "fecha_de_cierre_bodega"
+          ],
+          "roles": {
+            "bodega": [
+              "validacion_bodega",
+              "fecha_de_cierre_bodega"
+            ],
+            "estado": [
+              "estado"
+            ],
+            "pedido": [
+              "cod_pedido",
+              "pedidos_dp"
+            ],
+            "franquiciado": [
+              "zona_cliente",
+              "cod_cliente",
+              "cliente"
+            ],
+            "proveedor": [
+              "cod_proveedor"
+            ],
+            "material_nombre": [
+              "descripcion",
+              "linea_de_producto"
+            ],
+            "cantidad": [
+              "cantidad",
+              "stock_disponible",
+              "stock_en_transito"
+            ],
+            "fecha": [
+              "fecha_solicitud",
+              "fecha_limite",
+              "fecha_reportado",
+              "fecha_revision",
+              "fecha_de_entrega",
+              "fecha_compra",
+              "fecha_oc",
+              "fecha_de_cierre_bodega"
+            ],
+            "oc": [
+              "stock_disponible",
+              "stock_en_transito",
+              "oc",
+              "fecha_oc"
+            ]
+          },
+          "perfil_columnas": [
+            {
+              "columna": "validacion_bodega",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 2,
+              "pct_unicos": 3.28,
+              "ejemplos": [
+                "Revisado",
+                "Revisado",
+                "Revisado",
+                "Revisado",
+                "Revisado"
+              ]
+            },
+            {
+              "columna": "lider",
+              "dtype": "str",
+              "no_nulos": 10,
+              "nulos": 51,
+              "unicos": 4,
+              "pct_unicos": 40.0,
+              "ejemplos": [
+                "CDORADO",
+                "EGASTON",
+                "EGASTON",
+                "CDORADO",
+                "EGASTON"
+              ]
+            },
+            {
+              "columna": "observacion_despacho",
+              "dtype": "str",
+              "no_nulos": 10,
+              "nulos": 51,
+              "unicos": 10,
+              "pct_unicos": 100.0,
+              "ejemplos": [
+                "En el inventario realizado el 11/01/2026 se contaron 217 unidades de la tuberia, si se contaba con stock y no se despachó",
+                "No se cuenta con stock del material",
+                "diferencia de inventario, se contaron solo 2 unidades",
+                "Ingresado en WMS",
+                "No aplica lo gestionan sin afectar inventario."
+              ]
+            },
+            {
+              "columna": "tipo_de_caso",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 13,
+              "pct_unicos": 21.31,
+              "ejemplos": [
+                "CADUCIDAD",
+                "CADUCIDAD",
+                "ESPACIO CAMION",
+                "ERROR DE CARGA",
+                "CLIENTE CERRADO"
+              ]
+            },
+            {
+              "columna": "responsable",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 4,
+              "pct_unicos": 6.56,
+              "ejemplos": [
+                "DESPACHO",
+                "DESPACHO",
+                "TRANSPORTE",
+                "TRANSPORTE",
+                "TRANSPORTE"
+              ]
+            },
+            {
+              "columna": "resolucion",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 3,
+              "pct_unicos": 4.92,
+              "ejemplos": [
+                "NC confirmada",
+                "NC confirmada",
+                "Entregado",
+                "Entregado",
+                "Entregado"
+              ]
+            },
+            {
+              "columna": "estado",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 2,
+              "pct_unicos": 3.28,
+              "ejemplos": [
+                "Cerrado",
+                "Cerrado",
+                "Cerrado",
+                "Cerrado",
+                "Cerrado"
+              ]
+            },
+            {
+              "columna": "base",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 2,
+              "pct_unicos": 3.28,
+              "ejemplos": [
+                "Durán",
+                "Durán",
+                "Durán",
+                "Durán",
+                "Durán"
+              ]
+            },
+            {
+              "columna": "cod_pedido",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 30,
+              "pct_unicos": 49.18,
+              "ejemplos": [
+                509458262,
+                509458262,
+                509456873,
+                509457006,
+                509456296
+              ]
+            },
+            {
+              "columna": "zona_cliente",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 4,
+              "pct_unicos": 6.56,
+              "ejemplos": [
+                "ZONA 1",
+                "ZONA 1",
+                "ZONA 1",
+                "ZONA 1",
+                "ZONA 4"
+              ]
+            },
+            {
+              "columna": "cod_cliente",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 23,
+              "pct_unicos": 37.7,
+              "ejemplos": [
+                6321212,
+                6321212,
+                6134752,
+                6134752,
+                6135099
+              ]
+            },
+            {
+              "columna": "cliente",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 23,
+              "pct_unicos": 37.7,
+              "ejemplos": [
+                "ANCHUNDIA CALVA DENISSE GABRIE",
+                "ANCHUNDIA CALVA DENISSE GABRIE",
+                "MEGANOA S.A.",
+                "MEGANOA S.A.",
+                "FRANQUICIA DISTRIBUIDORA SANTA"
+              ]
+            },
+            {
+              "columna": "zona",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 22,
+              "pct_unicos": 36.07,
+              "ejemplos": [
+                "EC GUAYAQUIL NORTE",
+                "EC GUAYAQUIL NORTE",
+                "EC NARANJITO",
+                "EC NARANJITO",
+                "EC PORTOVIEJO"
+              ]
+            },
+            {
+              "columna": "posicion",
+              "dtype": "str",
+              "no_nulos": 31,
+              "nulos": 30,
+              "unicos": 29,
+              "pct_unicos": 93.55,
+              "ejemplos": [
+                "1-8-C-P2",
+                "3-12-A-P2",
+                "4-9-B-P1/4-9-A-P1",
+                "4-7-A-P1-4-6-B-2",
+                "4-7-B-P2"
+              ]
+            },
+            {
+              "columna": "cod_proveedor",
+              "dtype": "object",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 55,
+              "pct_unicos": 90.16,
+              "ejemplos": [
+                "PVPT223",
+                "PVPT040",
+                925480,
+                927400,
+                925463
+              ]
+            },
+            {
+              "columna": "cod_holcim",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 55,
+              "pct_unicos": 90.16,
+              "ejemplos": [
+                91032041,
+                91029894,
+                91003008,
+                91031483,
+                91002309
+              ]
+            },
+            {
+              "columna": "descripcion",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 55,
+              "pct_unicos": 90.16,
+              "ejemplos": [
+                "Toke Pegatanke Ultra G",
+                "Pegatanke Transparente",
+                "Tanque Botella 01100 Lt C/Kit ¾ PGM",
+                "Tubo Conduit T-P ¾ x 3 m PDR",
+                "Kalipega 0125 cc PGM"
+              ]
+            },
+            {
+              "columna": "cantidad",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 23,
+              "pct_unicos": 37.7,
+              "ejemplos": [
+                10,
+                10,
+                5,
+                200,
+                48
+              ]
+            },
+            {
+              "columna": "unidad",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 2,
+              "pct_unicos": 3.28,
+              "ejemplos": [
+                "UN",
+                "UN",
+                "UN",
+                "UN",
+                "UN"
+              ]
+            },
+            {
+              "columna": "peso_kg",
+              "dtype": "float64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 49,
+              "pct_unicos": 80.33,
+              "ejemplos": [
+                0.2,
+                0.87,
+                108.56,
+                2.0,
+                5.76
+              ]
+            },
+            {
+              "columna": "m3",
+              "dtype": "float64",
+              "no_nulos": 60,
+              "nulos": 1,
+              "unicos": 31,
+              "pct_unicos": 51.67,
+              "ejemplos": [
+                0.0,
+                0.0,
+                4.0,
+                0.4,
+                0.01
+              ]
+            },
+            {
+              "columna": "linea_de_producto",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 14,
+              "pct_unicos": 22.95,
+              "ejemplos": [
+                "PTKDELECUADOR S.A.",
+                "PTKDELECUADOR S.A.",
+                "PLASTIGAMA (TANQUE)",
+                "PLASTIGAMA (TUBERIAS)",
+                "PLASTIGAMA (ACCESORIO)"
+              ]
+            },
+            {
+              "columna": "placa",
+              "dtype": "str",
+              "no_nulos": 51,
+              "nulos": 10,
+              "unicos": 6,
+              "pct_unicos": 11.76,
+              "ejemplos": [
+                "PAE3078",
+                "PAE3078",
+                "GTT8251",
+                "GTT8251",
+                "GTT8251"
+              ]
+            },
+            {
+              "columna": "cod_trans",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 61,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            },
+            {
+              "columna": "fecha_solicitud",
+              "dtype": "datetime64[us]",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 3,
+              "pct_unicos": 4.92,
+              "ejemplos": [
+                "2026-01-05T00:00:00",
+                "2026-01-05T00:00:00",
+                "2026-01-05T00:00:00",
+                "2026-01-05T00:00:00",
+                "2026-01-05T00:00:00"
+              ]
+            },
+            {
+              "columna": "fecha_limite",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 61,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            },
+            {
+              "columna": "observaciones_general",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 43,
+              "pct_unicos": 70.49,
+              "ejemplos": [
+                "PENDIENTE 10 UN POR CADUCIDAD",
+                "PENDIENTE 10 UN POR CADUCIDAD",
+                "PENDIENTE 5 UN POR ESPACIO CAMION",
+                "PENDIENTE 200 UN POR ERROR DE CARGA",
+                "PENDIENTE 48 UN POR CLIENTE CERRADO"
+              ]
+            },
+            {
+              "columna": "validacion_lizbeth_nicola",
+              "dtype": "str",
+              "no_nulos": 53,
+              "nulos": 8,
+              "unicos": 15,
+              "pct_unicos": 28.3,
+              "ejemplos": [
+                "PLANIFICACION",
+                "Cliente cerrado, retorna toda la carga",
+                "Cliente cerrado, retorna toda la carga",
+                "Cliente cerrado, retorna toda la carga",
+                "Cliente cerrado, retorna toda la carga"
+              ]
+            },
+            {
+              "columna": "fecha_reportado",
+              "dtype": "datetime64[us]",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 7,
+              "pct_unicos": 11.48,
+              "ejemplos": [
+                "2026-01-09T00:00:00",
+                "2026-01-09T00:00:00",
+                "2026-01-08T00:00:00",
+                "2026-01-09T00:00:00",
+                "2026-01-09T00:00:00"
+              ]
+            },
+            {
+              "columna": "fecha_revision",
+              "dtype": "datetime64[us]",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 9,
+              "pct_unicos": 14.75,
+              "ejemplos": [
+                "2026-01-09T00:00:00",
+                "2026-01-09T00:00:00",
+                "2026-01-08T00:00:00",
+                "2026-01-09T00:00:00",
+                "2026-01-09T00:00:00"
+              ]
+            },
+            {
+              "columna": "fecha_de_entrega",
+              "dtype": "datetime64[us]",
+              "no_nulos": 47,
+              "nulos": 14,
+              "unicos": 12,
+              "pct_unicos": 25.53,
+              "ejemplos": [
+                "2026-01-09T00:00:00",
+                "2026-01-09T00:00:00",
+                "2026-04-09T00:00:00",
+                "2026-02-12T00:00:00",
+                "2026-01-23T00:00:00"
+              ]
+            },
+            {
+              "columna": "dias_entregados",
+              "dtype": "float64",
+              "no_nulos": 47,
+              "nulos": 14,
+              "unicos": 12,
+              "pct_unicos": 25.53,
+              "ejemplos": [
+                0.0,
+                0.0,
+                91.0,
+                34.0,
+                14.0
+              ]
+            },
+            {
+              "columna": "sla",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 11,
+              "pct_unicos": 18.03,
+              "ejemplos": [
+                "CADA 24 HORAS",
+                "CADA 24 HORAS",
+                "CADA 48 HORAS",
+                "CADA 48 HORAS",
+                "VIERNES"
+              ]
+            },
+            {
+              "columna": "validacion_y_aux",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 61,
+              "pct_unicos": 100.0,
+              "ejemplos": [
+                "509458262 | 91032041",
+                "509458262 | 91029894",
+                "509456873 | 91003008",
+                "509457006 | 91031483",
+                "509456296 | 91002309"
+              ]
+            },
+            {
+              "columna": "pedidos_dp",
+              "dtype": "float64",
+              "no_nulos": 60,
+              "nulos": 1,
+              "unicos": 60,
+              "pct_unicos": 100.0,
+              "ejemplos": [
+                632121291032041.0,
+                632121291029894.0,
+                613475291003008.0,
+                613475291031483.0,
+                613509991002309.0
+              ]
+            },
+            {
+              "columna": "fecha_compra",
+              "dtype": "datetime64[us]",
+              "no_nulos": 24,
+              "nulos": 37,
+              "unicos": 2,
+              "pct_unicos": 8.33,
+              "ejemplos": [
+                "2025-07-29T00:00:00",
+                "2025-05-26T00:00:00",
+                "2025-05-26T00:00:00",
+                "2025-05-26T00:00:00",
+                "2025-05-26T00:00:00"
+              ]
+            },
+            {
+              "columna": "stock_disponible",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 40,
+              "pct_unicos": 65.57,
+              "ejemplos": [
+                41,
+                50,
+                0,
+                151,
+                3051
+              ]
+            },
+            {
+              "columna": "stock_en_transito",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 32,
+              "pct_unicos": 52.46,
+              "ejemplos": [
+                0,
+                0,
+                0,
+                1400,
+                2400
+              ]
+            },
+            {
+              "columna": "bloqueado",
+              "dtype": "float64",
+              "no_nulos": 46,
+              "nulos": 15,
+              "unicos": 1,
+              "pct_unicos": 2.17,
+              "ejemplos": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "columna": "validacion_planning",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 61,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            },
+            {
+              "columna": "validado_por",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 61,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            },
+            {
+              "columna": "oc",
+              "dtype": "float64",
+              "no_nulos": 37,
+              "nulos": 24,
+              "unicos": 11,
+              "pct_unicos": 29.73,
+              "ejemplos": [
+                4583482021.0,
+                4583482015.0,
+                4583482015.0,
+                4583482015.0,
+                4583482015.0
+              ]
+            },
+            {
+              "columna": "fecha_oc",
+              "dtype": "datetime64[us]",
+              "no_nulos": 37,
+              "nulos": 24,
+              "unicos": 9,
+              "pct_unicos": 24.32,
+              "ejemplos": [
+                "2026-05-29T00:00:00",
+                "2026-05-29T00:00:00",
+                "2026-05-29T00:00:00",
+                "2026-05-29T00:00:00",
+                "2026-05-29T00:00:00"
+              ]
+            },
+            {
+              "columna": "mes",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 1.64,
+              "ejemplos": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            },
+            {
+              "columna": "dia",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 3,
+              "pct_unicos": 4.92,
+              "ejemplos": [
+                5,
+                5,
+                5,
+                5,
+                5
+              ]
+            },
+            {
+              "columna": "ano",
+              "dtype": "int64",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 1.64,
+              "ejemplos": [
+                2026,
+                2026,
+                2026,
+                2026,
+                2026
+              ]
+            },
+            {
+              "columna": "excluidos",
+              "dtype": "str",
+              "no_nulos": 61,
+              "nulos": 0,
+              "unicos": 2,
+              "pct_unicos": 3.28,
+              "ejemplos": [
+                "Planificable",
+                "Planificable",
+                "Hasta agotar stock",
+                "Planificable",
+                "Planificable"
+              ]
+            },
+            {
+              "columna": "fecha_de_cierre_bodega",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 61,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            }
+          ],
+          "muestras": [
+            {
+              "validacion_bodega": "Revisado",
+              "lider": null,
+              "observacion_despacho": null,
+              "tipo_de_caso": "CADUCIDAD",
+              "responsable": "DESPACHO",
+              "resolucion": "NC confirmada",
+              "estado": "Cerrado",
+              "base": "Durán",
+              "cod_pedido": 509458262,
+              "zona_cliente": "ZONA 1",
+              "cod_cliente": 6321212,
+              "cliente": "ANCHUNDIA CALVA DENISSE GABRIE",
+              "zona": "EC GUAYAQUIL NORTE",
+              "posicion": null,
+              "cod_proveedor": "PVPT223",
+              "cod_holcim": 91032041,
+              "descripcion": "Toke Pegatanke Ultra G",
+              "cantidad": 10,
+              "unidad": "UN",
+              "peso_kg": 0.2,
+              "m3": 0.0,
+              "linea_de_producto": "PTKDELECUADOR S.A.",
+              "placa": "PAE3078",
+              "cod_trans": null,
+              "fecha_solicitud": "2026-01-05T00:00:00",
+              "fecha_limite": null,
+              "observaciones_general": "PENDIENTE 10 UN POR CADUCIDAD",
+              "validacion_lizbeth_nicola": null,
+              "fecha_reportado": "2026-01-09T00:00:00",
+              "fecha_revision": "2026-01-09T00:00:00",
+              "fecha_de_entrega": "2026-01-09T00:00:00",
+              "dias_entregados": 0.0,
+              "sla": "CADA 24 HORAS",
+              "validacion_y_aux": "509458262 | 91032041",
+              "pedidos_dp": 632121291032041.0,
+              "fecha_compra": null,
+              "stock_disponible": 41,
+              "stock_en_transito": 0,
+              "bloqueado": 0.0,
+              "validacion_planning": null,
+              "validado_por": null,
+              "oc": null,
+              "fecha_oc": null,
+              "mes": 1,
+              "dia": 5,
+              "ano": 2026,
+              "excluidos": "Planificable",
+              "fecha_de_cierre_bodega": null
+            },
+            {
+              "validacion_bodega": "Revisado",
+              "lider": null,
+              "observacion_despacho": null,
+              "tipo_de_caso": "CADUCIDAD",
+              "responsable": "DESPACHO",
+              "resolucion": "NC confirmada",
+              "estado": "Cerrado",
+              "base": "Durán",
+              "cod_pedido": 509458262,
+              "zona_cliente": "ZONA 1",
+              "cod_cliente": 6321212,
+              "cliente": "ANCHUNDIA CALVA DENISSE GABRIE",
+              "zona": "EC GUAYAQUIL NORTE",
+              "posicion": "1-8-C-P2",
+              "cod_proveedor": "PVPT040",
+              "cod_holcim": 91029894,
+              "descripcion": "Pegatanke Transparente",
+              "cantidad": 10,
+              "unidad": "UN",
+              "peso_kg": 0.87,
+              "m3": 0.0,
+              "linea_de_producto": "PTKDELECUADOR S.A.",
+              "placa": "PAE3078",
+              "cod_trans": null,
+              "fecha_solicitud": "2026-01-05T00:00:00",
+              "fecha_limite": null,
+              "observaciones_general": "PENDIENTE 10 UN POR CADUCIDAD",
+              "validacion_lizbeth_nicola": null,
+              "fecha_reportado": "2026-01-09T00:00:00",
+              "fecha_revision": "2026-01-09T00:00:00",
+              "fecha_de_entrega": "2026-01-09T00:00:00",
+              "dias_entregados": 0.0,
+              "sla": "CADA 24 HORAS",
+              "validacion_y_aux": "509458262 | 91029894",
+              "pedidos_dp": 632121291029894.0,
+              "fecha_compra": "2025-07-29T00:00:00",
+              "stock_disponible": 50,
+              "stock_en_transito": 0,
+              "bloqueado": 0.0,
+              "validacion_planning": null,
+              "validado_por": null,
+              "oc": null,
+              "fecha_oc": null,
+              "mes": 1,
+              "dia": 5,
+              "ano": 2026,
+              "excluidos": "Planificable",
+              "fecha_de_cierre_bodega": null
+            },
+            {
+              "validacion_bodega": "Revisado",
+              "lider": null,
+              "observacion_despacho": null,
+              "tipo_de_caso": "ESPACIO CAMION",
+              "responsable": "TRANSPORTE",
+              "resolucion": "Entregado",
+              "estado": "Cerrado",
+              "base": "Durán",
+              "cod_pedido": 509456873,
+              "zona_cliente": "ZONA 1",
+              "cod_cliente": 6134752,
+              "cliente": "MEGANOA S.A.",
+              "zona": "EC NARANJITO",
+              "posicion": null,
+              "cod_proveedor": 925480,
+              "cod_holcim": 91003008,
+              "descripcion": "Tanque Botella 01100 Lt C/Kit ¾ PGM",
+              "cantidad": 5,
+              "unidad": "UN",
+              "peso_kg": 108.56,
+              "m3": 4.0,
+              "linea_de_producto": "PLASTIGAMA (TANQUE)",
+              "placa": "GTT8251",
+              "cod_trans": null,
+              "fecha_solicitud": "2026-01-05T00:00:00",
+              "fecha_limite": null,
+              "observaciones_general": "PENDIENTE 5 UN POR ESPACIO CAMION",
+              "validacion_lizbeth_nicola": "PLANIFICACION",
+              "fecha_reportado": "2026-01-08T00:00:00",
+              "fecha_revision": "2026-01-08T00:00:00",
+              "fecha_de_entrega": "2026-04-09T00:00:00",
+              "dias_entregados": 91.0,
+              "sla": "CADA 48 HORAS",
+              "validacion_y_aux": "509456873 | 91003008",
+              "pedidos_dp": 613475291003008.0,
+              "fecha_compra": null,
+              "stock_disponible": 0,
+              "stock_en_transito": 0,
+              "bloqueado": null,
+              "validacion_planning": null,
+              "validado_por": null,
+              "oc": null,
+              "fecha_oc": null,
+              "mes": 1,
+              "dia": 5,
+              "ano": 2026,
+              "excluidos": "Hasta agotar stock",
+              "fecha_de_cierre_bodega": null
+            },
+            {
+              "validacion_bodega": "Revisado",
+              "lider": "CDORADO",
+              "observacion_despacho": "En el inventario realizado el 11/01/2026 se contaron 217 unidades de la tuberia, si se contaba con stock y no se despachó",
+              "tipo_de_caso": "ERROR DE CARGA",
+              "responsable": "TRANSPORTE",
+              "resolucion": "Entregado",
+              "estado": "Cerrado",
+              "base": "Durán",
+              "cod_pedido": 509457006,
+              "zona_cliente": "ZONA 1",
+              "cod_cliente": 6134752,
+              "cliente": "MEGANOA S.A.",
+              "zona": "EC NARANJITO",
+              "posicion": null,
+              "cod_proveedor": 927400,
+              "cod_holcim": 91031483,
+              "descripcion": "Tubo Conduit T-P ¾ x 3 m PDR",
+              "cantidad": 200,
+              "unidad": "UN",
+              "peso_kg": 2.0,
+              "m3": 0.4,
+              "linea_de_producto": "PLASTIGAMA (TUBERIAS)",
+              "placa": "GTT8251",
+              "cod_trans": null,
+              "fecha_solicitud": "2026-01-05T00:00:00",
+              "fecha_limite": null,
+              "observaciones_general": "PENDIENTE 200 UN POR ERROR DE CARGA",
+              "validacion_lizbeth_nicola": null,
+              "fecha_reportado": "2026-01-09T00:00:00",
+              "fecha_revision": "2026-01-09T00:00:00",
+              "fecha_de_entrega": "2026-02-12T00:00:00",
+              "dias_entregados": 34.0,
+              "sla": "CADA 48 HORAS",
+              "validacion_y_aux": "509457006 | 91031483",
+              "pedidos_dp": 613475291031483.0,
+              "fecha_compra": null,
+              "stock_disponible": 151,
+              "stock_en_transito": 1400,
+              "bloqueado": 0.0,
+              "validacion_planning": null,
+              "validado_por": null,
+              "oc": 4583482021.0,
+              "fecha_oc": "2026-05-29T00:00:00",
+              "mes": 1,
+              "dia": 5,
+              "ano": 2026,
+              "excluidos": "Planificable",
+              "fecha_de_cierre_bodega": null
+            },
+            {
+              "validacion_bodega": "Revisado",
+              "lider": null,
+              "observacion_despacho": null,
+              "tipo_de_caso": "CLIENTE CERRADO",
+              "responsable": "TRANSPORTE",
+              "resolucion": "Entregado",
+              "estado": "Cerrado",
+              "base": "Durán",
+              "cod_pedido": 509456296,
+              "zona_cliente": "ZONA 4",
+              "cod_cliente": 6135099,
+              "cliente": "FRANQUICIA DISTRIBUIDORA SANTA",
+              "zona": "EC PORTOVIEJO",
+              "posicion": "3-12-A-P2",
+              "cod_proveedor": 925463,
+              "cod_holcim": 91002309,
+              "descripcion": "Kalipega 0125 cc PGM",
+              "cantidad": 48,
+              "unidad": "UN",
+              "peso_kg": 5.76,
+              "m3": 0.01,
+              "linea_de_producto": "PLASTIGAMA (ACCESORIO)",
+              "placa": "GTT8251",
+              "cod_trans": null,
+              "fecha_solicitud": "2026-01-05T00:00:00",
+              "fecha_limite": null,
+              "observaciones_general": "PENDIENTE 48 UN POR CLIENTE CERRADO",
+              "validacion_lizbeth_nicola": "Cliente cerrado, retorna toda la carga",
+              "fecha_reportado": "2026-01-09T00:00:00",
+              "fecha_revision": "2026-01-09T00:00:00",
+              "fecha_de_entrega": "2026-01-23T00:00:00",
+              "dias_entregados": 14.0,
+              "sla": "VIERNES",
+              "validacion_y_aux": "509456296 | 91002309",
+              "pedidos_dp": 613509991002309.0,
+              "fecha_compra": null,
+              "stock_disponible": 3051,
+              "stock_en_transito": 2400,
+              "bloqueado": 0.0,
+              "validacion_planning": null,
+              "validado_por": null,
+              "oc": 4583482015.0,
+              "fecha_oc": "2026-05-29T00:00:00",
+              "mes": 1,
+              "dia": 5,
+              "ano": 2026,
+              "excluidos": "Planificable",
+              "fecha_de_cierre_bodega": null
+            }
+          ]
+        }
+      ]
+    },
+    "inventario": {
+      "path": "C:\\Users\\Joel\\Downloads\\INVENTARIO_03-06-2026_EDITADO.xlsx",
+      "sheet_names": [
+        "Sheet1"
+      ],
+      "sheets": [
+        {
+          "sheet": "Sheet1",
+          "filas": 2618,
+          "columnas_total": 17,
+          "columnas": [
+            "sociedad",
+            "nombre_de_la_empresa",
+            "centro",
+            "nombre_de_centro",
+            "material",
+            "texto_breve_de_material",
+            "tipo_de_material",
+            "fabricante",
+            "unidad_medida_base",
+            "stock_libre_utilizacion",
+            "bloqueado",
+            "compr_ped_vta",
+            "compr_entregas",
+            "consig_libre_utiliz",
+            "stock_en_curso_ped",
+            "devoluciones",
+            "stock_disponible"
+          ],
+          "roles": {
+            "oc": [
+              "sociedad",
+              "stock_libre_utilizacion",
+              "stock_en_curso_ped",
+              "stock_disponible"
+            ],
+            "material_nombre": [
+              "nombre_de_la_empresa",
+              "nombre_de_centro",
+              "material",
+              "texto_breve_de_material",
+              "tipo_de_material"
+            ],
+            "bodega": [
+              "centro",
+              "nombre_de_centro"
+            ],
+            "cantidad": [
+              "fabricante",
+              "stock_libre_utilizacion",
+              "stock_en_curso_ped",
+              "stock_disponible"
+            ]
+          },
+          "perfil_columnas": [
+            {
+              "columna": "sociedad",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                "EC83",
+                "EC83",
+                "EC83",
+                "EC83",
+                "EC83"
+              ]
+            },
+            {
+              "columna": "nombre_de_la_empresa",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                "Construmercado S.A.",
+                "Construmercado S.A.",
+                "Construmercado S.A.",
+                "Construmercado S.A.",
+                "Construmercado S.A."
+              ]
+            },
+            {
+              "columna": "centro",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                "YDUR",
+                "YDUR",
+                "YDUR",
+                "YDUR",
+                "YDUR"
+              ]
+            },
+            {
+              "columna": "nombre_de_centro",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                "Duran",
+                "Duran",
+                "Duran",
+                "Duran",
+                "Duran"
+              ]
+            },
+            {
+              "columna": "material",
+              "dtype": "int64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 2618,
+              "pct_unicos": 100.0,
+              "ejemplos": [
+                91000761,
+                91000767,
+                91000768,
+                91000769,
+                91000774
+              ]
+            },
+            {
+              "columna": "texto_breve_de_material",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 2613,
+              "pct_unicos": 99.81,
+              "ejemplos": [
+                "Codo Flex ½x90 PGM",
+                "Neplo Flex ½ PGM",
+                "Neplo Flex ¾ PGM",
+                "Neplo Flex 1 PGM",
+                "Reductor Flex ¾ a ½ PGM"
+              ]
+            },
+            {
+              "columna": "tipo_de_material",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                "ZMER",
+                "ZMER",
+                "ZMER",
+                "ZMER",
+                "ZMER"
+              ]
+            },
+            {
+              "columna": "fabricante",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 42,
+              "pct_unicos": 1.6,
+              "ejemplos": [
+                "1603646",
+                "1603646",
+                "1603646",
+                "1603646",
+                "1603646"
+              ]
+            },
+            {
+              "columna": "unidad_medida_base",
+              "dtype": "str",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 8,
+              "pct_unicos": 0.31,
+              "ejemplos": [
+                "UN",
+                "UN",
+                "UN",
+                "UN",
+                "UN"
+              ]
+            },
+            {
+              "columna": "stock_libre_utilizacion",
+              "dtype": "float64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 468,
+              "pct_unicos": 17.88,
+              "ejemplos": [
+                1847.0,
+                90.0,
+                175.0,
+                235.0,
+                110.0
+              ]
+            },
+            {
+              "columna": "bloqueado",
+              "dtype": "int64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "columna": "compr_ped_vta",
+              "dtype": "float64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 105,
+              "pct_unicos": 4.01,
+              "ejemplos": [
+                0.0,
+                200.0,
+                0.0,
+                0.0,
+                50.0
+              ]
+            },
+            {
+              "columna": "compr_entregas",
+              "dtype": "float64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 60,
+              "pct_unicos": 2.29,
+              "ejemplos": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                50.0
+              ]
+            },
+            {
+              "columna": "consig_libre_utiliz",
+              "dtype": "int64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.04,
+              "ejemplos": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "columna": "stock_en_curso_ped",
+              "dtype": "float64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 424,
+              "pct_unicos": 16.2,
+              "ejemplos": [
+                0.0,
+                8200.0,
+                3000.0,
+                2100.0,
+                550.0
+              ]
+            },
+            {
+              "columna": "devoluciones",
+              "dtype": "float64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 21,
+              "pct_unicos": 0.8,
+              "ejemplos": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "columna": "stock_disponible",
+              "dtype": "float64",
+              "no_nulos": 2618,
+              "nulos": 0,
+              "unicos": 471,
+              "pct_unicos": 17.99,
+              "ejemplos": [
+                1847.0,
+                -110.0,
+                175.0,
+                235.0,
+                10.0
+              ]
+            }
+          ],
+          "muestras": [
+            {
+              "sociedad": "EC83",
+              "nombre_de_la_empresa": "Construmercado S.A.",
+              "centro": "YDUR",
+              "nombre_de_centro": "Duran",
+              "material": 91000761,
+              "texto_breve_de_material": "Codo Flex ½x90 PGM",
+              "tipo_de_material": "ZMER",
+              "fabricante": "1603646",
+              "unidad_medida_base": "UN",
+              "stock_libre_utilizacion": 1847.0,
+              "bloqueado": 0,
+              "compr_ped_vta": 0.0,
+              "compr_entregas": 0.0,
+              "consig_libre_utiliz": 0,
+              "stock_en_curso_ped": 0.0,
+              "devoluciones": 0.0,
+              "stock_disponible": 1847.0
+            },
+            {
+              "sociedad": "EC83",
+              "nombre_de_la_empresa": "Construmercado S.A.",
+              "centro": "YDUR",
+              "nombre_de_centro": "Duran",
+              "material": 91000767,
+              "texto_breve_de_material": "Neplo Flex ½ PGM",
+              "tipo_de_material": "ZMER",
+              "fabricante": "1603646",
+              "unidad_medida_base": "UN",
+              "stock_libre_utilizacion": 90.0,
+              "bloqueado": 0,
+              "compr_ped_vta": 200.0,
+              "compr_entregas": 0.0,
+              "consig_libre_utiliz": 0,
+              "stock_en_curso_ped": 8200.0,
+              "devoluciones": 0.0,
+              "stock_disponible": -110.0
+            },
+            {
+              "sociedad": "EC83",
+              "nombre_de_la_empresa": "Construmercado S.A.",
+              "centro": "YDUR",
+              "nombre_de_centro": "Duran",
+              "material": 91000768,
+              "texto_breve_de_material": "Neplo Flex ¾ PGM",
+              "tipo_de_material": "ZMER",
+              "fabricante": "1603646",
+              "unidad_medida_base": "UN",
+              "stock_libre_utilizacion": 175.0,
+              "bloqueado": 0,
+              "compr_ped_vta": 0.0,
+              "compr_entregas": 0.0,
+              "consig_libre_utiliz": 0,
+              "stock_en_curso_ped": 3000.0,
+              "devoluciones": 0.0,
+              "stock_disponible": 175.0
+            },
+            {
+              "sociedad": "EC83",
+              "nombre_de_la_empresa": "Construmercado S.A.",
+              "centro": "YDUR",
+              "nombre_de_centro": "Duran",
+              "material": 91000769,
+              "texto_breve_de_material": "Neplo Flex 1 PGM",
+              "tipo_de_material": "ZMER",
+              "fabricante": "1603646",
+              "unidad_medida_base": "UN",
+              "stock_libre_utilizacion": 235.0,
+              "bloqueado": 0,
+              "compr_ped_vta": 0.0,
+              "compr_entregas": 0.0,
+              "consig_libre_utiliz": 0,
+              "stock_en_curso_ped": 2100.0,
+              "devoluciones": 0.0,
+              "stock_disponible": 235.0
+            },
+            {
+              "sociedad": "EC83",
+              "nombre_de_la_empresa": "Construmercado S.A.",
+              "centro": "YDUR",
+              "nombre_de_centro": "Duran",
+              "material": 91000774,
+              "texto_breve_de_material": "Reductor Flex ¾ a ½ PGM",
+              "tipo_de_material": "ZMER",
+              "fabricante": "1603646",
+              "unidad_medida_base": "UN",
+              "stock_libre_utilizacion": 110.0,
+              "bloqueado": 0,
+              "compr_ped_vta": 50.0,
+              "compr_entregas": 50.0,
+              "consig_libre_utiliz": 0,
+              "stock_en_curso_ped": 550.0,
+              "devoluciones": 0.0,
+              "stock_disponible": 10.0
+            }
+          ]
+        }
+      ]
+    },
+    "transito": {
+      "path": "C:\\Users\\Joel\\Downloads\\TRANSITO_ejemplo_EDITADO.xlsx",
+      "sheet_names": [
+        "Hoja1"
+      ],
+      "sheets": [
+        {
+          "sheet": "Hoja1",
+          "filas": 5000,
+          "columnas_total": 9,
+          "columnas": [
+            "centro",
+            "documento_compras",
+            "fecha_documento",
+            "material",
+            "texto_breve",
+            "cantidad_de_pedido",
+            "por_entregar_cantidad",
+            "valor_neto_de_orden",
+            "nombre_del_proveedor"
+          ],
+          "roles": {
+            "bodega": [
+              "centro"
+            ],
+            "oc": [
+              "documento_compras",
+              "fecha_documento"
+            ],
+            "fecha": [
+              "fecha_documento"
+            ],
+            "material_nombre": [
+              "material",
+              "nombre_del_proveedor"
+            ],
+            "pedido": [
+              "cantidad_de_pedido"
+            ],
+            "cantidad": [
+              "cantidad_de_pedido",
+              "por_entregar_cantidad"
+            ],
+            "valor": [
+              "valor_neto_de_orden"
+            ],
+            "proveedor": [
+              "nombre_del_proveedor"
+            ]
+          },
+          "perfil_columnas": [
+            {
+              "columna": "centro",
+              "dtype": "str",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.02,
+              "ejemplos": [
+                "YDUR",
+                "YDUR",
+                "YDUR",
+                "YDUR",
+                "YDUR"
+              ]
+            },
+            {
+              "columna": "documento_compras",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 161,
+              "pct_unicos": 3.22,
+              "ejemplos": [
+                4583482015,
+                4583482021,
+                4583481317,
+                4583481445,
+                4583481511
+              ]
+            },
+            {
+              "columna": "fecha_documento",
+              "dtype": "datetime64[us]",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 58,
+              "pct_unicos": 1.16,
+              "ejemplos": [
+                "2026-05-29T00:00:00",
+                "2026-05-29T00:00:00",
+                "2026-05-28T00:00:00",
+                "2026-05-28T00:00:00",
+                "2026-05-28T00:00:00"
+              ]
+            },
+            {
+              "columna": "material",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1242,
+              "pct_unicos": 24.84,
+              "ejemplos": [
+                91001485,
+                91031479,
+                91036529,
+                91001485,
+                91031479
+              ]
+            },
+            {
+              "columna": "texto_breve",
+              "dtype": "str",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1243,
+              "pct_unicos": 24.86,
+              "ejemplos": [
+                "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+                "Tubo Desague T-B 110 mm x 3 m PDR",
+                "Funda Disensa Blan 20\"+FL 4\"x27\"x0.0",
+                "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+                "Tubo Desague T-B 110 mm x 3 m PDR"
+              ]
+            },
+            {
+              "columna": "cantidad_de_pedido",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 291,
+              "pct_unicos": 5.82,
+              "ejemplos": [
+                12000,
+                1000,
+                10000,
+                12000,
+                1000
+              ]
+            },
+            {
+              "columna": "por_entregar_cantidad",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 121,
+              "pct_unicos": 2.42,
+              "ejemplos": [
+                12000,
+                1000,
+                10000,
+                0,
+                0
+              ]
+            },
+            {
+              "columna": "valor_neto_de_orden",
+              "dtype": "float64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 2919,
+              "pct_unicos": 58.38,
+              "ejemplos": [
+                52200.0,
+                4970.0,
+                700.0,
+                32040.0,
+                4390.0
+              ]
+            },
+            {
+              "columna": "nombre_del_proveedor",
+              "dtype": "str",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 29,
+              "pct_unicos": 0.58,
+              "ejemplos": [
+                "1603646    MEXICHEM ECUADOR S.A.",
+                "1603646    MEXICHEM ECUADOR S.A.",
+                "1610278    PLASTICONSUMO S. A.",
+                "1603646    MEXICHEM ECUADOR S.A.",
+                "1603646    MEXICHEM ECUADOR S.A."
+              ]
+            }
+          ],
+          "muestras": [
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583482015,
+              "fecha_documento": "2026-05-29T00:00:00",
+              "material": 91001485,
+              "texto_breve": "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+              "cantidad_de_pedido": 12000,
+              "por_entregar_cantidad": 12000,
+              "valor_neto_de_orden": 52200.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A."
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583482021,
+              "fecha_documento": "2026-05-29T00:00:00",
+              "material": 91031479,
+              "texto_breve": "Tubo Desague T-B 110 mm x 3 m PDR",
+              "cantidad_de_pedido": 1000,
+              "por_entregar_cantidad": 1000,
+              "valor_neto_de_orden": 4970.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A."
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583481317,
+              "fecha_documento": "2026-05-28T00:00:00",
+              "material": 91036529,
+              "texto_breve": "Funda Disensa Blan 20\"+FL 4\"x27\"x0.0",
+              "cantidad_de_pedido": 10000,
+              "por_entregar_cantidad": 10000,
+              "valor_neto_de_orden": 700.0,
+              "nombre_del_proveedor": "1610278    PLASTICONSUMO S. A."
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583481445,
+              "fecha_documento": "2026-05-28T00:00:00",
+              "material": 91001485,
+              "texto_breve": "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+              "cantidad_de_pedido": 12000,
+              "por_entregar_cantidad": 0,
+              "valor_neto_de_orden": 32040.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A."
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583481511,
+              "fecha_documento": "2026-05-28T00:00:00",
+              "material": 91031479,
+              "texto_breve": "Tubo Desague T-B 110 mm x 3 m PDR",
+              "cantidad_de_pedido": 1000,
+              "por_entregar_cantidad": 0,
+              "valor_neto_de_orden": 4390.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A."
+            }
+          ]
+        }
+      ]
+    },
+    "oc_pendientes_sum_bog": {
+      "path": "C:\\Users\\Joel\\Downloads\\OC_PENDIENTES_SUM_A_BOG_EDITADO.xlsx",
+      "sheet_names": [
+        "Sheet1"
+      ],
+      "sheets": [
+        {
+          "sheet": "Sheet1",
+          "filas": 5000,
+          "columnas_total": 12,
+          "columnas": [
+            "centro",
+            "documento_compras",
+            "fecha_documento",
+            "material",
+            "texto_breve",
+            "cantidad_de_pedido",
+            "por_entregar_cantidad",
+            "valor_neto_de_orden",
+            "nombre_del_proveedor",
+            "tipo_de_posicion",
+            "tipo_de_posicion_1",
+            "tipo_de_imputacion"
+          ],
+          "roles": {
+            "bodega": [
+              "centro"
+            ],
+            "oc": [
+              "documento_compras",
+              "fecha_documento"
+            ],
+            "fecha": [
+              "fecha_documento"
+            ],
+            "material_nombre": [
+              "material",
+              "nombre_del_proveedor"
+            ],
+            "pedido": [
+              "cantidad_de_pedido"
+            ],
+            "cantidad": [
+              "cantidad_de_pedido",
+              "por_entregar_cantidad"
+            ],
+            "valor": [
+              "valor_neto_de_orden"
+            ],
+            "proveedor": [
+              "nombre_del_proveedor"
+            ]
+          },
+          "perfil_columnas": [
+            {
+              "columna": "centro",
+              "dtype": "str",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.02,
+              "ejemplos": [
+                "YDUR",
+                "YDUR",
+                "YDUR",
+                "YDUR",
+                "YDUR"
+              ]
+            },
+            {
+              "columna": "documento_compras",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 161,
+              "pct_unicos": 3.22,
+              "ejemplos": [
+                4583482015,
+                4583482021,
+                4583481317,
+                4583481445,
+                4583481511
+              ]
+            },
+            {
+              "columna": "fecha_documento",
+              "dtype": "datetime64[us]",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 58,
+              "pct_unicos": 1.16,
+              "ejemplos": [
+                "2026-05-29T00:00:00",
+                "2026-05-29T00:00:00",
+                "2026-05-28T00:00:00",
+                "2026-05-28T00:00:00",
+                "2026-05-28T00:00:00"
+              ]
+            },
+            {
+              "columna": "material",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1242,
+              "pct_unicos": 24.84,
+              "ejemplos": [
+                91001485,
+                91031479,
+                91036529,
+                91001485,
+                91031479
+              ]
+            },
+            {
+              "columna": "texto_breve",
+              "dtype": "str",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1243,
+              "pct_unicos": 24.86,
+              "ejemplos": [
+                "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+                "Tubo Desague T-B 110 mm x 3 m PDR",
+                "Funda Disensa Blan 20\"+FL 4\"x27\"x0.0",
+                "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+                "Tubo Desague T-B 110 mm x 3 m PDR"
+              ]
+            },
+            {
+              "columna": "cantidad_de_pedido",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 291,
+              "pct_unicos": 5.82,
+              "ejemplos": [
+                12000,
+                1000,
+                10000,
+                12000,
+                1000
+              ]
+            },
+            {
+              "columna": "por_entregar_cantidad",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 125,
+              "pct_unicos": 2.5,
+              "ejemplos": [
+                12000,
+                1000,
+                10000,
+                0,
+                0
+              ]
+            },
+            {
+              "columna": "valor_neto_de_orden",
+              "dtype": "float64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 2919,
+              "pct_unicos": 58.38,
+              "ejemplos": [
+                52200.0,
+                4970.0,
+                700.0,
+                32040.0,
+                4390.0
+              ]
+            },
+            {
+              "columna": "nombre_del_proveedor",
+              "dtype": "str",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 29,
+              "pct_unicos": 0.58,
+              "ejemplos": [
+                "1603646    MEXICHEM ECUADOR S.A.",
+                "1603646    MEXICHEM ECUADOR S.A.",
+                "1610278    PLASTICONSUMO S. A.",
+                "1603646    MEXICHEM ECUADOR S.A.",
+                "1603646    MEXICHEM ECUADOR S.A."
+              ]
+            },
+            {
+              "columna": "tipo_de_posicion",
+              "dtype": "int64",
+              "no_nulos": 5000,
+              "nulos": 0,
+              "unicos": 1,
+              "pct_unicos": 0.02,
+              "ejemplos": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "columna": "tipo_de_posicion_1",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 5000,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            },
+            {
+              "columna": "tipo_de_imputacion",
+              "dtype": "float64",
+              "no_nulos": 0,
+              "nulos": 5000,
+              "unicos": 0,
+              "pct_unicos": 0,
+              "ejemplos": []
+            }
+          ],
+          "muestras": [
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583482015,
+              "fecha_documento": "2026-05-29T00:00:00",
+              "material": 91001485,
+              "texto_breve": "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+              "cantidad_de_pedido": 12000,
+              "por_entregar_cantidad": 12000,
+              "valor_neto_de_orden": 52200.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A.",
+              "tipo_de_posicion": 0,
+              "tipo_de_posicion_1": null,
+              "tipo_de_imputacion": null
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583482021,
+              "fecha_documento": "2026-05-29T00:00:00",
+              "material": 91031479,
+              "texto_breve": "Tubo Desague T-B 110 mm x 3 m PDR",
+              "cantidad_de_pedido": 1000,
+              "por_entregar_cantidad": 1000,
+              "valor_neto_de_orden": 4970.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A.",
+              "tipo_de_posicion": 0,
+              "tipo_de_posicion_1": null,
+              "tipo_de_imputacion": null
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583481317,
+              "fecha_documento": "2026-05-28T00:00:00",
+              "material": 91036529,
+              "texto_breve": "Funda Disensa Blan 20\"+FL 4\"x27\"x0.0",
+              "cantidad_de_pedido": 10000,
+              "por_entregar_cantidad": 10000,
+              "valor_neto_de_orden": 700.0,
+              "nombre_del_proveedor": "1610278    PLASTICONSUMO S. A.",
+              "tipo_de_posicion": 0,
+              "tipo_de_posicion_1": null,
+              "tipo_de_imputacion": null
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583481445,
+              "fecha_documento": "2026-05-28T00:00:00",
+              "material": 91001485,
+              "texto_breve": "Tubo PVC Roscable AA Fria ½x6 420psi PGM",
+              "cantidad_de_pedido": 12000,
+              "por_entregar_cantidad": 0,
+              "valor_neto_de_orden": 32040.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A.",
+              "tipo_de_posicion": 0,
+              "tipo_de_posicion_1": null,
+              "tipo_de_imputacion": null
+            },
+            {
+              "centro": "YDUR",
+              "documento_compras": 4583481511,
+              "fecha_documento": "2026-05-28T00:00:00",
+              "material": 91031479,
+              "texto_breve": "Tubo Desague T-B 110 mm x 3 m PDR",
+              "cantidad_de_pedido": 1000,
+              "por_entregar_cantidad": 0,
+              "valor_neto_de_orden": 4390.0,
+              "nombre_del_proveedor": "1603646    MEXICHEM ECUADOR S.A.",
+              "tipo_de_posicion": 0,
+              "tipo_de_posicion_1": null,
+              "tipo_de_imputacion": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "overlaps": [
+    {
+      "rol": "bodega",
+      "fuente_a": "inventario.Sheet1.centro",
+      "fuente_b": "transito.Hoja1.centro",
+      "coincidencias": 1,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "YDUR"
+      ]
+    },
+    {
+      "rol": "bodega",
+      "fuente_a": "inventario.Sheet1.centro",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.centro",
+      "coincidencias": 1,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "YDUR"
+      ]
+    },
+    {
+      "rol": "bodega",
+      "fuente_a": "transito.Hoja1.centro",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.centro",
+      "coincidencias": 1,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "YDUR"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "inventario.Sheet1.stock_libre_utilizacion",
+      "fuente_b": "inventario.Sheet1.stock_disponible",
+      "coincidencias": 339,
+      "pct_a": 72.44,
+      "pct_b": 71.97,
+      "ejemplos": [
+        "0.0",
+        "0.04",
+        "1.0",
+        "1.8",
+        "10.0",
+        "100.0",
+        "1000.0",
+        "101.0",
+        "1025.0",
+        "103.0"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "inventario.Sheet1.stock_libre_utilizacion",
+      "fuente_b": "inventario.Sheet1.stock_en_curso_ped",
+      "coincidencias": 199,
+      "pct_a": 42.52,
+      "pct_b": 46.93,
+      "ejemplos": [
+        "0.0",
+        "1.0",
+        "10.0",
+        "100.0",
+        "1000.0",
+        "101.0",
+        "102.0",
+        "103.0",
+        "104.0",
+        "105.0"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "inventario.Sheet1.stock_en_curso_ped",
+      "fuente_b": "inventario.Sheet1.stock_disponible",
+      "coincidencias": 189,
+      "pct_a": 44.58,
+      "pct_b": 40.13,
+      "ejemplos": [
+        "0.0",
+        "1.0",
+        "10.0",
+        "100.0",
+        "1000.0",
+        "101.0",
+        "103.0",
+        "104.0",
+        "105.0",
+        "106.0"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "transito.Hoja1.documento_compras",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.documento_compras",
+      "coincidencias": 161,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "4583409274",
+        "4583411959",
+        "4583412002",
+        "4583412731",
+        "4583418003",
+        "4583418006",
+        "4583419415",
+        "4583419416",
+        "4583419425",
+        "4583420379"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "transito.Hoja1.fecha_documento",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.fecha_documento",
+      "coincidencias": 58,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "2025-12-05",
+        "2025-12-11",
+        "2025-12-12",
+        "2025-12-26",
+        "2025-12-30",
+        "2026-01-06",
+        "2026-01-07",
+        "2026-01-08",
+        "2026-01-12",
+        "2026-01-14"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "pendientes_bodega_fq.Hoja1.fecha_oc",
+      "fuente_b": "transito.Hoja1.fecha_documento",
+      "coincidencias": 9,
+      "pct_a": 100.0,
+      "pct_b": 15.52,
+      "ejemplos": [
+        "2026-03-26",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-05-06",
+        "2026-05-20",
+        "2026-05-22",
+        "2026-05-26",
+        "2026-05-27",
+        "2026-05-29"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "pendientes_bodega_fq.Hoja1.fecha_oc",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.fecha_documento",
+      "coincidencias": 9,
+      "pct_a": 100.0,
+      "pct_b": 15.52,
+      "ejemplos": [
+        "2026-03-26",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-05-06",
+        "2026-05-20",
+        "2026-05-22",
+        "2026-05-26",
+        "2026-05-27",
+        "2026-05-29"
+      ]
+    },
+    {
+      "rol": "oc",
+      "fuente_a": "pendientes_bodega_fq.Hoja1.stock_disponible",
+      "fuente_b": "pendientes_bodega_fq.Hoja1.stock_en_transito",
+      "coincidencias": 2,
+      "pct_a": 5.0,
+      "pct_b": 6.25,
+      "ejemplos": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "rol": "pedido",
+      "fuente_a": "transito.Hoja1.cantidad_de_pedido",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.cantidad_de_pedido",
+      "coincidencias": 291,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "1",
+        "10",
+        "100",
+        "1000",
+        "10000",
+        "1005",
+        "102",
+        "1020",
+        "105",
+        "1050"
+      ]
+    },
+    {
+      "rol": "proveedor",
+      "fuente_a": "transito.Hoja1.nombre_del_proveedor",
+      "fuente_b": "oc_pendientes_sum_bog.Sheet1.nombre_del_proveedor",
+      "coincidencias": 29,
+      "pct_a": 100.0,
+      "pct_b": 100.0,
+      "ejemplos": [
+        "1600072    LINDE ECUADOR S.A.",
+        "1600118    SIKA ECUATORIANA S.A",
+        "1600448    INDURA ECUADOR S.A.",
+        "1601701    L. HENRIQUES Y CIA. S.A.",
+        "1601791    PINTURAS UNIDAS S. A.",
+        "1603453    FERREMUNDO S.A.S.",
+        "1603643    ELECTROCABLES C.A.",
+        "1603646    MEXICHEM ECUADOR S.A.",
+        "1604630    INTACO ECUADOR S. A.",
+        "1608689    TUBERIAS PACIFICO S.A."
+      ]
+    }
+  ]
+}
