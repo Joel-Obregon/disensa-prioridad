@@ -6,6 +6,7 @@ import {
   FileWarning,
   Filter,
   PlusCircle,
+  Search,
   Send,
   X,
 } from 'lucide-react'
@@ -38,6 +39,7 @@ import type {
 } from '../types/reporteOperativo'
 
 type FiltrosReporte = {
+  busqueda: string
   estado: 'todos' | EstadoPedido
   accion: 'todos' | AccionSolicitante
   condicion: 'todos' | CondicionMaterial
@@ -53,6 +55,7 @@ type ReporteOperativoForm = {
 }
 
 const filtrosIniciales: FiltrosReporte = {
+  busqueda: '',
   estado: 'todos',
   accion: 'todos',
   condicion: 'todos',
@@ -301,6 +304,39 @@ export default function Reportes() {
     ]
   }, [materialesPorDespachar, pedidosFiltrados, reportesFranquiciado.length, reportesOperativos])
 
+  const reportesFranquiciadoFiltrados = useMemo(() => {
+    const texto = normalizarTexto(filtros.busqueda)
+
+    if (!texto) return reportesFranquiciado
+
+    return reportesFranquiciado.filter((reporte) => {
+      const pedidoRelacionado =
+        pedidos.find((pedido) => pedido.id === reporte.pedido_id) ||
+        pedidos.find(
+          (pedido) =>
+            pedido.codigo === reporte.codigo_consulta ||
+            pedido.codigo_consulta === reporte.codigo_consulta
+        )
+
+      return normalizarTexto(
+        [
+          reporte.codigo_consulta,
+          reporte.cedula_solicitante,
+          reporte.solicitante || '',
+          reporte.motivo,
+          reporte.descripcion,
+          reporte.estado,
+          reporte.created_at || '',
+          pedidoRelacionado?.codigo || '',
+          pedidoRelacionado?.codigo_consulta || '',
+          pedidoRelacionado?.material || '',
+          pedidoRelacionado?.solicitante || '',
+          pedidoRelacionado?.estado || '',
+        ].join(' ')
+      ).includes(texto)
+    })
+  }, [filtros.busqueda, pedidos, reportesFranquiciado])
+
   const pedidoDetalleReporte = useMemo(() => {
     if (!reporteDetalle) return null
 
@@ -475,7 +511,19 @@ export default function Reportes() {
           <Filter size={18} className="text-orange-600" />
           Filtros del reporte
         </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(3,minmax(160px,1fr))]">
+          <label className="block text-sm font-medium text-slate-700">
+            Busqueda
+            <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 focus-within:ring-2 focus-within:ring-orange-500">
+              <Search size={17} className="text-slate-400" />
+              <input
+                value={filtros.busqueda}
+                onChange={(event) => setFiltros({ ...filtros, busqueda: event.target.value })}
+                placeholder="Pedido, cliente, motivo o detalle..."
+                className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
+              />
+            </span>
+          </label>
           <FiltroSelect
             label="Estado"
             value={filtros.estado}
@@ -591,7 +639,7 @@ export default function Reportes() {
               </tr>
             </thead>
             <tbody>
-              {reportesFranquiciado.map((reporte) => (
+              {reportesFranquiciadoFiltrados.map((reporte) => (
                 <tr key={reporte.id} className="border-t border-slate-100 align-top">
                   <td className="px-5 py-4">
                     <p className="font-semibold text-slate-800">{reporte.codigo_consulta}</p>
@@ -627,10 +675,12 @@ export default function Reportes() {
                 </tr>
               ))}
 
-              {!cargando && reportesFranquiciado.length === 0 && (
+              {!cargando && reportesFranquiciadoFiltrados.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
-                    Sin reportes enviados por franquiciados.
+                    {filtros.busqueda.trim()
+                      ? 'No hay reportes que coincidan con la busqueda.'
+                      : 'Sin reportes enviados por franquiciados.'}
                   </td>
                 </tr>
               )}

@@ -14,7 +14,6 @@
  *   - NC pendientes: peso de la regla "Nota de credito pendiente"
  *   - Cantidad pendiente ERP: hasta el peso de la regla "Cantidad pendiente ERP"
  *   - Valor pendiente: hasta peso + 5 de la regla "Valor pendiente"
- *   - Gestion de stock: peso - 7 de la regla "Condicion de material"
  *   - Fecha objetivo vencida: 22 pts
  *   - Fecha objetivo proxima: 14 pts
  *   - Antiguedad del pedido: hasta peso - 2 de la regla "Antiguedad del pedido"
@@ -32,7 +31,6 @@ const NOMBRE_REGLA = {
   nota_credito: 'Nota de credito pendiente',
   antiguedad: 'Antiguedad del pedido',
   valor_pendiente: 'Valor pendiente',
-  condicion_material: 'Condicion de material',
 } as const
 
 // Pesos de respaldo cuando la regla no existe o esta inactiva en BD.
@@ -42,7 +40,6 @@ const PESO_DEFECTO = {
   nota_credito: 30,
   antiguedad: 20,
   valor_pendiente: 15,
-  condicion_material: 25,
 } as const
 
 function pesoRegla(
@@ -103,10 +100,6 @@ export function calcularPrioridad(
     puntaje += Math.round(pesoValor * 0.4)
   }
 
-  if (tieneGestionStock(pedido)) {
-    puntaje += pesoRegla(reglas, 'condicion_material') - 7
-  }
-
   const diasObjetivo = calcularDiasHasta(pedido.fecha_compromiso)
   if (diasObjetivo < 0) {
     puntaje += 22
@@ -144,11 +137,12 @@ export function ordenarPorPrioridad(
     const cerradoDiff = Number(pedidoCerrado(a)) - Number(pedidoCerrado(b))
     if (cerradoDiff !== 0) return cerradoDiff
 
-    const diff = calcularPrioridad(b, reglas) - calcularPrioridad(a, reglas)
-    if (diff !== 0) return diff
-
+    // La cola operativa debe subir primero los pedidos abiertos con mas dias de retraso.
     const retrasoDiff = calcularDiasRetraso(b.fecha_compromiso) - calcularDiasRetraso(a.fecha_compromiso)
     if (retrasoDiff !== 0) return retrasoDiff
+
+    const diff = calcularPrioridad(b, reglas) - calcularPrioridad(a, reglas)
+    if (diff !== 0) return diff
 
     return calcularDiasDesde(b.fecha_solicitud) - calcularDiasDesde(a.fecha_solicitud)
   })
@@ -190,18 +184,6 @@ function cantidadPendientePedido(pedido: Pedido): number {
   }
 
   return pedido.cantidad ?? 0
-}
-
-function tieneGestionStock(pedido: Pedido): boolean {
-  if (typeof pedido.tiene_gestion_stock === 'boolean') {
-    return pedido.tiene_gestion_stock
-  }
-
-  return (
-    pedido.condicion_material === 'no_planificable' ||
-    pedido.condicion_material === 'restrictivo' ||
-    pedido.accion_solicitante === 'esperar_pedido'
-  )
 }
 
 function normalizarTexto(valor?: string | null): string {

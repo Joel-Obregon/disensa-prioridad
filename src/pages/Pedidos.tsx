@@ -27,6 +27,11 @@ import {
 import MaterialSearchSelect from '../components/MaterialSearchSelect'
 import { registrarAuditoria } from '../services/auditoriaService'
 import { obtenerAlertas } from '../services/alertasService'
+import {
+  escucharReportesFranquiciado,
+  obtenerReportesFranquiciado,
+} from '../services/franquiciadoService'
+import { escucharInventarioOperativo } from '../services/inventarioService'
 import { escucharMateriales, obtenerMateriales } from '../services/materialesService'
 import {
   actualizarPedido,
@@ -50,6 +55,7 @@ import type {
   Pedido,
   UrgenciaPedido,
 } from '../types/pedido'
+import type { ReporteFranquiciado } from '../types/reporteFranquiciado'
 import type { ReglaNegocio } from '../types/regla'
 import type { RolUsuario } from '../types/usuario'
 
@@ -85,6 +91,8 @@ type MaterialesLookup = {
   porCodigo: Map<string, Material>
   porNombre: Map<string, Material>
 }
+
+type VistaPedidos = 'operativos' | 'historial'
 
 const formularioInicial: PedidoForm = {
   material_id: '',
@@ -142,10 +150,12 @@ export default function Pedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [materiales, setMateriales] = useState<Material[]>([])
   const [alertas, setAlertas] = useState<Alerta[]>([])
+  const [reportesFranquiciado, setReportesFranquiciado] = useState<ReporteFranquiciado[]>([])
   const [detallesOperativos, setDetallesOperativos] = useState<PedidoDetalleOperativo[]>([])
   const [reglas, setReglas] = useState<ReglaNegocio[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
+  const [vistaPedidos, setVistaPedidos] = useState<VistaPedidos>('operativos')
   const [filtros, setFiltros] = useState<FiltrosPedido>(filtrosIniciales)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -160,6 +170,7 @@ export default function Pedidos() {
       pedidosResult,
       materialesResult,
       alertasResult,
+      reportesFranquiciadoResult,
       detallesOperativosResult,
       reglasResult,
     ] =
@@ -167,6 +178,7 @@ export default function Pedidos() {
         obtenerPedidos(),
         obtenerMateriales(),
         obtenerAlertas(),
+        obtenerReportesFranquiciado(),
         obtenerDetallesPedidosOperativos(),
         obtenerReglas(),
       ])
@@ -175,6 +187,9 @@ export default function Pedidos() {
       setMateriales(materialesResult.data || [])
     }
     if (!alertasResult.error) setAlertas(alertasResult.data || [])
+    if (!reportesFranquiciadoResult.error) {
+      setReportesFranquiciado(reportesFranquiciadoResult.data || [])
+    }
     if (!detallesOperativosResult.error) setDetallesOperativos(detallesOperativosResult.data || [])
     if (!reglasResult.error) setReglas(reglasResult.data || [])
 
@@ -458,11 +473,15 @@ export default function Pedidos() {
     const timer = window.setTimeout(cargarDatos, 0)
     const dejarDeEscucharPedidos = escucharPedidos(cargarDatos)
     const dejarDeEscucharMateriales = escucharMateriales(cargarDatos)
+    const dejarDeEscucharInventario = escucharInventarioOperativo(cargarDatos)
+    const dejarDeEscucharReportes = escucharReportesFranquiciado(cargarDatos)
 
     return () => {
       window.clearTimeout(timer)
       dejarDeEscucharPedidos()
       dejarDeEscucharMateriales()
+      dejarDeEscucharInventario()
+      dejarDeEscucharReportes()
     }
   }, [])
 
@@ -474,6 +493,11 @@ export default function Pedidos() {
   function limpiarFiltros() {
     setBusqueda('')
     setFiltros(filtrosIniciales)
+    setPagina(1)
+  }
+
+  function cambiarVistaPedidos(vista: VistaPedidos) {
+    setVistaPedidos(vista)
     setPagina(1)
   }
 
@@ -563,9 +587,9 @@ export default function Pedidos() {
     ].sort((a, b) => b.localeCompare(a))
   }, [pedidosConStockReal])
 
-  const pedidosPriorizados = useMemo(() => {
+  const pedidosFiltrados = useMemo(() => {
     const texto = normalizarTexto(busqueda)
-    const filtrados = pedidosConStockReal.filter((pedido) => {
+    return pedidosConStockReal.filter((pedido) => {
       const detalleOperativo = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
       const coincideTexto = texto
         ? [
@@ -606,9 +630,41 @@ export default function Pedidos() {
         coincidePeriodo
       )
     })
+  }, [busqueda, detallesOperativosLookup, filtros, pedidosConStockReal])
 
-    return ordenarPorPrioridad(filtrados, reglas)
-  }, [busqueda, detallesOperativosLookup, filtros, pedidosConStockReal, reglas])
+  const pedidosConReporteActivo = useMemo(() => {
+    const codigos = new Set<string>()
+
+    reportesFranquiciado
+      .filter((reporte) => reporte.estado !== 'cerrado')
+      .forEach((reporte) => {
+        if (reporte.pedido_id) codigos.add(`id:${reporte.pedido_id}`)
+        if (reporte.codigo_consulta) codigos.add(`codigo:${normalizarTexto(reporte.codigo_consulta)}`)
+      })
+
+    return codigos
+  }, [reportesFranquiciado])
+
+  const pedidosOperativos = useMemo(
+    () =>
+      ordenarPorPrioridad(
+        pedidosFiltrados.filter(
+          (pedido) => !pedidoCerrado(pedido.estado) || tieneReporteActivo(pedido, pedidosConReporteActivo)
+        ),
+        reglas
+      ),
+    [pedidosConReporteActivo, pedidosFiltrados, reglas]
+  )
+
+  const pedidosHistorial = useMemo(
+    () =>
+      pedidosFiltrados
+        .filter((pedido) => pedidoCerrado(pedido.estado) && !tieneReporteActivo(pedido, pedidosConReporteActivo))
+        .sort(ordenarPedidosHistorial),
+    [pedidosConReporteActivo, pedidosFiltrados]
+  )
+
+  const pedidosPriorizados = vistaPedidos === 'historial' ? pedidosHistorial : pedidosOperativos
 
   const totalPaginas = Math.max(1, Math.ceil(pedidosPriorizados.length / PEDIDOS_POR_PAGINA))
   const paginaActual = Math.min(pagina, totalPaginas)
@@ -628,7 +684,9 @@ export default function Pedidos() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-black">Pedidos Priorizados</h1>
             <p className="mt-2 text-base text-[#5a4136]">
-              Gestion y seguimiento de ordenes criticas.
+              {vistaPedidos === 'historial'
+                ? 'Pedidos cerrados ordenados por cierre mas reciente.'
+                : 'Gestion y seguimiento de ordenes criticas.'}
             </p>
           </div>
 
@@ -707,6 +765,31 @@ export default function Pedidos() {
         >
           Limpiar filtros
         </button>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => cambiarVistaPedidos('operativos')}
+            className={`px-4 py-2 text-sm font-semibold transition ${
+              vistaPedidos === 'operativos'
+                ? 'bg-[#261812] text-white'
+                : 'border border-[#dfad9c] bg-white text-[#3f2d25] hover:bg-[#fff1eb]'
+            }`}
+          >
+            Operativos ({pedidosOperativos.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => cambiarVistaPedidos('historial')}
+            className={`px-4 py-2 text-sm font-semibold transition ${
+              vistaPedidos === 'historial'
+                ? 'bg-[#261812] text-white'
+                : 'border border-[#dfad9c] bg-white text-[#3f2d25] hover:bg-[#fff1eb]'
+            }`}
+          >
+            Historial cerrado ({pedidosHistorial.length})
+          </button>
+        </div>
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -940,6 +1023,11 @@ export default function Pedidos() {
             </thead>
             <tbody>
               {pedidosVisibles.map((pedido) => {
+                const enHistorial = vistaPedidos === 'historial'
+                const reabiertoPorReporte =
+                  vistaPedidos === 'operativos' &&
+                  pedidoCerrado(pedido.estado) &&
+                  tieneReporteActivo(pedido, pedidosConReporteActivo)
                 const cantidadPendiente = cantidadParaDespacho(pedido)
                 const detalleOperativo = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
                 const material = buscarMaterialPedido(pedido, detalleOperativo, materialesLookup)
@@ -950,6 +1038,11 @@ export default function Pedidos() {
                 const stockDisponible = stockDisponiblePedido(pedido, material, detalleOperativo)
                 const stockSuficiente = stockSuficientePedido(pedido, stockDisponible)
                 const reabastecimiento = reabastecimientoPedido(detalleOperativo)
+                const estadoVisible = enHistorial
+                  ? 'Cerrado'
+                  : reabiertoPorReporte
+                    ? 'Reabierto por reporte'
+                    : resolucion
                 const semaforoProducto = resolverSemaforoProducto(
                   stockDisponible,
                   cantidadPendiente,
@@ -1007,7 +1100,7 @@ export default function Pedidos() {
                     </td>
                     <td className="px-5 py-4">
                       <span className={`inline-flex px-3 py-1 text-xs font-semibold ${claseResolucion(resolucion)}`}>
-                        {resolucion}
+                        {estadoVisible}
                       </span>
                     </td>
                     <td className="px-5 py-4">
@@ -1036,7 +1129,7 @@ export default function Pedidos() {
                             title={etiquetaSemaforo(semaforoRetraso)}
                           />
                           <span className="text-xs font-semibold text-black">
-                            {resolucion}
+                            {estadoVisible}
                           </span>
                         </div>
                         <p className="text-xs font-medium text-[#7e5a4b]">
@@ -1146,7 +1239,9 @@ export default function Pedidos() {
               {!cargando && pedidosPriorizados.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
-                    No hay pedidos que coincidan con los filtros.
+                    {vistaPedidos === 'historial'
+                      ? 'No hay pedidos cerrados que coincidan con los filtros.'
+                      : 'No hay pedidos operativos que coincidan con los filtros.'}
                   </td>
                 </tr>
               )}
@@ -1156,7 +1251,8 @@ export default function Pedidos() {
         {pedidosPriorizados.length > 0 && (
           <div className="flex flex-col gap-3 px-0 pt-5 text-sm text-[#3f2d25] sm:flex-row sm:items-center sm:justify-between">
             <span>
-              Mostrando {primerPedidoVisible}-{ultimoPedidoVisible} de {pedidosPriorizados.length} pedidos
+              Mostrando {primerPedidoVisible}-{ultimoPedidoVisible} de {pedidosPriorizados.length}{' '}
+              {vistaPedidos === 'historial' ? 'pedidos cerrados' : 'pedidos operativos'}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -1516,7 +1612,11 @@ function stockDisponiblePedido(
     return stockEfectivo(stockPedido, stockMaterial)
   }
 
-  return stockEfectivo(stockPedido, stockMaterial, stockOperativo)
+  if (Number.isFinite(stockOperativo)) {
+    return Math.max(0, Math.floor(stockOperativo))
+  }
+
+  return stockEfectivo(stockPedido, stockMaterial)
 }
 
 function reabastecimientoPedido(detalle?: PedidoDetalleOperativo) {
@@ -1576,6 +1676,8 @@ function clasePuntoSemaforo(semaforo: ReturnType<typeof resolverSemaforoPedido>)
 function claseResolucion(resolucion: string) {
   const texto = normalizarTexto(resolucion)
 
+  if (texto.includes('cerrado')) return 'bg-green-100 text-green-800 ring-1 ring-green-200'
+  if (texto.includes('reabierto')) return 'bg-red-100 text-red-800 ring-1 ring-red-200'
   if (texto.includes('nc confirmada')) return 'bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200'
   if (texto.includes('nc en proceso')) return 'bg-amber-800 text-white ring-1 ring-amber-900'
   if (texto.includes('proceso')) return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200'
@@ -1593,6 +1695,30 @@ function claseResolucion(resolucion: string) {
 
 function pedidoCerrado(estado: EstadoPedido) {
   return ['entregado', 'cancelado', 'rechazado'].includes(estado)
+}
+
+function ordenarPedidosHistorial(a: Pedido, b: Pedido) {
+  return fechaHistorialPedido(b) - fechaHistorialPedido(a)
+}
+
+function fechaHistorialPedido(pedido: Pedido) {
+  const fecha =
+    pedido.fecha_entrega ||
+    pedido.despachado_at ||
+    pedido.created_at ||
+    pedido.fecha_compromiso ||
+    pedido.fecha_solicitud
+
+  const valor = new Date(fecha).getTime()
+  return Number.isNaN(valor) ? 0 : valor
+}
+
+function tieneReporteActivo(pedido: Pedido, reportesActivos: Set<string>) {
+  return (
+    reportesActivos.has(`id:${pedido.id}`) ||
+    reportesActivos.has(`codigo:${normalizarTexto(pedido.codigo)}`) ||
+    reportesActivos.has(`codigo:${normalizarTexto(pedido.codigo_consulta || '')}`)
+  )
 }
 
 function obtenerDetalleOperativo(

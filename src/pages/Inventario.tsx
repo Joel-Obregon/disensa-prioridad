@@ -13,7 +13,10 @@ import {
   X,
 } from 'lucide-react'
 import { claseSemaforoBadge, claseSemaforoBarra } from '../lib/semaforoOperativo'
-import { obtenerInventarioOperativo } from '../services/inventarioService'
+import {
+  escucharInventarioOperativo,
+  obtenerInventarioOperativo,
+} from '../services/inventarioService'
 import {
   actualizarMaterial,
   crearMaterial,
@@ -35,6 +38,8 @@ type EstadoStockFiltro =
   | 'todos'
   | 'stock_negativo'
   | 'sin_stock'
+  | 'bajo_minimo'
+  | 'cobertura_media'
   | 'disponible'
   | 'reabastecimiento'
 
@@ -179,10 +184,12 @@ export default function Inventario() {
   useEffect(() => {
     const timer = window.setTimeout(cargarDatos, 0)
     const dejarDeEscucharMateriales = escucharMateriales(cargarDatos)
+    const dejarDeEscucharInventario = escucharInventarioOperativo(cargarDatos)
 
     return () => {
       window.clearTimeout(timer)
       dejarDeEscucharMateriales()
+      dejarDeEscucharInventario()
     }
   }, [])
 
@@ -481,7 +488,15 @@ export default function Inventario() {
                 setEstadoStockFiltro(value as EstadoStockFiltro)
                 setPagina(1)
               }}
-              opciones={['todos', 'stock_negativo', 'sin_stock', 'disponible', 'reabastecimiento']}
+              opciones={[
+                'todos',
+                'stock_negativo',
+                'sin_stock',
+                'bajo_minimo',
+                'cobertura_media',
+                'disponible',
+                'reabastecimiento',
+              ]}
             />
             <FiltroSelect
               label="Suministrador"
@@ -812,22 +827,33 @@ function prepararPayload(form: MaterialForm, stockMinimo: number): MaterialInput
 }
 
 function resolverEstadoStock(material: InventarioOperativo): EstadoStockFiltro {
+  const stock = material.stock_disponible_operativo
+  const minimo = umbralMinimoMaterial(material)
+  const amarillo = umbralAmarilloMaterial(material)
+  const verde = umbralVerdeMaterial(material)
+
   if (material.stock_disponible_operativo < 0) return 'stock_negativo'
-  if (material.stock_disponible_operativo > 0) return 'disponible'
-  if (reabastecimientoPendiente(material) > 0) return 'reabastecimiento'
-  return 'sin_stock'
+  if (stock <= 0) return 'sin_stock'
+  if (stock < minimo) return 'bajo_minimo'
+  if (stock < amarillo && reabastecimientoPendiente(material) > 0) {
+    return 'reabastecimiento'
+  }
+  if (stock < verde) return 'cobertura_media'
+  return 'disponible'
 }
 
 function prioridadEstadoStock(material: InventarioOperativo) {
   const estado = resolverEstadoStock(material)
   if (estado === 'stock_negativo') return 0
   if (estado === 'sin_stock') return 1
-  if (estado === 'reabastecimiento') return 2
-  return 3
+  if (estado === 'bajo_minimo') return 2
+  if (estado === 'cobertura_media') return 3
+  if (estado === 'reabastecimiento') return 4
+  return 5
 }
 
 function porcentajeStock(material: InventarioOperativo) {
-  const base = Math.max(material.demanda_bodega_fq, 1)
+  const base = Math.max(umbralVerdeMaterial(material), 1)
   const cobertura =
     Math.max(0, material.stock_disponible_operativo) + Math.max(0, reabastecimientoPendiente(material))
   const porcentaje = Math.round((cobertura / base) * 100)
@@ -838,6 +864,8 @@ function porcentajeStock(material: InventarioOperativo) {
 function colorEstadoStock(estado: EstadoStockFiltro) {
   if (estado === 'stock_negativo') return claseSemaforoBadge('critico')
   if (estado === 'sin_stock') return claseSemaforoBadge('critico')
+  if (estado === 'bajo_minimo') return claseSemaforoBadge('critico')
+  if (estado === 'cobertura_media') return claseSemaforoBadge('riesgo')
   if (estado === 'reabastecimiento') return claseSemaforoBadge('riesgo')
   if (estado === 'disponible') return claseSemaforoBadge('a_tiempo')
   return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
@@ -846,6 +874,8 @@ function colorEstadoStock(estado: EstadoStockFiltro) {
 function bordeEstadoStock(estado: EstadoStockFiltro) {
   if (estado === 'stock_negativo') return 'border-l-red-700'
   if (estado === 'sin_stock') return 'border-l-red-600'
+  if (estado === 'bajo_minimo') return 'border-l-red-600'
+  if (estado === 'cobertura_media') return 'border-l-yellow-500'
   if (estado === 'reabastecimiento') return 'border-l-yellow-500'
   if (estado === 'disponible') return 'border-l-green-600'
   return 'border-l-slate-400'
@@ -854,8 +884,22 @@ function bordeEstadoStock(estado: EstadoStockFiltro) {
 function colorBarraStock(estado: EstadoStockFiltro) {
   if (estado === 'stock_negativo') return claseSemaforoBarra('critico')
   if (estado === 'sin_stock') return claseSemaforoBarra('critico')
+  if (estado === 'bajo_minimo') return claseSemaforoBarra('critico')
+  if (estado === 'cobertura_media') return claseSemaforoBarra('riesgo')
   if (estado === 'reabastecimiento') return claseSemaforoBarra('riesgo')
   return claseSemaforoBarra('a_tiempo')
+}
+
+function umbralMinimoMaterial(material: InventarioOperativo) {
+  return Math.max(1, material.pedido_maximo_material || material.stock_minimo || material.demanda_bodega_fq || 1)
+}
+
+function umbralAmarilloMaterial(material: InventarioOperativo) {
+  return umbralMinimoMaterial(material) * 2
+}
+
+function umbralVerdeMaterial(material: InventarioOperativo) {
+  return Math.max(umbralMinimoMaterial(material) * 3, material.stock_objetivo_material || 0)
 }
 
 function stockTransitoOperativo(material: InventarioOperativo) {

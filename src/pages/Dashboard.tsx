@@ -24,7 +24,10 @@ import {
   type SemaforoOperativo,
 } from '../lib/semaforoOperativo'
 import { escucharCambiosAlertas, obtenerAlertas } from '../services/alertasService'
-import { obtenerInventarioOperativo } from '../services/inventarioService'
+import {
+  escucharInventarioOperativo,
+  obtenerInventarioOperativo,
+} from '../services/inventarioService'
 import { escucharMateriales } from '../services/materialesService'
 import { obtenerOtifOperativo, type OtifOperativo } from '../services/operacionService'
 import { escucharPedidos, obtenerPedidos } from '../services/pedidosService'
@@ -85,12 +88,14 @@ export default function Dashboard() {
     const timer = window.setTimeout(cargarResumen, 0)
     const dejarDeEscucharPedidos = escucharPedidos(cargarResumen)
     const dejarDeEscucharMateriales = escucharMateriales(cargarResumen)
+    const dejarDeEscucharInventario = escucharInventarioOperativo(cargarResumen)
     const dejarDeEscucharAlertas = escucharCambiosAlertas(cargarResumen)
 
     return () => {
       window.clearTimeout(timer)
       dejarDeEscucharPedidos()
       dejarDeEscucharMateriales()
+      dejarDeEscucharInventario()
       dejarDeEscucharAlertas()
     }
   }, [])
@@ -452,7 +457,7 @@ export default function Dashboard() {
               {materialesEnRiesgo.map((material) => {
                 const stockDisponible = stockDisponibleMaterial(material)
                 const porcentaje = Math.min(
-                  Math.round((stockDisponible / Math.max(material.stock_minimo, 1)) * 100),
+                  Math.round((stockDisponible / Math.max(material.stock_objetivo_material, material.stock_minimo, 1)) * 100),
                   100
                 )
 
@@ -773,7 +778,7 @@ function PanelRiesgoStock({
         {materiales.map((material) => {
           const stockDisponible = stockDisponibleMaterial(material)
           const porcentaje = Math.min(
-            Math.round((stockDisponible / Math.max(material.stock_minimo, 1)) * 100),
+            Math.round((stockDisponible / Math.max(material.stock_objetivo_material, material.stock_minimo, 1)) * 100),
             100
           )
 
@@ -970,7 +975,7 @@ function GraficoEvolucion({
           {datos.map((item) => (
             <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-2">
               <div className="flex h-36 w-full items-end justify-center gap-1">
-                <BarraMini valor={item.pedidos} maximo={maximo} clase="bg-[#dedbe6]" />
+                <BarraMini valor={item.pedidos} maximo={maximo} clase="bg-[#9b95aa]" />
                 <BarraMini valor={item.entregados} maximo={maximo} clase="bg-[#ff6600]" />
                 <BarraMini valor={item.alertas} maximo={maximo} clase="bg-red-500" />
               </div>
@@ -983,7 +988,7 @@ function GraficoEvolucion({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-3 text-xs font-semibold text-slate-600">
-        <Leyenda clase="bg-[#dedbe6]" texto="Creados" />
+        <Leyenda clase="bg-[#9b95aa]" texto="Creados" />
         <Leyenda clase="bg-[#ff6600]" texto="Entregados" />
         <Leyenda clase="bg-red-500" texto="Alertas" />
       </div>

@@ -714,6 +714,78 @@ values
     'Crea una alerta visual para compras, bodega o suministrador.',
     25,
     'activa'
+  ),
+  (
+    'Stock agotado planificable',
+    'Detecta materiales planificables sin stock disponible para despacho.',
+    'stock_disponible = 0 and estado_planificable = planificable',
+    'Generar alerta critica para bodega e inventario',
+    'red',
+    true,
+    'Si un pedido usa un material planificable y el inventario real disponible es cero.',
+    'El pedido queda marcado por falta de material y se alerta al departamento responsable.',
+    40,
+    'activa'
+  ),
+  (
+    'Retraso critico mayor a 60 dias',
+    'Escala pedidos con retraso superior a dos meses.',
+    'dias_retraso > 60',
+    'Subir al inicio de la cola priorizada',
+    'red',
+    true,
+    'Si la fecha limite fue superada por mas de 60 dias.',
+    'El pedido se considera critico y se mantiene arriba en la lista por antiguedad de retraso.',
+    45,
+    'activa'
+  ),
+  (
+    'Hasta agotar stock',
+    'Controla materiales restrictivos cuya venta depende del stock disponible.',
+    'estado_planificable = agotar stock and cantidad > stock_disponible',
+    'Validar alternativa, sustituto o reabastecimiento',
+    'yellow',
+    true,
+    'Si el material esta marcado como hasta agotar stock y la cantidad solicitada supera el inventario real.',
+    'Genera gestion preventiva para evitar prometer un despacho que no se puede cubrir.',
+    24,
+    'activa'
+  ),
+  (
+    'Reporte de franquiciado abierto',
+    'Prioriza pedidos con novedad reportada por el franquiciado.',
+    'reportes_franquiciado.estado in (recibido, en_revision)',
+    'Crear alerta operativa y enviar a revision',
+    'red',
+    true,
+    'Si el franquiciado registra una novedad activa sobre su pedido.',
+    'El reporte aparece en Reportes y genera alerta visual para que Operacion lo revise.',
+    26,
+    'activa'
+  ),
+  (
+    'Reporte duplicado del mismo pedido',
+    'Escala reclamos repetidos del mismo pedido.',
+    'count(reportes_franquiciado activos por pedido) > 1',
+    'Escalar alerta a critica',
+    'red',
+    true,
+    'Si existe mas de un reporte activo asociado al mismo pedido o codigo de consulta.',
+    'La alerta del reporte sube a critica por recurrencia del problema.',
+    32,
+    'activa'
+  ),
+  (
+    'Material pedido no existe en inventario',
+    'Detecta pedidos con material operativo que no tiene registro en inventario_bodega.',
+    'pedidos_bodega_fq.codigo_material not in inventario_bodega.codigo_material',
+    'Crear alerta de consistencia de datos',
+    'red',
+    true,
+    'Si un material existe en pedidos pendientes pero no tiene fila en el inventario operativo.',
+    'Advierte que el material debe crearse o corregirse para evitar stock cero incoherente.',
+    38,
+    'activa'
   )
 on conflict (nombre) do update
 set

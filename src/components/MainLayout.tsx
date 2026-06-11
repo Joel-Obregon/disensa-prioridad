@@ -49,7 +49,6 @@ export default function MainLayout() {
   const [alertasNoRevisadas, setAlertasNoRevisadas] = useState(obtenerAlertasNoRevisadas)
   const [reportesNoRevisados, setReportesNoRevisados] = useState(obtenerReportesNoRevisados)
   const menuVisible = menu.filter((item) => puedeAcceder(perfil?.rol, item.ruta))
-  const paginaActiva = menu.find((item) => location.pathname.startsWith(item.ruta))
 
   useEffect(() => escucharAlertasNoRevisadas(setAlertasNoRevisadas), [])
   useEffect(() => escucharReportesNoRevisados(setReportesNoRevisados), [])
@@ -189,14 +188,8 @@ export default function MainLayout() {
       </aside>
 
       <main className="min-w-0 flex-1 lg:ml-[260px]">
-        <header className="app-header sticky top-0 z-20 flex min-h-16 items-center justify-between gap-4 border-b border-[#d8d2df] bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
-          <h2 className="app-page-title hidden text-xl font-bold tracking-tight text-[#0f0f11] sm:block">
-            {paginaActiva?.nombre || 'Disensa Prioridad'}
-          </h2>
-
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-2 text-[#1a1a1a]">
+        <header className="app-header pointer-events-none fixed right-4 top-3 z-40 flex justify-end sm:right-6">
+          <div className="pointer-events-auto flex items-center gap-2 text-[#1a1a1a]">
             <RealtimeAlertToast />
             <ThemeToggle className="hidden sm:inline-flex" />
             <span className="hidden items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 md:inline-flex">
@@ -206,7 +199,7 @@ export default function MainLayout() {
           </div>
         </header>
 
-        <section className="animate-surface-in p-4 sm:p-6">
+        <section className="animate-surface-in p-4 pt-20 sm:p-6 sm:pt-20">
           <Outlet />
         </section>
       </main>

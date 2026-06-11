@@ -28,6 +28,8 @@ type PedidoParaAlerta = {
 }
 
 export async function obtenerAlertas() {
+  await sincronizarAlertasResueltasPorStock()
+
   const result = await supabase
     .from('alertas')
     .select('*')
@@ -38,7 +40,13 @@ export async function obtenerAlertas() {
 
   const enriquecidas = await enriquecerAlertasConPedidos(result.data)
 
-  return { ...result, data: enriquecidas }
+  return { ...result, data: enriquecidas.map(normalizarEstadoOperativoAlerta) }
+}
+
+async function sincronizarAlertasResueltasPorStock() {
+  const result = await supabase.rpc('sincronizar_alertas_resueltas_por_stock')
+
+  return result
 }
 
 export async function obtenerUltimaAlertaVisualActiva() {
@@ -120,7 +128,7 @@ export function escucharAlertas(onChange: (alerta: Alerta) => void) {
 }
 
 function normalizarAlerta(alerta: Partial<Alerta>): Alerta {
-  return {
+  return normalizarEstadoOperativoAlerta({
     id: alerta.id || crypto.randomUUID(),
     pedido_id: alerta.pedido_id || null,
     material_id: alerta.material_id || null,
@@ -132,7 +140,32 @@ function normalizarAlerta(alerta: Partial<Alerta>): Alerta {
     pedido_codigo: alerta.pedido_codigo || null,
     dias_sin_gestion: alerta.dias_sin_gestion || null,
     created_at: alerta.created_at || new Date().toISOString(),
+  })
+}
+
+function normalizarEstadoOperativoAlerta(alerta: Alerta): Alerta {
+  if (
+    alerta.estado !== 'cerrada' &&
+    pedidoCerradoAlerta(alerta) &&
+    !esAlertaReporteFranquiciado(alerta)
+  ) {
+    return { ...alerta, estado: 'cerrada' }
   }
+
+  return alerta
+}
+
+function pedidoCerradoAlerta(alerta: Pick<Alerta, 'pedido_estado'>) {
+  return ['entregado', 'cancelado', 'rechazado'].includes(alerta.pedido_estado || '')
+}
+
+function esAlertaReporteFranquiciado(alerta: Pick<Alerta, 'tipo_alerta' | 'mensaje'>) {
+  const texto = `${alerta.tipo_alerta || ''} ${alerta.mensaje || ''}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+
+  return texto.includes('reporte_franquiciado') || texto.includes('reporte del franquiciado')
 }
 
 async function enriquecerAlertasConPedidos(alertas: Alerta[]) {

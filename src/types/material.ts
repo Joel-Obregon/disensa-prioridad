@@ -24,6 +24,8 @@ export type InventarioOperativo = Material & {
   stock_en_curso_pedido: number
   stock_transito: number
   demanda_bodega_fq: number
+  pedido_maximo_material: number
+  stock_objetivo_material: number
   faltante_total: number
   estado_cobertura: string
   ocs_transito: number

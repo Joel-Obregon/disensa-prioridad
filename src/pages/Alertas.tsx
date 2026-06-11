@@ -129,11 +129,11 @@ export default function Alertas() {
   const conteoCategorias = useMemo(
     () => ({
       materiales: alertas.filter(
-        (alerta) => alerta.estado !== 'cerrada' && esAlertaFaltaMaterial(alerta)
+        (alerta) => alertaOperativa(alerta) && esAlertaFaltaMaterial(alerta)
       ).length,
       priorizacion: alertas.filter(
         (alerta) =>
-          alerta.estado !== 'cerrada' &&
+          alertaOperativa(alerta) &&
           !esAlertaFaltaMaterial(alerta) &&
           esAlertaPriorizacionPedido(alerta)
       ).length,
@@ -193,7 +193,7 @@ export default function Alertas() {
   const alertasOperativas = useMemo(
     () =>
       alertasFiltradas
-        .filter((alerta) => alerta.estado !== 'cerrada')
+        .filter(alertaOperativa)
         .sort(ordenarPorCriticidad),
     [alertasFiltradas]
   )
@@ -201,13 +201,13 @@ export default function Alertas() {
   const alertasVisibles = useMemo(() => {
     if (vista === 'operativas') return alertasOperativas
     return alertasFiltradas
-      .filter((alerta) => alerta.estado === 'cerrada')
+      .filter((alerta) => !alertaOperativa(alerta))
       .sort(ordenarPorFechaReciente)
   }, [alertasFiltradas, alertasOperativas, vista])
 
   const resumen = useMemo(() => {
     const operativas = alertasPorCategoria.filter(
-      (alerta) => alerta.estado !== 'cerrada'
+      alertaOperativa
     ).length
 
     return [
@@ -562,8 +562,8 @@ function TarjetaAlerta({
               <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${colorNivel(alerta.nivel)}`}>
                 {alerta.nivel || 'informativa'}
               </span>
-              <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${colorEstado(alerta.estado)}`}>
-                {etiquetaEstadoAlerta(alerta.estado)}
+              <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${colorEstado(alertaOperativa(alerta) ? alerta.estado : 'cerrada')}`}>
+                {etiquetaEstadoAlerta(alerta.estado, alerta)}
               </span>
             </div>
             <p className="mt-2 max-w-5xl text-sm leading-6 text-[#4c4546]">
@@ -797,17 +797,18 @@ function colorEstado(estado?: Alerta['estado']) {
   return 'bg-orange-100 text-orange-700'
 }
 
-function etiquetaEstadoAlerta(estado?: Alerta['estado']) {
+function etiquetaEstadoAlerta(estado?: Alerta['estado'], alerta?: Alerta) {
+  if (alerta && !alertaOperativa(alerta)) return 'resuelta'
   return estado === 'cerrada' ? 'resuelta' : 'operativa'
 }
 
 function bordeAlerta(alerta: Alerta) {
-  if (alerta.estado === 'cerrada') return 'border-green-200 opacity-80'
+  if (!alertaOperativa(alerta)) return 'border-green-200 opacity-80'
   return claseSemaforoBorde(semaforoAlerta(alerta))
 }
 
 function fondoIcono(alerta: Alerta) {
-  if (alerta.estado === 'cerrada') return 'bg-green-50 text-green-700 ring-1 ring-green-100'
+  if (!alertaOperativa(alerta)) return 'bg-green-50 text-green-700 ring-1 ring-green-100'
   const semaforo = semaforoAlerta(alerta)
   if (semaforo === 'critico') return 'bg-red-50 text-red-700 ring-1 ring-red-100'
   if (semaforo === 'riesgo') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
@@ -815,7 +816,7 @@ function fondoIcono(alerta: Alerta) {
 }
 
 function colorRailAlerta(alerta: Alerta) {
-  if (alerta.estado === 'cerrada') return 'bg-green-500'
+  if (!alertaOperativa(alerta)) return 'bg-green-500'
   const semaforo = semaforoAlerta(alerta)
   if (semaforo === 'critico') return 'bg-red-600'
   if (semaforo === 'riesgo') return 'bg-yellow-500'
@@ -824,7 +825,7 @@ function colorRailAlerta(alerta: Alerta) {
 }
 
 function describirAlerta(alerta: Alerta) {
-  if (alerta.estado === 'cerrada') {
+  if (!alertaOperativa(alerta)) {
     return 'Alerta resuelta. No aparece en la vista operativa diaria.'
   }
 
@@ -911,6 +912,23 @@ function esAlertaPriorizacionPedido(alerta: Alerta) {
     texto.includes('nota de credito') ||
     texto.includes('urgencia')
   )
+}
+
+function alertaOperativa(alerta: Alerta) {
+  if (alerta.estado === 'cerrada') return false
+  if (esAlertaReporteFranquiciado(alerta)) return true
+  return !pedidoAlertaCerrado(alerta)
+}
+
+function pedidoAlertaCerrado(alerta: Alerta) {
+  return ['entregado', 'cancelado', 'rechazado'].includes(alerta.pedido_estado || '')
+}
+
+function esAlertaReporteFranquiciado(alerta: Alerta) {
+  const tipo = normalizarTexto(alerta.tipo_alerta || '')
+  const texto = normalizarTexto(alerta.mensaje || '')
+
+  return tipo.includes('reporte_franquiciado') || texto.includes('reporte del franquiciado')
 }
 
 function semaforoAlerta(alerta: Alerta): SemaforoOperativo {

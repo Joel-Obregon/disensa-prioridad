@@ -22,6 +22,14 @@ type PedidoStock = {
   estado: string
 }
 
+type PedidoMaterialDemanda = {
+  material_id: string | null
+  material: string | null
+  cantidad: number | string | null
+  cantidad_despacho?: number | string | null
+  estado?: string | null
+}
+
 type MaterialOperativoRow = {
   codigo_material: string
   nombre_material: string
@@ -38,6 +46,8 @@ type MaterialOperativoRow = {
   stock_en_curso_pedido: number | string | null
   stock_transito: number | string | null
   demanda_bodega_fq: number | string | null
+  pedido_maximo_material?: number | string | null
+  stock_objetivo_material?: number | string | null
   faltante_total: number | string | null
   estado_cobertura: string | null
   ocs_transito: number | string | null
@@ -80,6 +90,8 @@ export async function obtenerInventarioOperativo() {
     materiales.map((material) => [normalizarLlave(material.nombre), material])
   )
 
+  const demandaMaxima = await obtenerPedidoMaximoPorMaterial()
+
   const inventario = (operativosResult.data || []).map((row) => {
     const material =
       materialesPorCodigo.get(row.codigo_material) ||
@@ -90,6 +102,13 @@ export async function obtenerInventarioOperativo() {
     const stockDisponibleSistema = stockSistema(stockDisponibleFuente, stockMaterial)
     const stockLibre = stockLibreFuente
     const demanda = numeroNoNegativo(row.demanda_bodega_fq)
+    const pedidoMaximoReal = Math.max(
+      demandaMaxima.porCodigo.get(row.codigo_material) || 0,
+      material?.id ? demandaMaxima.porMaterialId.get(material.id) || 0 : 0,
+      demandaMaxima.porNombre.get(normalizarLlave(material?.nombre || row.nombre_material)) || 0
+    )
+    const pedidoMaximo = pedidoMaximoReal || numeroNoNegativo(row.pedido_maximo_material) || demanda || 1
+    const stockObjetivo = numeroNoNegativo(row.stock_objetivo_material) || pedidoMaximo * 3
 
     return {
       id: material?.id || row.codigo_material,
@@ -97,7 +116,7 @@ export async function obtenerInventarioOperativo() {
       nombre: material?.nombre || row.nombre_material || `Material ${row.codigo_material}`,
       categoria: material?.categoria || categoriaPorCobertura(row.estado_cobertura),
       stock_actual: stockDisponibleSistema,
-      stock_minimo: demanda,
+      stock_minimo: pedidoMaximo,
       unidad_medida: material?.unidad_medida || row.unidad_medida || 'UN',
       es_critico: material?.es_critico || numeroNoNegativo(row.faltante_total) > 0,
       estado: material?.estado || 'activo',
@@ -114,6 +133,8 @@ export async function obtenerInventarioOperativo() {
       stock_en_curso_pedido: numeroNoNegativo(row.stock_en_curso_pedido),
       stock_transito: numeroNoNegativo(row.stock_transito),
       demanda_bodega_fq: demanda,
+      pedido_maximo_material: pedidoMaximo,
+      stock_objetivo_material: stockObjetivo,
       faltante_total: numeroNoNegativo(row.faltante_total),
       estado_cobertura: row.estado_cobertura || 'sin_demanda',
       ocs_transito: numeroNoNegativo(row.ocs_transito),
@@ -131,6 +152,41 @@ export async function obtenerInventarioOperativo() {
   return { ...materialesResult, data: inventario }
 }
 
+async function obtenerPedidoMaximoPorMaterial() {
+  const porMaterialId = new Map<string, number>()
+  const porNombre = new Map<string, number>()
+  const porCodigo = new Map<string, number>()
+
+  const result = await supabase
+    .from('pedidos')
+    .select('material_id,material,cantidad,cantidad_despacho,estado,codigo')
+    .not('estado', 'in', '(entregado,cancelado,rechazado)')
+    .returns<Array<PedidoMaterialDemanda & { codigo?: string | null }>>()
+
+  if (result.error) return { porMaterialId, porNombre, porCodigo }
+
+  ;(result.data || []).forEach((pedido) => {
+    const cantidad = Math.max(numeroNoNegativo(pedido.cantidad), numeroNoNegativo(pedido.cantidad_despacho))
+    if (cantidad <= 0) return
+
+    if (pedido.material_id) {
+      porMaterialId.set(pedido.material_id, Math.max(porMaterialId.get(pedido.material_id) || 0, cantidad))
+    }
+
+    if (pedido.material) {
+      const nombre = normalizarLlave(pedido.material)
+      porNombre.set(nombre, Math.max(porNombre.get(nombre) || 0, cantidad))
+    }
+
+    const codigoMaterial = extraerCodigoMaterialPedido(pedido.codigo)
+    if (codigoMaterial) {
+      porCodigo.set(codigoMaterial, Math.max(porCodigo.get(codigoMaterial) || 0, cantidad))
+    }
+  })
+
+  return { porMaterialId, porNombre, porCodigo }
+}
+
 export async function obtenerMovimientosInventario() {
   return supabase
     .from('movimientos_inventario')
@@ -145,38 +201,38 @@ async function consultarMaterialesOperativos() {
   let desde = 0
 
   while (true) {
+    const selectConUmbrales = camposMaterialesOperativos(true)
     const result = await supabase
       .from('materiales_operativos_v')
-      .select(
-        [
-          'codigo_material',
-          'nombre_material',
-          'unidad_medida',
-          'marca_material',
-          'catman_nombre',
-          'catman_categoria',
-          'numero_suministradores',
-          'codigo_suministrador',
-          'nombre_suministrador',
-          'stock_libre',
-          'stock_disponible',
-          'bloqueado',
-          'stock_en_curso_pedido',
-          'stock_transito',
-          'demanda_bodega_fq',
-          'faltante_total',
-          'estado_cobertura',
-          'ocs_transito',
-          'ocs_pendientes',
-          'cantidad_oc_pendiente',
-          'casos_bodega_fq',
-          'estado_planificable',
-          'min_compra',
-          'mult_compra',
-          'min_venta',
-          'mult_venta',
-        ].join(',')
-      )
+      .select(selectConUmbrales)
+      .order('nombre_material', { ascending: true })
+      .range(desde, desde + TAMANO_BLOQUE_INVENTARIO_OPERATIVO - 1)
+      .returns<MaterialOperativoRow[]>()
+
+    if (result.error?.code === '42703') {
+      return consultarMaterialesOperativosCompatibles()
+    }
+
+    if (result.error) return result
+
+    rows.push(...(result.data || []))
+
+    if (!result.data || result.data.length < TAMANO_BLOQUE_INVENTARIO_OPERATIVO) {
+      return { ...result, data: rows }
+    }
+
+    desde += TAMANO_BLOQUE_INVENTARIO_OPERATIVO
+  }
+}
+
+async function consultarMaterialesOperativosCompatibles() {
+  const rows: MaterialOperativoRow[] = []
+  let desde = 0
+
+  while (true) {
+    const result = await supabase
+      .from('materiales_operativos_v')
+      .select(camposMaterialesOperativos(false))
       .order('nombre_material', { ascending: true })
       .range(desde, desde + TAMANO_BLOQUE_INVENTARIO_OPERATIVO - 1)
       .returns<MaterialOperativoRow[]>()
@@ -193,6 +249,38 @@ async function consultarMaterialesOperativos() {
   }
 }
 
+function camposMaterialesOperativos(incluirUmbrales: boolean) {
+  return [
+    'codigo_material',
+    'nombre_material',
+    'unidad_medida',
+    'marca_material',
+    'catman_nombre',
+    'catman_categoria',
+    'numero_suministradores',
+    'codigo_suministrador',
+    'nombre_suministrador',
+    'stock_libre',
+    'stock_disponible',
+    'bloqueado',
+    'stock_en_curso_pedido',
+    'stock_transito',
+    'demanda_bodega_fq',
+    ...(incluirUmbrales ? ['pedido_maximo_material', 'stock_objetivo_material'] : []),
+    'faltante_total',
+    'estado_cobertura',
+    'ocs_transito',
+    'ocs_pendientes',
+    'cantidad_oc_pendiente',
+    'casos_bodega_fq',
+    'estado_planificable',
+    'min_compra',
+    'mult_compra',
+    'min_venta',
+    'mult_venta',
+  ].join(',')
+}
+
 export function escucharMovimientosInventario(onChange: () => void) {
   const channel = supabase
     .channel('movimientos-inventario-tiempo-real')
@@ -202,6 +290,52 @@ export function escucharMovimientosInventario(onChange: () => void) {
         event: '*',
         schema: 'public',
         table: 'movimientos_inventario',
+      },
+      onChange
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}
+
+export function escucharInventarioOperativo(onChange: () => void) {
+  const channel = supabase
+    .channel('inventario-operativo-tiempo-real')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'inventario_bodega',
+      },
+      onChange
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'oc_pendientes_bodega',
+      },
+      onChange
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'transito_bodega',
+      },
+      onChange
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'pedidos_bodega_fq',
       },
       onChange
     )
@@ -452,6 +586,8 @@ function materialAInventarioFallback(material: Material): InventarioOperativo {
     stock_en_curso_pedido: 0,
     stock_transito: 0,
     demanda_bodega_fq: material.stock_minimo,
+    pedido_maximo_material: material.stock_minimo,
+    stock_objetivo_material: Math.max(1, material.stock_minimo * 3),
     faltante_total: Math.max(0, material.stock_minimo - material.stock_actual),
     estado_cobertura:
       material.stock_minimo <= 0
@@ -492,6 +628,11 @@ function stockSistema(stockFuente: number, stockMaterial: number | null) {
   if (stockFuente > 0 && stockMaterial > 0) return Math.min(stockFuente, stockMaterial)
   if (stockFuente > 0) return stockFuente
   return stockMaterial
+}
+
+function extraerCodigoMaterialPedido(codigo: string | null | undefined) {
+  const match = /-(9\d{7,})$/.exec(codigo || '')
+  return match?.[1] || null
 }
 
 function normalizarLlave(value: string | null | undefined) {

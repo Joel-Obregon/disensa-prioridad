@@ -411,6 +411,7 @@ demanda as (
   select
     codigo_material,
     sum(cantidad) as demanda_bodega_fq,
+    max(cantidad) as pedido_maximo_material,
     count(*)::integer as casos_bodega_fq,
     count(distinct cod_pedido)::integer as pedidos_bodega_fq
   from public.pedidos_bodega_fq
@@ -438,6 +439,9 @@ select
   coalesce(oc.ocs_pendientes, 0) as ocs_pendientes,
   coalesce(oc.valor_oc_pendiente, 0) as valor_oc_pendiente,
   coalesce(demanda.demanda_bodega_fq, 0) as demanda_bodega_fq,
+  coalesce(demanda.pedido_maximo_material, 0) as pedido_maximo_material,
+  coalesce(demanda.pedido_maximo_material, 0) * 2 as stock_alerta_material,
+  coalesce(demanda.pedido_maximo_material, 0) * 3 as stock_objetivo_material,
   coalesce(demanda.casos_bodega_fq, 0) as casos_bodega_fq,
   coalesce(demanda.pedidos_bodega_fq, 0) as pedidos_bodega_fq,
   1::numeric(14, 3) as min_compra,
@@ -513,6 +517,7 @@ group by
   oc.ocs_pendientes,
   oc.valor_oc_pendiente,
   demanda.demanda_bodega_fq,
+  demanda.pedido_maximo_material,
   demanda.casos_bodega_fq,
   demanda.pedidos_bodega_fq;
 
@@ -917,8 +922,17 @@ begin
     update public.alertas
     set estado = 'cerrada'
     where pedido_id = new.id
-      and tipo_alerta in ('priorizacion_bodega_fq', 'pedido_retrasado', 'falta_material_pedido')
-      and estado in ('activa', 'revisada');
+      and estado in ('activa', 'revisada')
+      and not exists (
+        select 1
+        from public.reportes_franquiciado rf
+        where rf.estado in ('recibido', 'en_revision')
+          and (
+            rf.pedido_id = new.id
+            or rf.codigo_consulta = new.codigo
+            or rf.codigo_consulta = new.codigo_consulta
+          )
+      );
 
     return new;
   end if;
@@ -1101,7 +1115,7 @@ begin
       else 'Catalogo operativo'
     end,
     least(2147483647, greatest(0, ceil(stock_disponible)))::integer,
-    least(2147483647, greatest(0, ceil(demanda_bodega_fq)))::integer,
+    least(2147483647, greatest(0, ceil(coalesce(nullif(pedido_maximo_material, 0), demanda_bodega_fq))))::integer,
     coalesce(unidad_medida, 'UN'),
     estado_cobertura = 'faltante',
     'activo'
@@ -1513,6 +1527,102 @@ begin
 end;
 $$;
 
+create or replace function public.sincronizar_alertas_resueltas_por_stock()
+returns integer
+language plpgsql
+security definer
+as $$
+declare
+  v_cerradas_material integer := 0;
+  v_cerradas_pedido_cerrado integer := 0;
+  v_cerradas_pedido_stock integer := 0;
+begin
+  perform public.sincronizar_stock_materiales_desde_inventario();
+
+  update public.alertas a
+  set estado = 'cerrada'
+  from public.materiales m
+  left join (
+    select codigo_material, sum(greatest(0, stock_disponible)) as stock_real
+    from public.inventario_bodega
+    group by codigo_material
+  ) inv on inv.codigo_material = m.codigo_material
+  where a.material_id = m.id
+    and a.estado in ('activa', 'revisada')
+    and a.tipo_alerta in ('stock_bajo', 'faltante_bodega_fq', 'material_sin_inventario')
+    and (
+      (
+        a.tipo_alerta = 'material_sin_inventario'
+        and inv.codigo_material is not null
+      )
+      or (
+        a.tipo_alerta in ('stock_bajo', 'faltante_bodega_fq')
+        and coalesce(inv.stock_real, m.stock_actual, 0) > 0
+      )
+    );
+
+  get diagnostics v_cerradas_material = row_count;
+
+  update public.alertas a
+  set estado = 'cerrada'
+  from public.pedidos p
+  where a.pedido_id = p.id
+    and a.estado in ('activa', 'revisada')
+    and p.estado in ('entregado', 'cancelado', 'rechazado')
+    and not exists (
+      select 1
+      from public.reportes_franquiciado rf
+      where rf.estado in ('recibido', 'en_revision')
+        and (
+          rf.pedido_id = p.id
+          or rf.codigo_consulta = p.codigo
+          or rf.codigo_consulta = p.codigo_consulta
+        )
+    );
+
+  get diagnostics v_cerradas_pedido_cerrado = row_count;
+
+  update public.alertas a
+  set estado = 'cerrada'
+  from public.pedidos p
+  where a.pedido_id = p.id
+    and a.estado in ('activa', 'revisada')
+    and a.tipo_alerta in ('falta_material_pedido', 'stock_agotado_planificable', 'transito_cubre_pedido')
+    and p.estado not in ('entregado', 'cancelado', 'rechazado')
+    and coalesce(p.stock_disponible, 0) >= greatest(1, coalesce(nullif(p.cantidad_despacho, 0), p.cantidad, 1));
+
+  get diagnostics v_cerradas_pedido_stock = row_count;
+
+  return v_cerradas_material + v_cerradas_pedido_cerrado + v_cerradas_pedido_stock;
+end;
+$$;
+
+create or replace function public.sincronizar_stock_materiales_desde_inventario()
+returns integer
+language plpgsql
+security definer
+as $$
+declare
+  v_actualizados integer := 0;
+begin
+  with inv as (
+    select
+      codigo_material,
+      least(2147483647, greatest(0, ceil(sum(greatest(0, stock_disponible)))))::integer as stock_real
+    from public.inventario_bodega
+    group by codigo_material
+  )
+  update public.materiales m
+  set stock_actual = inv.stock_real
+  from inv
+  where m.codigo_material = inv.codigo_material
+    and m.stock_actual is distinct from inv.stock_real;
+
+  get diagnostics v_actualizados = row_count;
+  return v_actualizados;
+end;
+$$;
+
 drop trigger if exists materiales_stock_alerta_after_save on public.materiales;
 create trigger materiales_stock_alerta_after_save
 after insert or update on public.materiales
@@ -1555,12 +1665,48 @@ begin
   where id = v_material.id
     and stock_actual is distinct from v_stock_entero;
 
+  update public.pedidos
+  set
+    stock_disponible = v_stock_entero,
+    tiene_gestion_stock = v_stock_entero < greatest(1, coalesce(nullif(cantidad_despacho, 0), cantidad, 1)),
+    estado = case
+      when estado in ('entregado', 'cancelado', 'rechazado', 'en_despacho') then estado
+      when v_stock_entero < greatest(1, coalesce(nullif(cantidad_despacho, 0), cantidad, 1))
+        then 'sin_stock'
+      when estado = 'sin_stock' then 'pendiente'
+      else estado
+    end
+  where material_id = v_material.id
+    or (
+      material_id is null
+      and lower(btrim(material)) = lower(btrim(v_material.nombre))
+    );
+
+  update public.pedidos p
+  set prioridad_calculada = public.prioridad_pedido_bodega_fq(
+    bfq.tipo_caso,
+    v_stock_entero,
+    bfq.fecha_limite,
+    bfq.excluidos
+  )
+  from public.pedidos_bodega_fq bfq
+  where p.codigo = 'BFQ-' || bfq.pedido_key
+    and (
+      p.material_id = v_material.id
+      or (
+        p.material_id is null
+        and lower(btrim(p.material)) = lower(btrim(v_material.nombre))
+      )
+    );
+
   perform public.registrar_alerta_stock_material(
     v_material.id,
     null,
     v_stock_entero,
     'Departamento de inventario'
   );
+
+  perform public.sincronizar_alertas_resueltas_por_stock();
 
   return new;
 end;
@@ -1881,6 +2027,8 @@ grant execute on function public.despachar_pedido_operativo_seguro(uuid, uuid, t
 grant execute on function public.registrar_alerta_stock_material(uuid, uuid, integer, text) to anon, authenticated;
 grant execute on function public.sincronizar_alertas_pedido_operativo_trg() to anon, authenticated;
 grant execute on function public.inventario_bodega_stock_alerta_trg() to anon, authenticated;
+grant execute on function public.sincronizar_alertas_resueltas_por_stock() to anon, authenticated;
+grant execute on function public.sincronizar_stock_materiales_desde_inventario() to anon, authenticated;
 
 grant select, insert, update, delete on public.notificaciones_correo to anon, authenticated;
 
@@ -1896,6 +2044,60 @@ alter table public.notificaciones_correo disable row level security;
 do $$
 begin
   alter publication supabase_realtime add table public.alertas;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.pedidos;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.materiales;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.inventario_bodega;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.oc_pendientes_bodega;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.transito_bodega;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.pedidos_bodega_fq;
 exception
   when duplicate_object then null;
   when undefined_object then null;
