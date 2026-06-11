@@ -18,12 +18,14 @@ export type ReporteFranquiciadoInput = {
 export async function consultarPedidoInvitado(codigo: string, cedula: string) {
   const codigoLimpio = codigo.trim()
   const cedulaLimpia = normalizarCedula(cedula)
+  const codigosConsulta = generarCodigosConsulta(codigoLimpio)
 
   const consultaPorCodigoInvitado = await supabase
     .from('pedidos')
     .select('*')
-    .eq('codigo_consulta', codigoLimpio)
+    .in('codigo_consulta', codigosConsulta)
     .eq('cedula_solicitante', cedulaLimpia)
+    .limit(1)
     .maybeSingle<Pedido>()
 
   if (consultaPorCodigoInvitado.error || consultaPorCodigoInvitado.data) {
@@ -33,8 +35,9 @@ export async function consultarPedidoInvitado(codigo: string, cedula: string) {
   return supabase
     .from('pedidos')
     .select('*')
-    .eq('codigo', codigoLimpio)
+    .in('codigo', codigosConsulta)
     .eq('cedula_solicitante', cedulaLimpia)
+    .limit(1)
     .maybeSingle<Pedido>()
 }
 
@@ -105,4 +108,32 @@ export function escucharReportesFranquiciado(onChange: () => void) {
 
 export function normalizarCedula(valor: string) {
   return valor.replace(/\D/g, '').trim()
+}
+
+function generarCodigosConsulta(codigo: string) {
+  const candidatos = new Set<string>()
+  const limpio = codigo.trim()
+  const compacto = limpio.replace(/\s+/g, '')
+  const mayusculas = compacto.toUpperCase()
+
+  ;[limpio, compacto, mayusculas].forEach((valor) => {
+    if (valor) candidatos.add(valor)
+  })
+
+  const sinPrefijo = mayusculas.replace(/^BFQ-/, '')
+  if (sinPrefijo && sinPrefijo !== mayusculas) {
+    candidatos.add(sinPrefijo)
+  }
+
+  const partes = sinPrefijo.split('-').filter(Boolean)
+  if (partes.length > 0) {
+    candidatos.add(partes[0])
+  }
+
+  if (partes.length >= 2) {
+    candidatos.add(`${partes[0]}-${partes[1]}`)
+    candidatos.add(`BFQ-${partes[0]}-${partes[1]}`)
+  }
+
+  return [...candidatos]
 }

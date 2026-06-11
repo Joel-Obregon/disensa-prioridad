@@ -14,6 +14,8 @@ import {
 } from '../lib/alertNotifications'
 import type { Alerta } from '../types/alerta'
 
+const DURACION_TOAST_MS = 6000
+
 export default function RealtimeAlertToast() {
   const [alerta, setAlerta] = useState<Alerta | null>(null)
   const [cola, setCola] = useState<Alerta[]>([])
@@ -46,15 +48,19 @@ export default function RealtimeAlertToast() {
       setVisible(true)
     }, 0)
 
+    return () => window.clearTimeout(mostrarTimeout)
+  }, [cola, visible])
+
+  useEffect(() => {
+    if (!visible || !alerta) return
+
     const cerrarTimeout = window.setTimeout(() => {
       setVisible(false)
-    }, 6000)
+      setAlerta(null)
+    }, DURACION_TOAST_MS)
 
-    return () => {
-      window.clearTimeout(mostrarTimeout)
-      window.clearTimeout(cerrarTimeout)
-    }
-  }, [cola, visible])
+    return () => window.clearTimeout(cerrarTimeout)
+  }, [alerta, visible])
 
   const alertasPendientes = useMemo(
     () => alertasCentro.filter((item) => item.estado !== 'cerrada').slice(0, 8),
@@ -99,7 +105,7 @@ export default function RealtimeAlertToast() {
     <>
       {alerta && visible && (
         <div
-          className={`fixed right-4 top-4 z-50 w-[calc(100vw-2rem)] max-w-md rounded-lg border p-5 shadow-xl ${estilos}`}
+          className={`alert-toast fixed right-4 top-4 z-50 w-[calc(100vw-2rem)] max-w-md rounded-lg border p-5 shadow-xl ${estilos}`}
         >
           <div className="flex items-start gap-3">
             <span className="rounded-lg bg-white/20 p-2">
@@ -118,6 +124,7 @@ export default function RealtimeAlertToast() {
                   to="/alertas"
                   onClick={() => {
                     setVisible(false)
+                    setAlerta(null)
                     limpiarAlertasNoRevisadas()
                     setIdsNoRevisados([])
                   }}
@@ -129,7 +136,10 @@ export default function RealtimeAlertToast() {
             </div>
 
             <button
-              onClick={() => setVisible(false)}
+              onClick={() => {
+                setVisible(false)
+                setAlerta(null)
+              }}
               className="rounded-md p-1 transition hover:bg-white/20"
               aria-label="Cerrar aviso"
             >
@@ -143,7 +153,7 @@ export default function RealtimeAlertToast() {
         <section className="alert-center-panel fixed right-4 top-20 z-50 w-[calc(100vw-2rem)] max-w-md rounded-xl border border-[#ecd7ce] bg-white p-4 text-[#1a1b22] shadow-2xl">
           <div className="alert-center-header flex items-start justify-between gap-3 border-b border-[#ecd7ce] pb-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff7a1a]">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ed1c24]">
                 Centro de alertas
               </p>
               <h3 className="mt-1 text-lg font-bold">Alertas recientes</h3>
@@ -151,7 +161,7 @@ export default function RealtimeAlertToast() {
             <button
               type="button"
               onClick={() => setCentroAbierto(false)}
-              className="alert-center-close rounded-lg p-2 text-[#6d5d57] transition hover:bg-[#fff1eb] hover:text-[#a33e00]"
+              className="alert-center-close rounded-lg p-2 text-[#6d5d57] transition hover:bg-[#fff0f0] hover:text-[#c8102e]"
               aria-label="Cerrar centro de alertas"
             >
               <X size={18} />
@@ -191,7 +201,7 @@ export default function RealtimeAlertToast() {
                   <Link
                     to="/alertas"
                     onClick={() => setCentroAbierto(false)}
-                    className="rounded-lg border border-[#ff7a1a]/50 px-3 py-1.5 text-xs font-semibold text-[#ff8a33] transition hover:bg-[#ff7a1a]/10"
+                    className="rounded-lg border border-[#ed1c24]/45 px-3 py-1.5 text-xs font-semibold text-[#c8102e] transition hover:bg-[#ed1c24]/10"
                   >
                     Ver detalle
                   </Link>
@@ -212,8 +222,8 @@ export default function RealtimeAlertToast() {
       <button
         type="button"
         onClick={abrirCentro}
-        className={`alert-float-button relative flex h-10 w-10 items-center justify-center rounded-full border border-[#ffd6c0] bg-white text-[#a33e00] shadow-sm transition hover:scale-105 hover:bg-[#fff7f2] ${
-          idsNoRevisados.length > 0 ? 'animate-pulse ring-4 ring-[#ff7a1a]/20' : ''
+        className={`alert-float-button relative flex h-10 w-10 items-center justify-center rounded-full border border-[#f0c2c2] bg-white text-[#c8102e] shadow-sm transition hover:scale-105 hover:bg-[#fff0f0] ${
+          idsNoRevisados.length > 0 ? 'animate-pulse ring-4 ring-[#ed1c24]/20' : ''
         }`}
         aria-label="Abrir alertas"
       >

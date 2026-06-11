@@ -88,7 +88,7 @@ export default function Login() {
         <div className="mb-10 text-center lg:text-left">
           <div className="flex items-center justify-center gap-3 lg:justify-start">
             <img src={disensaLogo} alt="Disensa" className="h-12 w-12 object-contain" />
-            <h1 className="login-title text-3xl font-black tracking-tight text-[#a33e00]">Disensa Prioridad</h1>
+            <h1 className="login-title text-3xl font-black tracking-tight text-[#c8102e]">Disensa Prioridad</h1>
           </div>
           <div className="lg:pl-[60px]">
             <p className="login-muted mt-2 text-sm text-[#5a4136]">
@@ -111,7 +111,7 @@ export default function Login() {
             <label className="login-label block text-xs font-semibold uppercase tracking-[0.12em] text-[#5a4136]">
               Correo electronico
             </label>
-            <div className="login-field mt-2 flex items-center border border-[#d7d3d0] px-3 focus-within:border-[#a33e00] focus-within:ring-1 focus-within:ring-[#a33e00]">
+            <div className="login-field mt-2 flex items-center border border-[#d7d3d0] px-3 focus-within:border-[#c8102e] focus-within:ring-1 focus-within:ring-[#c8102e]">
               <Mail size={18} className="text-[#8e7164]" />
               <input
                 type="email"
@@ -128,7 +128,7 @@ export default function Login() {
             <label className="login-label block text-xs font-semibold uppercase tracking-[0.12em] text-[#5a4136]">
               Contrasena
             </label>
-            <div className="login-field mt-2 flex items-center border border-[#d7d3d0] px-3 focus-within:border-[#a33e00] focus-within:ring-1 focus-within:ring-[#a33e00]">
+            <div className="login-field mt-2 flex items-center border border-[#d7d3d0] px-3 focus-within:border-[#c8102e] focus-within:ring-1 focus-within:ring-[#c8102e]">
               <Lock size={18} className="text-[#8e7164]" />
               <input
                 type="password"
@@ -150,7 +150,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={cargando}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-[#ff6600] py-3 font-semibold text-[#561d00] transition hover:bg-[#a33e00] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-[#ed1c24] py-3 font-semibold text-white transition hover:bg-[#c8102e] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {cargando ? 'Ingresando...' : 'Iniciar sesion'}
             <ArrowRight size={18} />

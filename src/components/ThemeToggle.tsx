@@ -23,7 +23,7 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
       <span className="pointer-events-none absolute inset-0 flex items-center justify-between px-2.5">
         <Sun
           size={16}
-          className={isDark ? 'text-[#8f7f7c]' : 'text-[#ff6600]'}
+          className={isDark ? 'text-[#8f7f7c]' : 'text-[#ed1c24]'}
           strokeWidth={2.4}
         />
         <Moon
@@ -36,7 +36,7 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
         className={`relative z-10 h-7 w-7 rounded-full transition-transform duration-300 ease-out ${
           isDark
             ? 'translate-x-[34px] bg-[#ed1c24]'
-            : 'translate-x-0 bg-[#ff6600]'
+            : 'translate-x-0 bg-[#ed1c24]'
         }`}
       />
     </button>

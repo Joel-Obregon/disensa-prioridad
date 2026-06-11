@@ -2,10 +2,12 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   Boxes,
   Download,
+  Eye,
   FileWarning,
   Filter,
   PlusCircle,
   Send,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../auth/authState'
 import MaterialSearchSelect from '../components/MaterialSearchSelect'
@@ -122,6 +124,7 @@ export default function Reportes() {
   const [cargando, setCargando] = useState(true)
   const [guardandoReporte, setGuardandoReporte] = useState(false)
   const [mostrarFormularioReporte, setMostrarFormularioReporte] = useState(false)
+  const [reporteDetalle, setReporteDetalle] = useState<ReporteFranquiciado | null>(null)
   const [errorReporte, setErrorReporte] = useState('')
   const [mensajeReporte, setMensajeReporte] = useState('')
 
@@ -297,6 +300,20 @@ export default function Reportes() {
       },
     ]
   }, [materialesPorDespachar, pedidosFiltrados, reportesFranquiciado.length, reportesOperativos])
+
+  const pedidoDetalleReporte = useMemo(() => {
+    if (!reporteDetalle) return null
+
+    return (
+      pedidos.find((pedido) => pedido.id === reporteDetalle.pedido_id) ||
+      pedidos.find(
+        (pedido) =>
+          pedido.codigo === reporteDetalle.codigo_consulta ||
+          pedido.codigo_consulta === reporteDetalle.codigo_consulta
+      ) ||
+      null
+    )
+  }, [pedidos, reporteDetalle])
 
   return (
     <div>
@@ -570,6 +587,7 @@ export default function Reportes() {
                 <th className="px-5 py-3 text-left">Detalle</th>
                 <th className="px-5 py-3 text-left">Estado</th>
                 <th className="px-5 py-3 text-left">Fecha</th>
+                <th className="px-5 py-3 text-left">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -577,14 +595,16 @@ export default function Reportes() {
                 <tr key={reporte.id} className="border-t border-slate-100 align-top">
                   <td className="px-5 py-4">
                     <p className="font-semibold text-slate-800">{reporte.codigo_consulta}</p>
-                    <p className="text-xs text-slate-500">CI/RUC {reporte.cedula_solicitante}</p>
+                    <p className="text-xs text-slate-500">
+                      Cliente/RUC {reporte.cedula_solicitante}
+                    </p>
                   </td>
                   <td className="px-5 py-4 text-slate-600">{reporte.solicitante || '-'}</td>
                   <td className="px-5 py-4 text-slate-600">
                     {formatearEtiqueta(reporte.motivo)}
                   </td>
                   <td className="max-w-md px-5 py-4 text-slate-600">
-                    {reporte.descripcion}
+                    {recortarTexto(reporte.descripcion, 78)}
                   </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
@@ -594,12 +614,22 @@ export default function Reportes() {
                   <td className="px-5 py-4 text-slate-600">
                     {reporte.created_at ? new Date(reporte.created_at).toLocaleString() : '-'}
                   </td>
+                  <td className="px-5 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setReporteDetalle(reporte)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Eye size={15} />
+                      Ver detalle
+                    </button>
+                  </td>
                 </tr>
               ))}
 
               {!cargando && reportesFranquiciado.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
                     Sin reportes enviados por franquiciados.
                   </td>
                 </tr>
@@ -608,6 +638,100 @@ export default function Reportes() {
           </table>
         </div>
       </section>
+
+      {reporteDetalle && (
+        <ReporteDetalleModal
+          pedido={pedidoDetalleReporte}
+          reporte={reporteDetalle}
+          onClose={() => setReporteDetalle(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ReporteDetalleModal({
+  onClose,
+  pedido,
+  reporte,
+}: {
+  onClose: () => void
+  pedido: Pedido | null
+  reporte: ReporteFranquiciado
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <section className="w-full max-w-4xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#c8102e]">
+              Detalle del reporte
+            </p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">{reporte.codigo_consulta}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Cliente/RUC {reporte.cedula_solicitante} - {formatearEtiqueta(reporte.motivo)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-5 p-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <article className="rounded-lg border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Novedad reportada</h3>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+              {reporte.descripcion}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
+                {formatearEtiqueta(reporte.estado)}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                {formatearFechaReporte(reporte.created_at)}
+              </span>
+            </div>
+          </article>
+
+          <article className="rounded-lg border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Pedido relacionado</h3>
+            {pedido ? (
+              <div className="mt-3 space-y-3 text-sm">
+                <DatoReporte label="Pedido" valor={pedido.codigo_consulta || pedido.codigo} />
+                <DatoReporte label="Cliente" valor={pedido.solicitante} />
+                <DatoReporte label="Material" valor={pedido.material} />
+                <DatoReporte
+                  label="Cantidad"
+                  valor={`${cantidadParaDespacho(pedido)} ${pedido.unidad_medida}`}
+                />
+                <DatoReporte label="Estado" valor={formatearEtiqueta(pedido.estado)} />
+                <DatoReporte
+                  label="Fecha compromiso"
+                  valor={formatearFechaReporte(pedido.fecha_compromiso)}
+                />
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                No se encontro un pedido sincronizado con este reporte. Revisa el codigo de
+                consulta o la relacion `pedido_id`.
+              </p>
+            )}
+          </article>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function DatoReporte({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 font-semibold text-slate-900">{valor || '-'}</p>
     </div>
   )
 }
@@ -713,6 +837,25 @@ function pedidoPendienteDespacho(estado: EstadoPedido) {
 
 function formatearEtiqueta(valor: string) {
   return valor.replace(/_/g, ' ')
+}
+
+function recortarTexto(valor: string, maximo: number) {
+  const limpio = valor.trim().replace(/\s+/g, ' ')
+  if (limpio.length <= maximo) return limpio
+  return `${limpio.slice(0, maximo).trim()}...`
+}
+
+function formatearFechaReporte(fecha?: string | null) {
+  if (!fecha) return '-'
+  const date = new Date(fecha)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('es-EC', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function normalizarTexto(texto: string) {

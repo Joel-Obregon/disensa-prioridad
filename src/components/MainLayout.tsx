@@ -20,6 +20,13 @@ import {
   limpiarAlertasNoRevisadas,
   obtenerAlertasNoRevisadas,
 } from '../lib/alertNotifications'
+import {
+  agregarReporteNoRevisado,
+  escucharReportesNoRevisados,
+  limpiarReportesNoRevisados,
+  obtenerReportesNoRevisados,
+} from '../lib/reportNotifications'
+import { supabase } from '../services/supabaseClient'
 import RealtimeAlertToast from './RealtimeAlertToast'
 import ThemeToggle from './ThemeToggle'
 
@@ -40,14 +47,54 @@ export default function MainLayout() {
   const location = useLocation()
   const { cerrarSesion: cerrarSesionAuth, perfil, user } = useAuth()
   const [alertasNoRevisadas, setAlertasNoRevisadas] = useState(obtenerAlertasNoRevisadas)
+  const [reportesNoRevisados, setReportesNoRevisados] = useState(obtenerReportesNoRevisados)
   const menuVisible = menu.filter((item) => puedeAcceder(perfil?.rol, item.ruta))
   const paginaActiva = menu.find((item) => location.pathname.startsWith(item.ruta))
 
   useEffect(() => escucharAlertasNoRevisadas(setAlertasNoRevisadas), [])
+  useEffect(() => escucharReportesNoRevisados(setReportesNoRevisados), [])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('reportes-menu-tiempo-real')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'reportes_franquiciado',
+        },
+        (payload) => {
+          const id = (payload.new as { id?: string }).id
+          if (id) agregarReporteNoRevisado(`franquiciado-${id}`)
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'reportes_operativos',
+        },
+        (payload) => {
+          const id = (payload.new as { id?: string }).id
+          if (id) agregarReporteNoRevisado(`operativo-${id}`)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   useEffect(() => {
     if (location.pathname.startsWith('/alertas')) {
       limpiarAlertasNoRevisadas()
+    }
+
+    if (location.pathname.startsWith('/reportes')) {
+      limpiarReportesNoRevisados()
     }
   }, [location.pathname])
 
@@ -91,9 +138,9 @@ export default function MainLayout() {
                 key={item.ruta}
                 to={item.ruta}
                 className={({ isActive }) =>
-                  `group relative flex shrink-0 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium outline-none ring-orange-200 focus-visible:ring-2 lg:px-4 ${
+                  `group relative flex shrink-0 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium outline-none ring-red-200 focus-visible:ring-2 lg:px-4 ${
                     isActive
-                      ? 'border-r-4 border-[#a33e00] bg-[#eeeeee] text-[#a33e00]'
+                      ? 'border-r-4 border-[#c8102e] bg-[#eeeeee] text-[#c8102e]'
                       : 'text-[#3f3f46] hover:bg-[#f1effa] hover:text-[#111111]'
                   }`
                 }
@@ -104,6 +151,12 @@ export default function MainLayout() {
                   <span className="absolute right-2 top-1/2 flex h-3 w-3 -translate-y-1/2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
                     <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
+                  </span>
+                )}
+                {item.ruta === '/reportes' && reportesNoRevisados.length > 0 && (
+                  <span className="absolute right-2 top-1/2 flex h-3 w-3 -translate-y-1/2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-yellow-500" />
                   </span>
                 )}
               </NavLink>

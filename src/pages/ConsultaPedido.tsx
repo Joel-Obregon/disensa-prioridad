@@ -83,8 +83,8 @@ export default function ConsultaPedido() {
     const codigo = consulta.codigo.trim()
     const cedula = normalizarCedula(consulta.cedula)
 
-    if (!codigo || cedula.length < 10) {
-      setError('Ingresa el codigo del pedido y una cedula o RUC valido.')
+    if (!codigo || cedula.length < 6) {
+      setError('Ingresa el codigo del pedido y el codigo de cliente o RUC valido.')
       setCargando(false)
       return
     }
@@ -182,9 +182,9 @@ export default function ConsultaPedido() {
   const semaforo = pedido ? resolverSemaforoPedido(pedido) : null
 
   return (
-    <div className="min-h-screen bg-[#fbf8ff] px-4 py-8 lg:flex lg:items-center lg:justify-center lg:px-8">
-      <main className="mx-auto grid w-full max-w-7xl overflow-hidden border border-[#cfc4c5] bg-white lg:min-h-[720px] lg:grid-cols-[0.36fr_0.64fr]">
-        <aside className="relative hidden overflow-hidden border-r border-[#cfc4c5] bg-[#f4f2fd] p-10 lg:flex lg:flex-col">
+    <div className="min-h-screen bg-[#fbf8ff] px-3 py-4 sm:px-5 lg:px-8 lg:py-6 xl:px-10">
+      <main className="mx-auto grid w-full max-w-[1800px] overflow-hidden border border-[#cfc4c5] bg-white lg:min-h-[calc(100vh-3rem)] lg:grid-cols-[minmax(280px,0.26fr)_minmax(0,1fr)]">
+        <aside className="relative hidden overflow-hidden border-r border-[#cfc4c5] bg-[#f4f2fd] p-8 lg:flex lg:flex-col xl:p-10">
           <div className="absolute inset-0 opacity-70 [background-image:radial-gradient(#cfc4c5_1px,transparent_1px)] [background-size:24px_24px]" />
           <div className="relative z-10">
             <img src={disensaLogo} alt="Disensa" className="mb-8 h-14 w-14 rounded bg-white p-1 ring-1 ring-[#cfc4c5]" />
@@ -198,7 +198,7 @@ export default function ConsultaPedido() {
           </div>
         </aside>
 
-        <section className="space-y-6 p-5 sm:p-8 lg:p-10">
+        <section className="min-w-0 space-y-6 p-5 sm:p-8 lg:p-10 xl:p-12">
           <div className="flex flex-col gap-4 border-b border-[#cfc4c5] pb-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-[#a33e00]">Consulta de invitado</p>
@@ -216,8 +216,8 @@ export default function ConsultaPedido() {
             </Link>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
+        <section className="self-start rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="rounded-lg bg-orange-100 p-3 text-orange-700">
               <Search size={22} />
@@ -225,7 +225,7 @@ export default function ConsultaPedido() {
             <div>
               <h2 className="text-lg font-bold text-slate-900">Consultar pedido</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Usa el codigo unico del pedido y la cedula o RUC del franquiciado.
+                Usa el codigo del pedido y el codigo de cliente o RUC del franquiciado.
               </p>
             </div>
           </div>
@@ -242,12 +242,12 @@ export default function ConsultaPedido() {
             </label>
 
             <label className="block text-sm font-medium text-slate-700">
-              Cedula o RUC
+              Codigo de cliente o RUC
               <input
                 value={consulta.cedula}
                 onChange={(event) => setConsulta({ ...consulta, cedula: event.target.value })}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Ej. 0912345678"
+                placeholder="Ej. 6192102"
               />
             </label>
 
@@ -280,7 +280,7 @@ export default function ConsultaPedido() {
               <ClipboardList className="mx-auto text-orange-600" size={36} />
               <p className="mt-3 font-semibold text-slate-800">Busca un pedido para ver su avance.</p>
               <p className="mt-1 text-sm">
-                El franquiciado no necesita correo ni contrasena para consultar.
+                El franquiciado no necesita correo ni contrasena; debe coincidir pedido y cliente.
               </p>
             </div>
           )}
