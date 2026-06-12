@@ -39,10 +39,30 @@ export const permisosPorRol: Record<RolUsuario, RutaProtegida[]> = {
     '/calendario',
     '/estado-sistema',
   ],
+  observador: [
+    '/dashboard',
+    '/pedidos',
+    '/inventario',
+    '/reglas',
+    '/alertas',
+    '/reportes',
+    '/calendario',
+    '/estado-sistema',
+    '/usuarios',
+  ],
 }
 
 export function esRolInterno(rol: string | undefined): rol is RolUsuario {
-  return rol === 'administrador' || rol === 'suministrador' || rol === 'bodega'
+  return (
+    rol === 'administrador' ||
+    rol === 'suministrador' ||
+    rol === 'bodega' ||
+    rol === 'observador'
+  )
+}
+
+export function esRolSoloLectura(rol: string | undefined) {
+  return rol === 'observador'
 }
 
 export function puedeAcceder(rol: string | undefined, ruta: string) {
@@ -58,5 +78,6 @@ export function rutaInicialPorRol(rol: string | undefined) {
 export function describirRol(rol: RolUsuario) {
   if (rol === 'administrador') return 'Acceso completo al sistema y usuarios'
   if (rol === 'suministrador') return 'Pedidos de abastecimiento, materiales y alertas'
+  if (rol === 'observador') return 'Consulta completa sin permisos de modificacion'
   return 'Inventario, despacho, pedidos y reportes operativos'
 }

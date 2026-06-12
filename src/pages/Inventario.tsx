@@ -24,6 +24,8 @@ import {
   escucharMateriales,
   type MaterialInput,
 } from '../services/materialesService'
+import { useAuth } from '../auth/authState'
+import { esRolSoloLectura } from '../auth/permisos'
 import type { InventarioOperativo } from '../types/material'
 
 type MaterialForm = {
@@ -53,6 +55,8 @@ const formularioInicial: MaterialForm = {
 const MATERIALES_INVENTARIO_POR_PAGINA = 100
 
 export default function Inventario() {
+  const { perfil } = useAuth()
+  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
@@ -90,6 +94,11 @@ export default function Inventario() {
 
   async function registrarMaterial(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (soloLectura) {
+      setError('Rol observador: puedes abrir el formulario, pero no guardar materiales.')
+      return
+    }
+
     setGuardando(true)
     setError('')
     setAviso('')
@@ -118,6 +127,11 @@ export default function Inventario() {
   }
 
   function iniciarEdicion(material: InventarioOperativo) {
+    if (soloLectura) {
+      setError('Rol observador: no puedes editar materiales.')
+      return
+    }
+
     setError('')
     setAviso('')
     setEditandoId(material.id)
@@ -130,6 +144,11 @@ export default function Inventario() {
   }
 
   async function guardarEdicion(material: InventarioOperativo) {
+    if (soloLectura) {
+      setError('Rol observador: no puedes guardar cambios de inventario.')
+      return
+    }
+
     setGuardando(true)
     setError('')
     setAviso('')
@@ -158,6 +177,11 @@ export default function Inventario() {
   }
 
   async function eliminarMaterialSeleccionado(material: InventarioOperativo) {
+    if (soloLectura) {
+      setError('Rol observador: no puedes eliminar materiales.')
+      return
+    }
+
     const confirmado = window.confirm(
       `Eliminar ${material.nombre}? Se quitara del inventario y se cerraran sus alertas relacionadas.`
     )
@@ -409,7 +433,7 @@ export default function Inventario() {
             <div className="flex items-end">
               <button
                 type="submit"
-                disabled={guardando}
+                disabled={guardando || soloLectura}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
               >
                 <Save size={16} />
@@ -644,7 +668,7 @@ export default function Inventario() {
                             <button
                               type="button"
                               onClick={() => guardarEdicion(material)}
-                              disabled={guardando}
+                              disabled={guardando || soloLectura}
                               className="inline-flex items-center gap-1 rounded-lg border border-green-200 px-3 py-1.5 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60"
                             >
                               <Save size={14} />
@@ -664,6 +688,7 @@ export default function Inventario() {
                             <button
                               type="button"
                               onClick={() => iniciarEdicion(material)}
+                              disabled={soloLectura}
                               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                             >
                               <Edit3 size={14} />
@@ -671,7 +696,7 @@ export default function Inventario() {
                             </button>
                             <button
                               type="button"
-                              disabled={eliminando === material.id}
+                              disabled={eliminando === material.id || soloLectura}
                               onClick={() => eliminarMaterialSeleccionado(material)}
                               className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
                             >

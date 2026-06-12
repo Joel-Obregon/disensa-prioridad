@@ -15,6 +15,8 @@ import {
   claseSemaforoBorde,
   describirTiempoPedido,
 } from '../lib/semaforoOperativo'
+import { useAuth } from '../auth/authState'
+import { esRolSoloLectura } from '../auth/permisos'
 import { registrarAuditoria } from '../services/auditoriaService'
 import {
   actualizarEstadoAlerta,
@@ -69,6 +71,8 @@ const vistas: Array<{ id: VistaAlertas; label: string }> = [
 ]
 
 export default function Alertas() {
+  const { perfil } = useAuth()
+  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [categoria, setCategoria] = useState<CategoriaAlertas>('materiales')
   const [vista, setVista] = useState<VistaAlertas>('operativas')
@@ -98,6 +102,10 @@ export default function Alertas() {
 
   async function cambiarEstado(alerta: Alerta, estado: Alerta['estado']) {
     setError('')
+    if (soloLectura) {
+      setError('Rol observador: no puedes cerrar ni modificar alertas.')
+      return
+    }
 
     const { error } = await actualizarEstadoAlerta(alerta.id, estado)
 
@@ -509,6 +517,7 @@ export default function Alertas() {
                     <TarjetaAlerta
                       key={alerta.id}
                       alerta={alerta}
+                      soloLectura={soloLectura}
                       onCerrar={(alertaSeleccionada) => cambiarEstado(alertaSeleccionada, 'cerrada')}
                       onVerDetalle={setAlertaDetalle}
                     />
@@ -536,10 +545,12 @@ function TarjetaAlerta({
   alerta,
   onCerrar,
   onVerDetalle,
+  soloLectura,
 }: {
   alerta: Alerta
   onCerrar: (alerta: Alerta) => void
   onVerDetalle: (alerta: Alerta) => void
+  soloLectura: boolean
 }) {
   const tiempoPedido = tiempoPedidoAlerta(alerta)
 
@@ -626,7 +637,7 @@ function TarjetaAlerta({
         )}
         <button
           type="button"
-          disabled={alerta.estado === 'cerrada'}
+          disabled={soloLectura || alerta.estado === 'cerrada'}
           onClick={() => onCerrar(alerta)}
           className="alerta-action-button inline-flex items-center gap-2 border border-green-200 px-3 py-2 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
         >

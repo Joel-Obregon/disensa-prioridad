@@ -66,10 +66,10 @@ export async function confirmarEntregaFranquiciado(pedido: Pedido, cedula: strin
     }
   }
 
-  if (pedido.estado !== 'en_despacho') {
+  if (['entregado', 'cancelado', 'rechazado'].includes(pedido.estado)) {
     return {
       data: null,
-      error: new Error('Solo se puede confirmar la entrega cuando el pedido esta en despacho.'),
+      error: new Error('Este pedido ya tiene gestion cerrada y no permite una nueva confirmacion.'),
     }
   }
 
@@ -112,27 +112,17 @@ export function normalizarCedula(valor: string) {
 
 function generarCodigosConsulta(codigo: string) {
   const candidatos = new Set<string>()
-  const limpio = codigo.trim()
-  const compacto = limpio.replace(/\s+/g, '')
+  const compacto = codigo.trim().replace(/\s+/g, '')
   const mayusculas = compacto.toUpperCase()
 
-  ;[limpio, compacto, mayusculas].forEach((valor) => {
+  ;[compacto, mayusculas].forEach((valor) => {
     if (valor) candidatos.add(valor)
   })
 
-  const sinPrefijo = mayusculas.replace(/^BFQ-/, '')
-  if (sinPrefijo && sinPrefijo !== mayusculas) {
-    candidatos.add(sinPrefijo)
-  }
-
-  const partes = sinPrefijo.split('-').filter(Boolean)
-  if (partes.length > 0) {
-    candidatos.add(partes[0])
-  }
-
-  if (partes.length >= 2) {
-    candidatos.add(`${partes[0]}-${partes[1]}`)
-    candidatos.add(`BFQ-${partes[0]}-${partes[1]}`)
+  if (mayusculas.startsWith('BFQ-')) {
+    candidatos.add(mayusculas.replace(/^BFQ-/, ''))
+  } else if (mayusculas) {
+    candidatos.add(`BFQ-${mayusculas}`)
   }
 
   return [...candidatos]

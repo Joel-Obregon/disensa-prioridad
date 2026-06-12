@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../auth/authState'
+import { esRolSoloLectura } from '../auth/permisos'
 import MaterialSearchSelect from '../components/MaterialSearchSelect'
 import { claseSemaforoBadge } from '../lib/semaforoOperativo'
 import {
@@ -116,6 +117,7 @@ const prioridadesReporteOperativo: PrioridadReporteOperativo[] = [
 
 export default function Reportes() {
   const { perfil } = useAuth()
+  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [reportesFranquiciado, setReportesFranquiciado] = useState<ReporteFranquiciado[]>([])
@@ -153,6 +155,11 @@ export default function Reportes() {
 
   async function registrarReporteOperativo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (soloLectura) {
+      setErrorReporte('Rol observador: no puedes crear reportes operativos.')
+      return
+    }
+
     setGuardandoReporte(true)
     setErrorReporte('')
     setMensajeReporte('')
@@ -312,11 +319,7 @@ export default function Reportes() {
     return reportesFranquiciado.filter((reporte) => {
       const pedidoRelacionado =
         pedidos.find((pedido) => pedido.id === reporte.pedido_id) ||
-        pedidos.find(
-          (pedido) =>
-            pedido.codigo === reporte.codigo_consulta ||
-            pedido.codigo_consulta === reporte.codigo_consulta
-        )
+        pedidos.find((pedido) => pedido.codigo === reporte.codigo_consulta)
 
       return normalizarTexto(
         [
@@ -342,11 +345,7 @@ export default function Reportes() {
 
     return (
       pedidos.find((pedido) => pedido.id === reporteDetalle.pedido_id) ||
-      pedidos.find(
-        (pedido) =>
-          pedido.codigo === reporteDetalle.codigo_consulta ||
-          pedido.codigo_consulta === reporteDetalle.codigo_consulta
-      ) ||
+      pedidos.find((pedido) => pedido.codigo === reporteDetalle.codigo_consulta) ||
       null
     )
   }, [pedidos, reporteDetalle])
@@ -364,6 +363,10 @@ export default function Reportes() {
           <button
             type="button"
             onClick={() => {
+              if (soloLectura) {
+                setErrorReporte('Rol observador: no puedes crear reportes operativos.')
+                return
+              }
               setMostrarFormularioReporte((actual) => !actual)
               setErrorReporte('')
               setMensajeReporte('')
@@ -375,7 +378,11 @@ export default function Reportes() {
           </button>
           <button
             type="button"
-            onClick={() => exportarPedidosCsv(pedidosFiltrados)}
+            onClick={() =>
+              soloLectura
+                ? setErrorReporte('Rol observador: no puedes exportar datos.')
+                : exportarPedidosCsv(pedidosFiltrados)
+            }
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
             <Download size={16} />
@@ -383,7 +390,11 @@ export default function Reportes() {
           </button>
           <button
             type="button"
-            onClick={() => exportarDespachoCsv(materialesPorDespachar)}
+            onClick={() =>
+              soloLectura
+                ? setErrorReporte('Rol observador: no puedes exportar datos.')
+                : exportarDespachoCsv(materialesPorDespachar)
+            }
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700"
           >
             <Download size={16} />
@@ -496,7 +507,7 @@ export default function Reportes() {
 
           <button
             type="submit"
-            disabled={guardandoReporte}
+            disabled={guardandoReporte || soloLectura}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
           >
             <Send size={17} />

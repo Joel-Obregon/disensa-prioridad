@@ -128,6 +128,13 @@ export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
     .eq('id', id)
 }
 
+export async function actualizarCantidadDespachoPedido(id: string, cantidadDespacho: number | null) {
+  return supabase
+    .from('pedidos')
+    .update({ cantidad_despacho: cantidadDespacho })
+    .eq('id', id)
+}
+
 function normalizarCedula(valor: string) {
   return valor.replace(/\D/g, '').trim()
 }

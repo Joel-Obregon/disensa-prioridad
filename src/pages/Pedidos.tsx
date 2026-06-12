@@ -33,7 +33,9 @@ import {
 } from '../services/franquiciadoService'
 import { escucharInventarioOperativo } from '../services/inventarioService'
 import { escucharMateriales, obtenerMateriales } from '../services/materialesService'
+import { esRolSoloLectura } from '../auth/permisos'
 import {
+  actualizarCantidadDespachoPedido,
   actualizarPedido,
   actualizarEstadoPedido,
   crearPedido,
@@ -147,6 +149,7 @@ const PEDIDOS_POR_PAGINA = 100
 export default function Pedidos() {
   const { perfil } = useAuth()
   const rol = perfil?.rol || 'administrador'
+  const soloLectura = esRolSoloLectura(rol)
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [materiales, setMateriales] = useState<Material[]>([])
   const [alertas, setAlertas] = useState<Alerta[]>([])
@@ -206,6 +209,11 @@ export default function Pedidos() {
 
   async function registrarPedido(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (soloLectura) {
+      setError('Rol observador: puedes revisar el formulario, pero no guardar cambios.')
+      return
+    }
+
     setGuardando(true)
     setError('')
 
@@ -322,6 +330,11 @@ export default function Pedidos() {
   }
 
   function iniciarEdicion(pedido: Pedido) {
+    if (soloLectura) {
+      setPedidoDetalle(pedido)
+      return
+    }
+
     const material = materiales.find(
       (item) =>
         item.id === pedido.material_id ||
@@ -349,6 +362,10 @@ export default function Pedidos() {
 
   async function cambiarEstado(pedido: Pedido, estado: EstadoPedido) {
     setError('')
+    if (soloLectura) {
+      setError('Rol observador: no puedes cambiar estados de pedidos.')
+      return
+    }
 
     const contexto = contextoOperativoPedido(pedido)
     const pedidoContextual = {
@@ -387,6 +404,10 @@ export default function Pedidos() {
 
   async function despacharPedidoSeleccionado(pedido: Pedido) {
     setError('')
+    if (soloLectura) {
+      setError('Rol observador: no puedes despachar pedidos ni descontar stock.')
+      return
+    }
 
     const contexto = contextoOperativoPedido(pedido)
     const pedidoContextual = {
@@ -430,6 +451,81 @@ export default function Pedidos() {
     await cargarDatos()
   }
 
+  async function reponerPedidoReportado(pedido: Pedido) {
+    setError('')
+
+    if (soloLectura) {
+      setError('Rol observador: no puedes reponer pedidos ni descontar stock.')
+      return
+    }
+
+    const contexto = contextoOperativoPedido(pedido)
+    const cantidadOriginal = Math.max(1, cantidadParaDespacho(pedido))
+    const cantidadIngresada = window.prompt(
+      `Cantidad de ${pedido.material} a reponer por reporte del franquiciado:`,
+      String(cantidadOriginal)
+    )
+
+    if (!cantidadIngresada) return
+
+    const cantidadReposicion = Number(cantidadIngresada.replace(',', '.'))
+
+    if (!Number.isFinite(cantidadReposicion) || cantidadReposicion <= 0 || !Number.isInteger(cantidadReposicion)) {
+      setError('La cantidad a reponer debe ser un numero entero mayor a cero.')
+      return
+    }
+
+    if (cantidadReposicion > contexto.stockDisponible) {
+      setError(
+        `No se puede reponer ${pedido.codigo}: stock disponible ${contexto.stockDisponible}; requerido ${cantidadReposicion}.`
+      )
+      return
+    }
+
+    const confirmado = window.confirm(
+      `Reponer y reenviar ${cantidadReposicion} de ${pedido.material}? Esto descontara stock disponible y dejara el pedido en despacho.`
+    )
+
+    if (!confirmado) return
+
+    const cantidadDespachoAnterior = pedido.cantidad_despacho ?? null
+    const cantidadResult = await actualizarCantidadDespachoPedido(pedido.id, cantidadReposicion)
+
+    if (cantidadResult.error) {
+      setError(cantidadResult.error.message)
+      return
+    }
+
+    const pedidoReposicion = {
+      ...pedido,
+      material_id: contexto.material?.id || pedido.material_id,
+      cantidad_despacho: cantidadReposicion,
+      stock_disponible: contexto.stockDisponible,
+    }
+
+    const { error } = await despacharPedido(pedidoReposicion, {
+      material_id: contexto.material?.id || pedido.material_id,
+      codigo_material: contexto.codigoMaterial,
+      stock_disponible_operativo: contexto.stockDisponible,
+      responsable: 'Bodega',
+    })
+
+    if (error) {
+      await actualizarCantidadDespachoPedido(pedido.id, cantidadDespachoAnterior)
+      setError(error.message)
+      return
+    }
+
+    await registrarAuditoria({
+      entidad: 'pedidos',
+      entidad_id: pedido.id,
+      accion: 'reponer_reporte_franquiciado',
+      detalle: `${pedido.codigo}: reposicion por reporte de ${cantidadReposicion} ${pedido.unidad_medida || 'UN'} de ${pedido.material}.`,
+    })
+
+    await cargarDatos()
+  }
+
   function contextoOperativoPedido(pedido: Pedido) {
     const detalle = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
     const material = buscarMaterialPedido(pedido, detalle, materialesLookup)
@@ -442,6 +538,10 @@ export default function Pedidos() {
 
   async function reactivarPedidoSeleccionado(pedido: Pedido) {
     setError('')
+    if (soloLectura) {
+      setError('Rol observador: no puedes reactivar pedidos cerrados.')
+      return
+    }
 
     const nota = window.prompt(
       `Explica por que se reactiva ${pedido.codigo}. Esta nota quedara en el historial.`
@@ -664,7 +764,16 @@ export default function Pedidos() {
     [pedidosConReporteActivo, pedidosFiltrados]
   )
 
-  const pedidosPriorizados = vistaPedidos === 'historial' ? pedidosHistorial : pedidosOperativos
+  const busquedaActiva = busqueda.trim().length > 0
+  const pedidosBusqueda = useMemo(
+    () => (busquedaActiva ? [...pedidosOperativos, ...pedidosHistorial] : []),
+    [busquedaActiva, pedidosHistorial, pedidosOperativos]
+  )
+  const pedidosPriorizados = busquedaActiva
+    ? pedidosBusqueda
+    : vistaPedidos === 'historial'
+      ? pedidosHistorial
+      : pedidosOperativos
 
   const totalPaginas = Math.max(1, Math.ceil(pedidosPriorizados.length / PEDIDOS_POR_PAGINA))
   const paginaActual = Math.min(pagina, totalPaginas)
@@ -693,7 +802,11 @@ export default function Pedidos() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() => exportarPedidosCsv(pedidosPriorizados)}
+              onClick={() =>
+                soloLectura
+                  ? setError('Rol observador: no puedes exportar datos.')
+                  : exportarPedidosCsv(pedidosPriorizados)
+              }
               className="inline-flex items-center justify-center gap-2 border border-[#c99582] bg-white px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#2b160f] transition hover:bg-[#fff1eb]"
             >
               <Download size={17} />
@@ -987,7 +1100,7 @@ export default function Pedidos() {
           <div className="mt-6 flex justify-end">
             <button
               type="submit"
-              disabled={guardando || materiales.length === 0}
+              disabled={guardando || materiales.length === 0 || soloLectura}
               className="rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
             >
               {guardando ? 'Guardando...' : pedidoEditandoId ? 'Guardar cambios' : 'Guardar pedido'}
@@ -1023,11 +1136,9 @@ export default function Pedidos() {
             </thead>
             <tbody>
               {pedidosVisibles.map((pedido) => {
-                const enHistorial = vistaPedidos === 'historial'
-                const reabiertoPorReporte =
-                  vistaPedidos === 'operativos' &&
-                  pedidoCerrado(pedido.estado) &&
-                  tieneReporteActivo(pedido, pedidosConReporteActivo)
+                const enHistorial =
+                  pedidoCerrado(pedido.estado) && !tieneReporteActivo(pedido, pedidosConReporteActivo)
+                const reabiertoPorReporte = tieneReporteActivo(pedido, pedidosConReporteActivo)
                 const cantidadPendiente = cantidadParaDespacho(pedido)
                 const detalleOperativo = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
                 const material = buscarMaterialPedido(pedido, detalleOperativo, materialesLookup)
@@ -1151,75 +1262,96 @@ export default function Pedidos() {
                             icono={<Eye size={14} />}
                             onClick={() => setPedidoDetalle(pedido)}
                           />
-                          <AccionEstado
-                            label="Editar"
-                            icono={<Edit3 size={14} />}
-                            disabled={!puedeGestionar || pedidoCerrado(pedido.estado)}
-                            onClick={() => iniciarEdicion(pedido)}
-                          />
-                          {flujo === 'compra' ? (
-                            <>
-                              <AccionEstado
-                                label="Revisar compra"
-                                disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')}
-                                onClick={() => cambiarEstado(pedido, 'en_revision')}
-                              />
-                              <AccionEstado
-                                label="Planificar OC"
-                                icono={<ClipboardCheck size={14} />}
-                                disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'aprobado')}
-                                onClick={() => cambiarEstado(pedido, 'aprobado')}
-                              />
-                              <AccionEstado
-                                label="Recibido"
-                                icono={<CheckCircle2 size={14} />}
-                                disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'entregado')}
-                                onClick={() => cambiarEstado(pedido, 'entregado')}
-                              />
-                            </>
+                          {reabiertoPorReporte ? (
+                            <AccionEstado
+                              label="Reponer y reenviar"
+                              icono={<Truck size={14} />}
+                              disabled={soloLectura || !puedeGestionar || stockDisponible <= 0}
+                              onClick={() => reponerPedidoReportado(pedido)}
+                            />
                           ) : (
                             <>
                               <AccionEstado
-                                label="Revision"
-                                disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')}
-                                onClick={() => cambiarEstado(pedido, 'en_revision')}
+                                label="Editar"
+                                icono={<Edit3 size={14} />}
+                                disabled={soloLectura || !puedeGestionar || pedidoCerrado(pedido.estado)}
+                                onClick={() => iniciarEdicion(pedido)}
                               />
+                              {flujo === 'compra' ? (
+                                <>
+                                  <AccionEstado
+                                    label="Revisar compra"
+                                    disabled={
+                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
+                                    }
+                                    onClick={() => cambiarEstado(pedido, 'en_revision')}
+                                  />
+                                  <AccionEstado
+                                    label="Planificar OC"
+                                    icono={<ClipboardCheck size={14} />}
+                                    disabled={
+                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'aprobado')
+                                    }
+                                    onClick={() => cambiarEstado(pedido, 'aprobado')}
+                                  />
+                                  <AccionEstado
+                                    label="Recibido"
+                                    icono={<CheckCircle2 size={14} />}
+                                    disabled={
+                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'entregado')
+                                    }
+                                    onClick={() => cambiarEstado(pedido, 'entregado')}
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <AccionEstado
+                                    label="Revision"
+                                    disabled={
+                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
+                                    }
+                                    onClick={() => cambiarEstado(pedido, 'en_revision')}
+                                  />
+                                  <AccionEstado
+                                    label="Aprobar"
+                                    icono={<ClipboardCheck size={14} />}
+                                    disabled={
+                                      !puedeGestionar ||
+                                      soloLectura ||
+                                      !puedeCambiarA(pedido.estado, 'aprobado') ||
+                                      !stockSuficiente
+                                    }
+                                    onClick={() => cambiarEstado(pedido, 'aprobado')}
+                                  />
+                                  <AccionEstado
+                                    label="Despachar"
+                                    icono={<Truck size={14} />}
+                                    disabled={
+                                      !puedeGestionar ||
+                                      soloLectura ||
+                                      !puedeCambiarA(pedido.estado, 'en_despacho') ||
+                                      !stockSuficiente
+                                    }
+                                    onClick={() => despacharPedidoSeleccionado(pedido)}
+                                  />
+                                </>
+                              )}
                               <AccionEstado
-                                label="Aprobar"
-                                icono={<ClipboardCheck size={14} />}
-                                disabled={
-                                  !puedeGestionar ||
-                                  !puedeCambiarA(pedido.estado, 'aprobado') ||
-                                  !stockSuficiente
-                                }
-                                onClick={() => cambiarEstado(pedido, 'aprobado')}
+                                label="Cancelar"
+                                icono={<XCircle size={14} />}
+                                peligro
+                                disabled={soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'cancelado')}
+                                onClick={() => cambiarEstado(pedido, 'cancelado')}
                               />
-                              <AccionEstado
-                                label="Despachar"
-                                icono={<Truck size={14} />}
-                                disabled={
-                                  !puedeGestionar ||
-                                  !puedeCambiarA(pedido.estado, 'en_despacho') ||
-                                  !stockSuficiente
-                                }
-                                onClick={() => despacharPedidoSeleccionado(pedido)}
-                              />
+                              {pedido.estado === 'cancelado' && (
+                                <AccionEstado
+                                  label="Reactivar"
+                                  icono={<RotateCcw size={14} />}
+                                  disabled={soloLectura || !puedeGestionar}
+                                  onClick={() => reactivarPedidoSeleccionado(pedido)}
+                                />
+                              )}
                             </>
-                          )}
-                          <AccionEstado
-                            label="Cancelar"
-                            icono={<XCircle size={14} />}
-                            peligro
-                            disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'cancelado')}
-                            onClick={() => cambiarEstado(pedido, 'cancelado')}
-                          />
-                          {pedido.estado === 'cancelado' && (
-                            <AccionEstado
-                              label="Reactivar"
-                              icono={<RotateCcw size={14} />}
-                              disabled={!puedeGestionar}
-                              onClick={() => reactivarPedidoSeleccionado(pedido)}
-                            />
                           )}
                         </div>
                       </details>
@@ -1716,8 +1848,7 @@ function fechaHistorialPedido(pedido: Pedido) {
 function tieneReporteActivo(pedido: Pedido, reportesActivos: Set<string>) {
   return (
     reportesActivos.has(`id:${pedido.id}`) ||
-    reportesActivos.has(`codigo:${normalizarTexto(pedido.codigo)}`) ||
-    reportesActivos.has(`codigo:${normalizarTexto(pedido.codigo_consulta || '')}`)
+    reportesActivos.has(`codigo:${normalizarTexto(pedido.codigo)}`)
   )
 }
 

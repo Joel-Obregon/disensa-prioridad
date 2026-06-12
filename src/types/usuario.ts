@@ -1,4 +1,4 @@
-export type RolUsuario = 'administrador' | 'suministrador' | 'bodega'
+export type RolUsuario = 'administrador' | 'suministrador' | 'bodega' | 'observador'
 
 export type UsuarioApp = {
   id: string

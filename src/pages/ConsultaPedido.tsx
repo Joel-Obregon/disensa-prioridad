@@ -126,11 +126,11 @@ export default function ConsultaPedido() {
 
     const { error } = await crearReporteFranquiciado({
       pedido_id: pedido.id,
-      codigo_consulta: pedido.codigo_consulta || pedido.codigo,
+      codigo_consulta: pedido.codigo,
       cedula_solicitante: pedido.cedula_solicitante || consulta.cedula,
       solicitante: pedido.solicitante,
       motivo: reporte.motivo,
-      descripcion: reporte.descripcion,
+      descripcion: `Material reportado: ${pedido.material}\n\n${reporte.descripcion}`,
     })
 
     if (error) {
@@ -361,7 +361,7 @@ export default function ConsultaPedido() {
                         {textoConfirmacionEntrega(pedido.estado)}
                       </p>
                     </div>
-                    {pedido.estado === 'en_despacho' && (
+                    {puedeConfirmarEntrega(pedido.estado) && (
                       <button
                         type="button"
                         onClick={confirmarEntrega}
@@ -488,7 +488,7 @@ function estadoCompletado(actual: EstadoPedido, estado: EstadoPedido) {
 }
 
 function textoConfirmacionEntrega(estado: EstadoPedido) {
-  if (estado === 'en_despacho') {
+  if (puedeConfirmarEntrega(estado)) {
     return 'Cuando recibas el material, confirma la entrega para cerrar el proceso operativo.'
   }
 
@@ -501,6 +501,10 @@ function textoConfirmacionEntrega(estado: EstadoPedido) {
   }
 
   return 'La confirmacion se habilitara cuando bodega marque el pedido como en despacho.'
+}
+
+function puedeConfirmarEntrega(estado: EstadoPedido) {
+  return !['entregado', 'cancelado', 'rechazado'].includes(estado)
 }
 
 function colorEstado(pedido: Pedido) {
