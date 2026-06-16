@@ -23,6 +23,7 @@ FUENTE_PENDIENTES = "BASE_PENDIENTES_BODEGA_A_FQ_EDITADO.xlsx"
 FUENTE_INVENTARIO = "INVENTARIO_03-06-2026_EDITADO.xlsx"
 FUENTE_TRANSITO = "TRANSITO_ejemplo_EDITADO.xlsx"
 FUENTE_OC = "OC_PENDIENTES_SUM_A_BOG_EDITADO.xlsx"
+FUENTE_CATALOGO = "BASE.xlsx"
 EXCEL_EPOCH = datetime(1899, 12, 30, tzinfo=timezone.utc)
 
 
@@ -65,7 +66,7 @@ class SupabaseRest:
         request = urllib.request.Request(endpoint, data=data, headers=headers, method=method)
 
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
+            with urllib.request.urlopen(request, timeout=300) as response:
                 body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
@@ -134,6 +135,12 @@ def main() -> None:
         "transito": resolve_path(args.transito, FUENTE_TRANSITO),
         "oc": resolve_path(args.oc_pendientes, FUENTE_OC),
     }
+    catalogo_path = None if args.sin_catalogo_materiales else resolve_optional_path(
+        args.catalogo_materiales,
+        FUENTE_CATALOGO,
+    )
+    if catalogo_path:
+        paths["catalogo"] = catalogo_path
 
     for nombre, path in paths.items():
         if not path.exists():
@@ -175,7 +182,17 @@ def main() -> None:
     client.upsert("centros_bodega", centros, "centro_codigo")
     client.upsert("clientes_franquiciado", clientes, "codigo_cliente")
     client.upsert("proveedores_operativos", proveedores, "codigo_proveedor")
-    client.upsert("material_catalogo", materiales, "codigo_material")
+    try:
+        client.upsert("material_catalogo", materiales, "codigo_material")
+    except RuntimeError as exc:
+        if "catalogo" in data and "material_catalogo" in str(exc):
+            raise SystemExit(
+                "Supabase aun no tiene las columnas del catalogo maestro. "
+                "Ejecuta primero supabase/13_catalogo_maestro_base_materiales.sql "
+                "en SQL Editor y vuelve a correr la importacion.\n"
+                f"Detalle tecnico: {exc}"
+            ) from exc
+        raise
 
     print("Preparando movimientos operativos")
     inventario = build_inventario(data["inventario"])
@@ -189,7 +206,19 @@ def main() -> None:
     client.upsert("oc_pendientes_bodega", oc_pendientes, "oc_linea_key")
 
     print("Sincronizando con tablas visibles del prototipo")
-    refresh_result = client.rpc("refrescar_prototipo_bodega_fq")
+    try:
+        refresh_result = client.rpc("refrescar_prototipo_bodega_fq")
+    except RuntimeError as exc:
+        message = str(exc)
+        if "57014" in message or "statement timeout" in message:
+            raise SystemExit(
+                "Las bases operativas ya fueron cargadas, pero Supabase corto el refresco "
+                "de las tablas visibles por tiempo de ejecucion.\n"
+                "Ejecuta supabase/14_refresco_prototipo_bodega_fq_timeout.sql en SQL Editor "
+                "y luego corre: select public.refrescar_prototipo_bodega_fq();\n"
+                f"Detalle tecnico: {exc}"
+            ) from exc
+        raise
 
     summary = {
         "ok": True,
@@ -199,6 +228,7 @@ def main() -> None:
         "clientes": len(clientes),
         "proveedores": len(proveedores),
         "materiales_catalogo": len(materiales),
+        "filas_catalogo_maestro": len(data["catalogo"]) if "catalogo" in data else 0,
         "inventario_bodega": len(inventario),
         "pedidos_bodega_fq": len(pendientes),
         "transito_bodega": len(transito),
@@ -216,6 +246,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--inventario", help=f"Ruta de {FUENTE_INVENTARIO}")
     parser.add_argument("--transito", help=f"Ruta de {FUENTE_TRANSITO}")
     parser.add_argument("--oc-pendientes", help=f"Ruta de {FUENTE_OC}")
+    parser.add_argument(
+        "--catalogo-materiales",
+        help=(
+            f"Ruta del catalogo maestro de materiales ({FUENTE_CATALOGO}). "
+            "Si no se indica, se usa el archivo de Downloads cuando existe."
+        ),
+    )
+    parser.add_argument(
+        "--sin-catalogo-materiales",
+        action="store_true",
+        help="Omite BASE.xlsx aunque exista en Downloads.",
+    )
     parser.add_argument("--url", help="URL del proyecto Supabase.")
     parser.add_argument("--service-role-key", help="Secret/service role key de Supabase.")
     parser.add_argument("--batch-size", type=int, default=1000, help="Filas por lote REST.")
@@ -232,6 +274,17 @@ def resolve_path(value: str | None, default_name: str) -> Path:
     if value:
         return Path(value).expanduser().resolve()
     return (Path.home() / "Downloads" / default_name).resolve()
+
+
+def resolve_optional_path(value: str | None, default_name: str) -> Path | None:
+    if value:
+        path = Path(value).expanduser().resolve()
+        if not path.exists():
+            raise SystemExit(f"No existe el archivo de catalogo maestro: {path}")
+        return path
+
+    path = (Path.home() / "Downloads" / default_name).resolve()
+    return path if path.exists() else None
 
 
 def read_excel(path: Path) -> pd.DataFrame:
@@ -552,6 +605,23 @@ def build_clientes(df: pd.DataFrame) -> list[dict[str, Any]]:
 def build_proveedores(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
     rows: dict[str, dict[str, Any]] = {}
 
+    if "catalogo" in data:
+        for _, row in data["catalogo"].iterrows():
+            code = text_value(row.get("c_fabricante"))
+            name = text_value(row.get("n_fabricante"))
+            if not code or not name:
+                continue
+            put_unique(
+                rows,
+                code,
+                {
+                    "codigo_proveedor": code,
+                    "nombre_proveedor": name,
+                    "fuente": FUENTE_CATALOGO,
+                    "updated_at": now_iso(),
+                },
+            )
+
     for source_name, source_file in (("transito", FUENTE_TRANSITO), ("oc", FUENTE_OC)):
         for _, row in data[source_name].iterrows():
             code, name = split_provider(row.get("nombre_del_proveedor"))
@@ -588,22 +658,44 @@ def build_proveedores(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
 
 def build_materiales(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
     rows: dict[str, dict[str, Any]] = {}
+    catalogo_defaults = {
+        "codigo_nuestro_material": None,
+        "codigo_fabricante_nuestro": None,
+        "codigo_suministrador": None,
+        "nombre_suministrador": None,
+        "marca_material": None,
+        "catman_nombre": None,
+        "catman_nuestro": None,
+        "catman_categoria": None,
+        "unidad_medida_base": None,
+        "estado_planificacion": None,
+        "min_venta": 1,
+        "mult_venta": 1,
+        "min_compra": 1,
+        "mult_compra": 1,
+        "fuente_catalogo": None,
+    }
 
-    def add_material(code: Any, name: Any, source: str) -> None:
+    def add_material(
+        code: Any,
+        name: Any,
+        source: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
         material_code = text_value(code)
         material_name = text_value(name)
         if not material_code:
             return
-        put_unique(
-            rows,
-            material_code,
-            {
-                "codigo_material": material_code,
-                "nombre_material": material_name or f"Material {material_code}",
-                "numero_fb": None,
-                "updated_at": now_iso(),
-            },
-        )
+        payload = {
+            "codigo_material": material_code,
+            "nombre_material": material_name or f"Material {material_code}",
+            "numero_fb": None,
+            **catalogo_defaults,
+            "updated_at": now_iso(),
+        }
+        if extra:
+            payload.update(extra)
+        put_unique(rows, material_code, payload)
 
     for _, row in data["transito"].iterrows():
         add_material(row.get("material"), row.get("texto_breve"), FUENTE_TRANSITO)
@@ -613,6 +705,33 @@ def build_materiales(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         add_material(row.get("cod_holcim"), row.get("descripcion"), FUENTE_PENDIENTES)
     for _, row in data["inventario"].iterrows():
         add_material(row.get("material"), row.get("texto_breve_de_material"), FUENTE_INVENTARIO)
+    if "catalogo" in data:
+        for _, row in data["catalogo"].iterrows():
+            add_material(
+                row.get("cdisensa_mat"),
+                row.get("n_materiales"),
+                FUENTE_CATALOGO,
+                {
+                    "numero_fb": text_value(row.get("codnuestro_mat")),
+                    "codigo_nuestro_material": text_value(row.get("codnuestro_mat")),
+                    "codigo_fabricante_nuestro": text_value(row.get("codfab_nuestro")),
+                    "codigo_suministrador": text_value(row.get("c_fabricante")),
+                    "nombre_suministrador": text_value(row.get("n_fabricante")),
+                    "marca_material": text_value(row.get("marca")),
+                    "catman_nombre": text_value(row.get("catman")),
+                    "catman_nuestro": text_value(row.get("catman_nuestro")),
+                    "catman_categoria": text_value(row.get("categoria")),
+                    "unidad_medida_base": text_value(row.get("umb_unidad_de_medida_base")) or "UN",
+                    "estado_planificacion": estado_planificable_value(
+                        text_value(row.get("estado_de_planificacion"))
+                    ),
+                    "min_venta": non_negative_number(row.get("min_vta"), 1),
+                    "mult_venta": non_negative_number(row.get("mult_vta"), 1),
+                    "min_compra": non_negative_number(row.get("min_cmpr"), 1),
+                    "mult_compra": non_negative_number(row.get("mult_cmpr"), 1),
+                    "fuente_catalogo": FUENTE_CATALOGO,
+                },
+            )
 
     return sorted(rows.values(), key=lambda item: item["codigo_material"])
 

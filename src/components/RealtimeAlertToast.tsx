@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { BellRing, CheckCircle2, ShieldAlert, X } from 'lucide-react'
 import {
   actualizarEstadoAlerta,
   escucharAlertas,
   obtenerAlertas,
+  obtenerAlertasVisualesActivas,
 } from '../services/alertasService'
 import {
   agregarAlertaNoRevisada,
@@ -12,9 +13,11 @@ import {
   limpiarAlertasNoRevisadas,
   obtenerAlertasNoRevisadas,
 } from '../lib/alertNotifications'
+import { escucharAlertasVisualesLocales } from '../lib/alertRuntimeEvents'
 import type { Alerta } from '../types/alerta'
 
 const DURACION_TOAST_MS = 6000
+const INTERVALO_RESPALDO_MS = 5000
 
 export default function RealtimeAlertToast() {
   const [alerta, setAlerta] = useState<Alerta | null>(null)
@@ -24,16 +27,79 @@ export default function RealtimeAlertToast() {
   const [visible, setVisible] = useState(false)
   const [centroAbierto, setCentroAbierto] = useState(false)
   const [cargandoCentro, setCargandoCentro] = useState(false)
+  const alertasConocidasRef = useRef<Set<string>>(new Set())
+  const lineaBaseListaRef = useRef(false)
+
+  function registrarAlertaEntrante(nuevaAlerta: Alerta) {
+    if (nuevaAlerta.estado === 'cerrada' || nuevaAlerta.nivel === 'informativa') return
+
+    const yaConocida = alertasConocidasRef.current.has(nuevaAlerta.id)
+    alertasConocidasRef.current.add(nuevaAlerta.id)
+    setAlertasCentro((actual) => agregarAlerta(actual, nuevaAlerta))
+
+    if (yaConocida) return
+
+    setCola((actual) => agregarAlerta(actual, nuevaAlerta))
+    agregarAlertaNoRevisada(nuevaAlerta.id)
+    setIdsNoRevisados(obtenerAlertasNoRevisadas())
+  }
 
   useEffect(() => {
     const dejarDeEscuchar = escucharAlertas((nuevaAlerta) => {
-      setCola((actual) => agregarAlerta(actual, nuevaAlerta))
-      setAlertasCentro((actual) => agregarAlerta(actual, nuevaAlerta))
-      agregarAlertaNoRevisada(nuevaAlerta.id)
-      setIdsNoRevisados(obtenerAlertasNoRevisadas())
+      registrarAlertaEntrante(nuevaAlerta)
     })
 
     return dejarDeEscuchar
+  }, [])
+
+  useEffect(() => {
+    return escucharAlertasVisualesLocales((nuevaAlerta) => {
+      registrarAlertaEntrante(nuevaAlerta)
+    })
+  }, [])
+
+  useEffect(() => {
+    let cancelado = false
+
+    async function establecerLineaBase() {
+      const { data, error } = await obtenerAlertasVisualesActivas()
+
+      if (cancelado || error) return
+
+      alertasConocidasRef.current = new Set((data || []).map((item) => item.id))
+      lineaBaseListaRef.current = true
+    }
+
+    async function detectarAlertasNuevas() {
+      if (!lineaBaseListaRef.current) {
+        await establecerLineaBase()
+        return
+      }
+
+      const { data, error } = await obtenerAlertasVisualesActivas()
+
+      if (cancelado || error) return
+
+      const activas = data || []
+      const idsActivos = new Set(activas.map((item) => item.id))
+
+      alertasConocidasRef.current.forEach((id) => {
+        if (!idsActivos.has(id)) alertasConocidasRef.current.delete(id)
+      })
+
+      activas
+        .filter((item) => !alertasConocidasRef.current.has(item.id))
+        .reverse()
+        .forEach(registrarAlertaEntrante)
+    }
+
+    establecerLineaBase()
+    const intervalo = window.setInterval(detectarAlertasNuevas, INTERVALO_RESPALDO_MS)
+
+    return () => {
+      cancelado = true
+      window.clearInterval(intervalo)
+    }
   }, [])
 
   useEffect(() => escucharAlertasNoRevisadas(setIdsNoRevisados), [])
@@ -239,7 +305,9 @@ export default function RealtimeAlertToast() {
 }
 
 function agregarAlerta(alertas: Alerta[], alerta: Alerta) {
-  if (alertas.some((item) => item.id === alerta.id)) return alertas
+  if (alertas.some((item) => item.id === alerta.id)) {
+    return alertas.map((item) => (item.id === alerta.id ? alerta : item))
+  }
   return [...alertas, alerta].slice(-5)
 }
 

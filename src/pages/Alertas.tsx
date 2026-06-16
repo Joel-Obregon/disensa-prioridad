@@ -15,8 +15,6 @@ import {
   claseSemaforoBorde,
   describirTiempoPedido,
 } from '../lib/semaforoOperativo'
-import { useAuth } from '../auth/authState'
-import { esRolSoloLectura } from '../auth/permisos'
 import { registrarAuditoria } from '../services/auditoriaService'
 import {
   actualizarEstadoAlerta,
@@ -27,7 +25,7 @@ import type { Alerta } from '../types/alerta'
 import type { SemaforoOperativo } from '../lib/semaforoOperativo'
 import type { EstadoPedido } from '../types/pedido'
 
-type CategoriaAlertas = 'materiales' | 'priorizacion'
+type CategoriaAlertas = 'todas' | 'materiales' | 'priorizacion'
 type VistaAlertas = 'operativas' | 'historial'
 type FiltrosAlertas = {
   busqueda: string
@@ -38,6 +36,12 @@ type FiltrosAlertas = {
 }
 
 const categoriasAlertas = [
+  {
+    id: 'todas',
+    label: 'Todas las alertas',
+    descripcion: 'Vista general de alertas operativas e historial',
+    icono: BellRing,
+  },
   {
     id: 'materiales',
     label: 'Falta de materiales',
@@ -71,10 +75,8 @@ const vistas: Array<{ id: VistaAlertas; label: string }> = [
 ]
 
 export default function Alertas() {
-  const { perfil } = useAuth()
-  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [alertas, setAlertas] = useState<Alerta[]>([])
-  const [categoria, setCategoria] = useState<CategoriaAlertas>('materiales')
+  const [categoria, setCategoria] = useState<CategoriaAlertas>('todas')
   const [vista, setVista] = useState<VistaAlertas>('operativas')
   const [filtros, setFiltros] = useState<FiltrosAlertas>(filtrosIniciales)
   const [alertaDetalle, setAlertaDetalle] = useState<Alerta | null>(null)
@@ -102,10 +104,6 @@ export default function Alertas() {
 
   async function cambiarEstado(alerta: Alerta, estado: Alerta['estado']) {
     setError('')
-    if (soloLectura) {
-      setError('Rol observador: no puedes cerrar ni modificar alertas.')
-      return
-    }
 
     const { error } = await actualizarEstadoAlerta(alerta.id, estado)
 
@@ -136,6 +134,7 @@ export default function Alertas() {
 
   const conteoCategorias = useMemo(
     () => ({
+      todas: alertas.filter(alertaOperativa).length,
       materiales: alertas.filter(
         (alerta) => alertaOperativa(alerta) && esAlertaFaltaMaterial(alerta)
       ).length,
@@ -150,6 +149,10 @@ export default function Alertas() {
   )
 
   const alertasPorCategoria = useMemo(() => {
+    if (categoria === 'todas') {
+      return alertas
+    }
+
     if (categoria === 'materiales') {
       return alertas.filter(esAlertaFaltaMaterial)
     }
@@ -339,7 +342,7 @@ export default function Alertas() {
           <ShieldAlert size={18} className="text-orange-600" />
           Tipo de alerta
         </div>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           {categoriasAlertas.map((item) => {
             const Icono = item.icono
             const activo = categoria === item.id
@@ -517,7 +520,6 @@ export default function Alertas() {
                     <TarjetaAlerta
                       key={alerta.id}
                       alerta={alerta}
-                      soloLectura={soloLectura}
                       onCerrar={(alertaSeleccionada) => cambiarEstado(alertaSeleccionada, 'cerrada')}
                       onVerDetalle={setAlertaDetalle}
                     />
@@ -545,12 +547,10 @@ function TarjetaAlerta({
   alerta,
   onCerrar,
   onVerDetalle,
-  soloLectura,
 }: {
   alerta: Alerta
   onCerrar: (alerta: Alerta) => void
   onVerDetalle: (alerta: Alerta) => void
-  soloLectura: boolean
 }) {
   const tiempoPedido = tiempoPedidoAlerta(alerta)
 
@@ -637,7 +637,7 @@ function TarjetaAlerta({
         )}
         <button
           type="button"
-          disabled={soloLectura || alerta.estado === 'cerrada'}
+          disabled={alerta.estado === 'cerrada'}
           onClick={() => onCerrar(alerta)}
           className="alerta-action-button inline-flex items-center gap-2 border border-green-200 px-3 py-2 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
         >

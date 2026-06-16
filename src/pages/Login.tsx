@@ -4,6 +4,7 @@ import { ArrowRight, Lock, Mail, Search } from 'lucide-react'
 import { esRolInterno, rutaInicialPorRol } from '../auth/permisos'
 import disensaLogo from '../assets/disensa-logo.svg'
 import ThemeToggle from '../components/ThemeToggle'
+import { esCorreoValido } from '../lib/validacionesFormulario'
 import { obtenerUsuarioPorCorreo } from '../services/usuariosService'
 import { supabase } from '../services/supabaseClient'
 
@@ -21,6 +22,12 @@ export default function Login() {
     setError('')
 
     const correoNormalizado = email.trim().toLowerCase()
+
+    if (!esCorreoValido(correoNormalizado)) {
+      setError('Ingresa un correo valido.')
+      setCargando(false)
+      return
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email: correoNormalizado,
@@ -116,7 +123,7 @@ export default function Login() {
               <input
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => setEmail(event.target.value.replace(/\s/g, '').slice(0, 120))}
                 className="login-clean-input w-full border-0 bg-transparent px-3 py-2.5 outline-none"
                 placeholder="usuario@disensa.com"
                 required

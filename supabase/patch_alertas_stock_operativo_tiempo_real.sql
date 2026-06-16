@@ -14,7 +14,10 @@ as $$
 declare
   v_material public.materiales%rowtype;
   v_stock integer;
+  v_minimo integer;
+  v_normal integer;
   v_alerta_id uuid;
+  v_alerta_nivel text;
   v_mensaje text;
   v_nivel text;
 begin
@@ -27,35 +30,49 @@ begin
   end if;
 
   v_stock := coalesce(p_stock_nuevo, v_material.stock_actual);
+  v_minimo := greatest(1, coalesce(nullif(v_material.stock_minimo, 0), 1));
+  v_normal := v_minimo * 3;
 
-  if v_stock > 0 and v_stock >= v_material.stock_minimo then
+  if v_stock >= v_normal then
     update public.alertas
     set estado = 'cerrada'
     where material_id = v_material.id
-      and tipo_alerta = 'stock_bajo'
+      and tipo_alerta in ('stock_bajo', 'faltante_bodega_fq')
       and estado in ('activa', 'revisada');
 
     return null;
   end if;
 
-  v_nivel := case when v_stock <= 0 then 'critica' else 'alta' end;
+  v_nivel := case when v_stock <= 0 or v_stock < v_minimo then 'critica' else 'alta' end;
   v_mensaje :=
     'Material '
     || coalesce(v_material.codigo_material || ' - ', '')
     || v_material.nombre
-    || ' bajo el minimo en venta: stock '
-    || v_stock::text
+    || case when v_nivel = 'critica' then ' en estado critico: stock ' else ' en riesgo: stock ' end
+    || greatest(0, v_stock)::text
     || ' / minimo '
-    || v_material.stock_minimo::text
-    || '. Departamento debe verificar la falta de stock.';
+    || v_minimo::text
+    || ' / normal '
+    || v_normal::text
+    || '. Departamento debe verificar reposicion.';
 
-  select id into v_alerta_id
+  select id, nivel into v_alerta_id, v_alerta_nivel
   from public.alertas
   where material_id = v_material.id
-    and tipo_alerta = 'stock_bajo'
+    and tipo_alerta in ('stock_bajo', 'faltante_bodega_fq')
     and estado in ('activa', 'revisada')
   order by created_at desc
   limit 1;
+
+  if v_alerta_id is not null and v_alerta_nivel is distinct from v_nivel then
+    update public.alertas
+    set estado = 'cerrada'
+    where material_id = v_material.id
+      and tipo_alerta in ('stock_bajo', 'faltante_bodega_fq')
+      and estado in ('activa', 'revisada');
+
+    v_alerta_id := null;
+  end if;
 
   if v_alerta_id is null then
     insert into public.alertas (
@@ -81,11 +98,19 @@ begin
     update public.alertas
     set
       pedido_id = coalesce(p_pedido_id, pedido_id),
+      tipo_alerta = 'stock_bajo',
       nivel = v_nivel,
       mensaje = v_mensaje,
       estado = 'activa',
       responsable = coalesce(p_responsable, responsable, 'Departamento de inventario')
     where id = v_alerta_id;
+
+    update public.alertas
+    set estado = 'cerrada'
+    where material_id = v_material.id
+      and tipo_alerta in ('stock_bajo', 'faltante_bodega_fq')
+      and estado in ('activa', 'revisada')
+      and id <> v_alerta_id;
   end if;
 
   insert into public.notificaciones_correo (

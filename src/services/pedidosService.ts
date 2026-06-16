@@ -10,6 +10,7 @@ import type {
 export type PedidoInput = {
   codigo: string
   codigo_consulta?: string
+  codigo_material?: string | null
   material_id: string
   material: string
   cantidad: number
@@ -27,7 +28,9 @@ export type PedidoInput = {
   cantidad_despacho: number
 }
 
-export type PedidoUpdateInput = Omit<PedidoInput, 'codigo'>
+export type PedidoUpdateInput = Omit<PedidoInput, 'codigo'> & {
+  codigo?: string
+}
 
 type DespachoSeguroResult = {
   pedido_estado: EstadoPedido
@@ -54,6 +57,13 @@ type InventarioBodegaRow = {
   stock_libre_utilizacion: number | string | null
 }
 
+const CENTRO_BODEGA_MANUAL = {
+  centro_codigo: 'YDUR',
+  nombre_centro: 'Duran',
+  sociedad: 'EC10',
+  nombre_empresa: 'Disensa Ecuador',
+}
+
 export async function obtenerPedidos() {
   return supabase
     .from('pedidos')
@@ -65,6 +75,12 @@ export async function obtenerPedidos() {
 export async function crearPedido(pedido: PedidoInput) {
   const fechaCompromiso = new Date(pedido.fecha_compromiso)
   const fechaCompromisoDate = fechaCompromiso.toISOString().slice(0, 10)
+  const clienteResult = await sincronizarClienteFranquiciado(pedido)
+
+  if (clienteResult.error) return clienteResult
+  const fuenteResult = await sincronizarPedidoBodegaFq(pedido)
+
+  if (fuenteResult.error) return fuenteResult
 
   return supabase.from('pedidos').insert({
     codigo: pedido.codigo,
@@ -93,12 +109,21 @@ export async function crearPedido(pedido: PedidoInput) {
     accion_solicitante: pedido.accion_solicitante,
     condicion_material: pedido.condicion_material,
     cantidad_despacho: pedido.cantidad_despacho,
-  })
+  }).select().single<Pedido>()
 }
 
 export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
   const fechaCompromiso = new Date(pedido.fecha_compromiso)
   const fechaCompromisoDate = fechaCompromiso.toISOString().slice(0, 10)
+  const clienteResult = await sincronizarClienteFranquiciado(pedido)
+
+  if (clienteResult.error) return clienteResult
+  const fuenteResult = await sincronizarPedidoBodegaFq({
+    ...pedido,
+    codigo: pedido.codigo || pedido.codigo_consulta || id,
+  })
+
+  if (fuenteResult.error) return fuenteResult
 
   return supabase
     .from('pedidos')
@@ -126,6 +151,8 @@ export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
       cantidad_despacho: pedido.cantidad_despacho,
     })
     .eq('id', id)
+    .select()
+    .maybeSingle<Pedido>()
 }
 
 export async function actualizarCantidadDespachoPedido(id: string, cantidadDespacho: number | null) {
@@ -137,6 +164,110 @@ export async function actualizarCantidadDespachoPedido(id: string, cantidadDespa
 
 function normalizarCedula(valor: string) {
   return valor.replace(/\D/g, '').trim()
+}
+
+async function sincronizarClienteFranquiciado(pedido: PedidoInput | PedidoUpdateInput) {
+  if (pedido.tipo_cliente !== 'franquiciado' && pedido.destino !== 'franquiciado') {
+    return { data: null, error: null }
+  }
+
+  const codigoCliente = normalizarCedula(pedido.cedula_solicitante)
+  const nombreCliente = pedido.solicitante.trim()
+
+  if (!codigoCliente || !nombreCliente) return { data: null, error: null }
+
+  const result = await supabase
+    .from('clientes_franquiciado')
+    .upsert(
+      {
+        codigo_cliente: codigoCliente,
+        nombre_cliente: nombreCliente,
+        zona_cliente: 'Sin zona registrada',
+        zona: 'Sin zona registrada',
+        fuente: 'registro_manual_web',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'codigo_cliente' }
+    )
+
+  return esErrorTablaOColumnaOpcional(result.error) ? { data: null, error: null } : result
+}
+
+async function sincronizarPedidoBodegaFq(pedido: PedidoInput) {
+  const codigoMaterial = normalizarCodigoMaterial(pedido.codigo_material)
+  if (!codigoMaterial) return { data: null, error: null }
+
+  const ahora = new Date().toISOString()
+  const fechaCompromiso = new Date(pedido.fecha_compromiso)
+  const fechaLimite = Number.isNaN(fechaCompromiso.getTime())
+    ? new Date().toISOString().slice(0, 10)
+    : fechaCompromiso.toISOString().slice(0, 10)
+  const codigoCliente = normalizarCedula(pedido.cedula_solicitante)
+  const codigoConsulta = pedido.codigo_consulta || pedido.codigo
+  const pedidoKey = pedidoKeyOperativo(codigoConsulta, codigoMaterial)
+
+  const catalogoResult = await supabase
+    .from('material_catalogo')
+    .upsert(
+      {
+        codigo_material: codigoMaterial,
+        nombre_material: pedido.material,
+        updated_at: ahora,
+      },
+      { onConflict: 'codigo_material' }
+    )
+
+  if (esErrorTablaOColumnaOpcional(catalogoResult.error)) return { data: null, error: null }
+  if (catalogoResult.error) return catalogoResult
+
+  const centroResult = await supabase
+    .from('centros_bodega')
+    .upsert(
+      {
+        ...CENTRO_BODEGA_MANUAL,
+        fuente: 'registro_manual_web',
+        updated_at: ahora,
+      },
+      { onConflict: 'centro_codigo' }
+    )
+
+  if (esErrorTablaOColumnaOpcional(centroResult.error)) return { data: null, error: null }
+  if (centroResult.error) return centroResult
+
+  const pedidoFuente = await supabase
+    .from('pedidos_bodega_fq')
+    .upsert(
+      {
+        pedido_key: pedidoKey,
+        tipo_caso: 'REGISTRO MANUAL',
+        responsable: 'BODEGA',
+        resolucion: resolucionFuenteInicial(pedido),
+        estado: 'Pendiente',
+        base: CENTRO_BODEGA_MANUAL.nombre_centro,
+        centro_codigo: CENTRO_BODEGA_MANUAL.centro_codigo,
+        cod_pedido: codigoConsulta,
+        zona_cliente: 'Sin zona registrada',
+        codigo_cliente: codigoCliente || null,
+        cliente: pedido.solicitante.trim(),
+        zona: 'Sin zona registrada',
+        codigo_material: codigoMaterial,
+        descripcion_material: pedido.material,
+        cantidad: Math.max(0, pedido.cantidad),
+        unidad: pedido.unidad_medida || 'UN',
+        fecha_solicitud: new Date().toISOString().slice(0, 10),
+        fecha_limite: fechaLimite,
+        stock_disponible_fuente: Math.max(0, pedido.stock_disponible),
+        excluidos: estadoPlanificableFuente(pedido.condicion_material),
+        prioridad_calculada: prioridadFuentePedido(pedido.urgencia),
+        fuente: 'registro_manual_web',
+        updated_at: ahora,
+      },
+      { onConflict: 'pedido_key' }
+    )
+
+  return esErrorTablaOColumnaOpcional(pedidoFuente.error)
+    ? { data: null, error: null }
+    : pedidoFuente
 }
 
 export async function actualizarEstadoPedido(
@@ -341,7 +472,10 @@ async function sincronizarFuenteOperativaPedido(
   estado: EstadoPedido,
   opciones: EstadoPedidoOptions = {}
 ) {
-  const pedidoKey = obtenerPedidoKeyBfq(pedido)
+  const codigoMaterial = normalizarCodigoMaterial(opciones.codigo_material || null)
+  const pedidoKey =
+    obtenerPedidoKeyBfq(pedido) ||
+    (codigoMaterial ? pedidoKeyOperativo(pedido.codigo_consulta || pedido.codigo, codigoMaterial) : null)
   if (!pedidoKey) return { data: null, error: null }
 
   const hoy = new Date().toISOString().slice(0, 10)
@@ -493,6 +627,29 @@ async function obtenerFilasInventarioBodega(
 function obtenerPedidoKeyBfq(pedido: Pedido) {
   const match = /^BFQ-(.+)$/.exec(pedido.codigo || '')
   return match?.[1] || null
+}
+
+function pedidoKeyOperativo(codigoPedido: string, codigoMaterial: string) {
+  return `${codigoPedido}-${codigoMaterial}`
+}
+
+function resolucionFuenteInicial(pedido: Pick<PedidoInput, 'accion_solicitante'>) {
+  if (pedido.accion_solicitante === 'nota_credito') return 'NC en proceso'
+  if (pedido.accion_solicitante === 'esperar_pedido') return 'Reabastecimiento'
+  return 'En proceso'
+}
+
+function estadoPlanificableFuente(condicion: CondicionMaterial) {
+  if (condicion === 'no_planificable') return 'No planificable'
+  if (condicion === 'restrictivo') return 'Hasta agotar stock'
+  return 'Planificable'
+}
+
+function prioridadFuentePedido(urgencia: UrgenciaPedido) {
+  if (urgencia === 'critica') return 80
+  if (urgencia === 'alta') return 60
+  if (urgencia === 'media') return 30
+  return 10
 }
 
 function estadoFuenteBodegaFq(estado: EstadoPedido) {

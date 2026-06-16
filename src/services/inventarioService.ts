@@ -1,5 +1,6 @@
 import { registrarAuditoria } from './auditoriaService'
 import { obtenerMateriales } from './materialesService'
+import { sincronizarAlertaStockMaterial } from './stockAlertasService'
 import { supabase } from './supabaseClient'
 import type { InventarioOperativo, Material } from '../types/material'
 import type {
@@ -92,10 +93,17 @@ export async function obtenerInventarioOperativo() {
 
   const demandaMaxima = await obtenerPedidoMaximoPorMaterial()
 
-  const inventario = (operativosResult.data || []).map((row) => {
+  const materialesIncluidos = new Set<string>()
+
+  const inventario: InventarioOperativo[] = (operativosResult.data || []).map((row) => {
     const material =
       materialesPorCodigo.get(row.codigo_material) ||
       materialesPorNombre.get(normalizarLlave(row.nombre_material))
+
+    if (material) {
+      materialesIncluidos.add(material.id)
+    }
+
     const stockLibreFuente = numeroNoNegativo(row.stock_libre)
     const stockDisponibleFuente = numeroNoNegativo(row.stock_disponible)
     const stockMaterial = material ? numeroNoNegativo(material.stock_actual) : null
@@ -148,6 +156,14 @@ export async function obtenerInventarioOperativo() {
       mult_venta: numeroNoNegativo(row.mult_venta) || 1,
     } satisfies InventarioOperativo
   })
+
+  materiales.forEach((material) => {
+    if (!materialesIncluidos.has(material.id)) {
+      inventario.push(materialAInventarioFallback(material))
+    }
+  })
+
+  inventario.sort((a, b) => a.nombre.localeCompare(b.nombre))
 
   return { ...materialesResult, data: inventario }
 }
@@ -427,54 +443,8 @@ async function sincronizarMaterialEnOperacion(material: Material, stockNuevo: nu
     if (updateResult.error) return updateResult
   }
 
-  if (!requiereAlertaStock(stockNuevo, material.stock_minimo)) {
-    const cerrarAlertas = await supabase
-      .from('alertas')
-      .update({ estado: 'cerrada' })
-      .eq('material_id', material.id)
-      .eq('tipo_alerta', 'stock_bajo')
-      .in('estado', ['activa', 'revisada'])
-
-    if (esErrorTablaOColumnaOpcional(cerrarAlertas.error)) return { data: null, error: null }
-    if (cerrarAlertas.error) return cerrarAlertas
-  } else {
-    const alertaExistente = await supabase
-      .from('alertas')
-      .select('id')
-      .eq('material_id', material.id)
-      .eq('tipo_alerta', 'stock_bajo')
-      .in('estado', ['activa', 'revisada'])
-      .limit(1)
-
-    if (esErrorTablaOColumnaOpcional(alertaExistente.error)) return { data: null, error: null }
-    if (alertaExistente.error) return alertaExistente
-
-    const mensaje = `Material ${material.nombre} bajo el minimo: stock ${stockNuevo} / minimo ${material.stock_minimo}.`
-
-    if (alertaExistente.data && alertaExistente.data.length > 0) {
-      const actualizarAlerta = await supabase
-        .from('alertas')
-        .update({
-          estado: 'activa',
-          nivel: nivelAlertaStock(stockNuevo),
-          mensaje,
-        })
-        .eq('id', alertaExistente.data[0].id)
-
-      if (actualizarAlerta.error) return actualizarAlerta
-    } else {
-      const crearAlerta = await supabase.from('alertas').insert({
-        material_id: material.id,
-        tipo_alerta: 'stock_bajo',
-        nivel: nivelAlertaStock(stockNuevo),
-        mensaje,
-        estado: 'activa',
-      })
-
-      if (esErrorTablaOColumnaOpcional(crearAlerta.error)) return { data: null, error: null }
-      if (crearAlerta.error) return crearAlerta
-    }
-  }
+  const alertaResult = await sincronizarAlertaStockMaterial(material, stockNuevo)
+  if (alertaResult.error) return alertaResult
 
   return { data: null, error: null }
 }
@@ -563,18 +533,6 @@ function calcularStockNuevo(
   if (tipo === 'entrada') return stockActual + cantidad
   if (tipo === 'salida') return stockActual - cantidad
   return cantidad
-}
-
-function nivelAlertaStock(stockActual: number) {
-  return stockActual <= 0 ? 'critica' : 'alta'
-}
-
-function requiereAlertaStock(stockActual: number, stockMinimo: number) {
-  return stockActual <= 0 || stockActual < stockMinimo
-}
-
-function esErrorTablaOColumnaOpcional(error: { code?: string } | null | undefined) {
-  return error?.code === '42P01' || error?.code === '42703'
 }
 
 function materialAInventarioFallback(material: Material): InventarioOperativo {

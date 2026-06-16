@@ -967,6 +967,76 @@ html[data-theme='dark'] .alertas-module button[class~='bg-[#261812]'] {
   color: #ffffff !important;
 }
 
+html[data-theme='dark'] .calendario-module {
+  color: #f7f7f8 !important;
+}
+
+html[data-theme='dark'] .calendario-header,
+html[data-theme='dark'] .calendario-month-title,
+html[data-theme='dark'] .calendario-panel,
+html[data-theme='dark'] .calendario-metric,
+html[data-theme='dark'] .calendario-agenda-item,
+html[data-theme='dark'] .calendario-event {
+  border-color: #3a3a3d !important;
+}
+
+html[data-theme='dark'] .calendario-panel,
+html[data-theme='dark'] .calendario-metric,
+html[data-theme='dark'] .calendario-day,
+html[data-theme='dark'] .calendario-agenda-item {
+  background-color: #151516 !important;
+  color: #f7f7f8 !important;
+}
+
+html[data-theme='dark'] .calendario-day:hover,
+html[data-theme='dark'] .calendario-event,
+html[data-theme='dark'] .calendario-module [class~='bg-[#faf7f5]'],
+html[data-theme='dark'] .calendario-module [class~='bg-[#fff4ef]'],
+html[data-theme='dark'] .calendario-module [class~='bg-[#fffaf7]'] {
+  background-color: #1f1f21 !important;
+}
+
+html[data-theme='dark'] .calendario-day-muted {
+  background-color: #101011 !important;
+  color: #72727a !important;
+}
+
+html[data-theme='dark'] .calendario-day-selected {
+  --tw-ring-color: #ed1c24 !important;
+}
+
+html[data-theme='dark'] .calendario-module [class~='bg-[#fff4ef]'],
+html[data-theme='dark'] .calendario-module [class~='bg-[#f4ebe7]'] {
+  background-color: #2b1710 !important;
+}
+
+html[data-theme='dark'] .calendario-module [class~='text-[#0f0f11]'],
+html[data-theme='dark'] .calendario-module [class~='text-[#2b160f]'],
+html[data-theme='dark'] .calendario-module [class~='text-[#6d2b12]'] {
+  color: #f7f7f8 !important;
+}
+
+html[data-theme='dark'] .calendario-module [class~='text-[#69636d]'],
+html[data-theme='dark'] .calendario-module [class~='text-[#7e7576]'],
+html[data-theme='dark'] .calendario-module [class~='text-[#9a9197]'] {
+  color: #b7b7bd !important;
+}
+
+html[data-theme='dark'] .calendario-module [class~='bg-white'],
+html[data-theme='dark'] .calendario-module select,
+html[data-theme='dark'] .calendario-icon-button {
+  border-color: #4a4a4f !important;
+  background-color: #151516 !important;
+  color: #f7f7f8 !important;
+}
+
+html[data-theme='dark'] .calendario-module [class~='bg-white']:hover,
+html[data-theme='dark'] .calendario-icon-button:hover {
+  border-color: #ed1c24 !important;
+  background-color: #21181d !important;
+  color: #ffffff !important;
+}
+
 html[data-theme='dark'] .pedidos-module [class~='bg-amber-800'] {
   background-color: #8a4b12 !important;
   color: #fff7ed !important;

@@ -26,6 +26,12 @@ import {
   etiquetaSemaforo,
   resolverSemaforoPedido,
 } from '../lib/semaforoOperativo'
+import {
+  esCodigoClienteORucValido,
+  soloDigitos,
+  textoDescripcion,
+  textoMixtoOperativo,
+} from '../lib/validacionesFormulario'
 import type { EstadoPedido, Pedido } from '../types/pedido'
 import type { MotivoReporteFranquiciado } from '../types/reporteFranquiciado'
 
@@ -83,8 +89,8 @@ export default function ConsultaPedido() {
     const codigo = consulta.codigo.trim()
     const cedula = normalizarCedula(consulta.cedula)
 
-    if (!codigo || cedula.length < 6) {
-      setError('Ingresa el codigo del pedido y el codigo de cliente o RUC valido.')
+    if (!codigo || !esCodigoClienteORucValido(cedula)) {
+      setError('Ingresa el codigo del pedido y un codigo de cliente, cedula o RUC de 6 a 13 digitos.')
       setCargando(false)
       return
     }
@@ -235,7 +241,12 @@ export default function ConsultaPedido() {
               Codigo unico
               <input
                 value={consulta.codigo}
-                onChange={(event) => setConsulta({ ...consulta, codigo: event.target.value })}
+                onChange={(event) =>
+                  setConsulta({
+                    ...consulta,
+                    codigo: textoMixtoOperativo(event.target.value, 60),
+                  })
+                }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Ej. PED-394049"
               />
@@ -244,8 +255,14 @@ export default function ConsultaPedido() {
             <label className="block text-sm font-medium text-slate-700">
               Codigo de cliente o RUC
               <input
+                type="text"
+                inputMode="numeric"
+                maxLength={13}
+                pattern="\d*"
                 value={consulta.cedula}
-                onChange={(event) => setConsulta({ ...consulta, cedula: event.target.value })}
+                onChange={(event) =>
+                  setConsulta({ ...consulta, cedula: soloDigitos(event.target.value, 13) })
+                }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Ej. 6192102"
               />
@@ -424,7 +441,10 @@ export default function ConsultaPedido() {
                     <textarea
                       value={reporte.descripcion}
                       onChange={(event) =>
-                        setReporte({ ...reporte, descripcion: event.target.value })
+                        setReporte({
+                          ...reporte,
+                          descripcion: textoDescripcion(event.target.value, 800),
+                        })
                       }
                       rows={3}
                       className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"

@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
   Bell,
+  Boxes,
   CheckCircle2,
   ClipboardList,
   Package,
+  PackageX,
   Timer,
   Truck,
   Warehouse,
@@ -57,6 +59,20 @@ type DashboardMetricas = {
   totalPedidos: number
 }
 
+type EvolucionMensualItem = {
+  periodo: string
+  mes: string
+  anio: string
+  pedidos: number
+  entregados: number
+  alertas: number
+  tasaEntrega: number
+  tasaAlertas: number
+  variacionPedidos: number | null
+}
+
+type PeriodoFiltro = 'todos' | 'hoy' | '30' | '90' | 'mes'
+
 export default function Dashboard() {
   const { perfil } = useAuth()
   const rol = perfil?.rol || 'administrador'
@@ -65,6 +81,10 @@ export default function Dashboard() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [reglas, setReglas] = useState<ReglaNegocio[]>([])
   const [otif, setOtif] = useState<OtifOperativo>(otifInicial())
+  const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>('todos')
+  const [categoriaFiltro, setCategoriaFiltro] = useState('todos')
+  const [almacenFiltro, setAlmacenFiltro] = useState('todos')
+  const [proveedorFiltro, setProveedorFiltro] = useState('todos')
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -144,22 +164,89 @@ export default function Dashboard() {
     })
   }, [materialesLookup, pedidos])
 
+  const categoriaOpciones = useMemo(
+    () =>
+      ordenarOpcionesUnicas(
+        materialesUnicos.map((material) => categoriaMaterial(material))
+      ),
+    [materialesUnicos]
+  )
+
+  const proveedorOpciones = useMemo(
+    () =>
+      ordenarOpcionesUnicas(
+        materialesUnicos.map((material) => proveedorMaterial(material))
+      ),
+    [materialesUnicos]
+  )
+
+  const almacenOpciones = useMemo(
+    () =>
+      ordenarOpcionesUnicas(
+        pedidosConStockReal.map((pedido) => flujoPedidoLabel(pedido))
+      ),
+    [pedidosConStockReal]
+  )
+
+  const materialesFiltrados = useMemo(() => {
+    return materialesUnicos.filter((material) => {
+      const coincideCategoria =
+        categoriaFiltro === 'todos' || categoriaMaterial(material) === categoriaFiltro
+      const coincideProveedor =
+        proveedorFiltro === 'todos' || proveedorMaterial(material) === proveedorFiltro
+
+      return coincideCategoria && coincideProveedor
+    })
+  }, [categoriaFiltro, materialesUnicos, proveedorFiltro])
+
+  const pedidosVisibles = useMemo(() => {
+    return pedidosConStockReal.filter((pedido) => {
+      const material =
+        (pedido.material_id ? materialesLookup.porId.get(pedido.material_id) : null) ||
+        materialesLookup.porNombre.get(normalizarTexto(pedido.material))
+      const coincidePeriodo = coincidePeriodoPedido(pedido, periodoFiltro)
+      const coincideCategoria =
+        categoriaFiltro === 'todos' ||
+        (material ? categoriaMaterial(material) === categoriaFiltro : false)
+      const coincideAlmacen =
+        almacenFiltro === 'todos' || flujoPedidoLabel(pedido) === almacenFiltro
+      const coincideProveedor =
+        proveedorFiltro === 'todos' ||
+        (material ? proveedorMaterial(material) === proveedorFiltro : false)
+
+      return coincidePeriodo && coincideCategoria && coincideAlmacen && coincideProveedor
+    })
+  }, [
+    almacenFiltro,
+    categoriaFiltro,
+    materialesLookup,
+    pedidosConStockReal,
+    periodoFiltro,
+    proveedorFiltro,
+  ])
+
+  const alertasVisibles = useMemo(
+    () =>
+      alertas.filter((alerta) => coincidePeriodoFecha(fechaOperativaAlerta(alerta), periodoFiltro)),
+    [alertas, periodoFiltro]
+  )
+
   const colaPriorizada = useMemo(
-    () => ordenarPorPrioridad(pedidosConStockReal, reglas),
-    [pedidosConStockReal, reglas]
+    () => ordenarPorPrioridad(pedidosVisibles, reglas),
+    [pedidosVisibles, reglas]
   )
 
   const materialesEnRiesgo = useMemo(() => {
-    return [...materialesUnicos]
+    return [...materialesFiltrados]
       .filter((material) => stockDisponibleMaterial(material) < material.stock_minimo)
       .sort((a, b) => ratioStock(a) - ratioStock(b))
       .slice(0, 5)
-  }, [materialesUnicos])
+  }, [materialesFiltrados])
 
   const alertasActivas = useMemo(() => {
     const mapa = new Map<string, Alerta>()
 
-    alertas
+    alertasVisibles
       .filter((alerta) => alerta.estado === 'activa')
       .forEach((alerta) => {
         const llave = `${alerta.tipo_alerta}-${alerta.mensaje}`
@@ -167,30 +254,30 @@ export default function Dashboard() {
       })
 
     return Array.from(mapa.values())
-  }, [alertas])
+  }, [alertasVisibles])
 
   const metricas = useMemo(() => {
-    const pedidosCriticos = pedidosConStockReal.filter(
+    const pedidosCriticos = pedidosVisibles.filter(
       (pedido) => resolverNivelPrioridad(calcularPrioridad(pedido, reglas), pedido) === 'Critica'
     ).length
-    const retrasados = pedidosConStockReal.filter(
+    const retrasados = pedidosVisibles.filter(
       (pedido) => pedido.estado === 'retrasado'
     ).length
-    const entregados = pedidosConStockReal.filter(
+    const entregados = pedidosVisibles.filter(
       (pedido) => pedido.estado === 'entregado'
     ).length
-    const porDespachar = pedidosConStockReal.filter(
+    const porDespachar = pedidosVisibles.filter(
       (pedido) => pedidoPendienteDespacho(pedido) && cantidadParaDespacho(pedido) > 0
     ).length
-    const sinStock = pedidosConStockReal.filter(
+    const sinStock = pedidosVisibles.filter(
       (pedido) =>
         pedidoPendienteDespacho(pedido) &&
         pedido.stock_disponible < cantidadParaDespacho(pedido)
     ).length
-    const enDespacho = pedidosConStockReal.filter(
+    const enDespacho = pedidosVisibles.filter(
       (pedido) => pedido.estado === 'en_despacho'
     ).length
-    const ncOEspera = pedidosConStockReal.filter(
+    const ncOEspera = pedidosVisibles.filter(
       (pedido) =>
         pedido.accion_solicitante === 'nota_credito' ||
         pedido.accion_solicitante === 'esperar_pedido'
@@ -204,9 +291,9 @@ export default function Dashboard() {
       porDespachar,
       retrasados,
       sinStock,
-      totalPedidos: pedidosConStockReal.length,
+      totalPedidos: pedidosVisibles.length,
     }
-  }, [pedidosConStockReal, reglas])
+  }, [pedidosVisibles, reglas])
 
   const tarjetas = useMemo(
     () => crearTarjetasPorRol(rol, metricas, materialesEnRiesgo.length, alertasActivas.length),
@@ -217,13 +304,6 @@ export default function Dashboard() {
   const puntajeSiguiente = siguientePedido ? calcularPrioridad(siguientePedido, reglas) : 0
   const nivelSiguiente = resolverNivelPrioridad(puntajeSiguiente, siguientePedido)
   const configuracionRol = obtenerConfiguracionRol(rol)
-  const tarjetasKpi = useMemo(() => {
-    if (rol === 'administrador') {
-      return [tarjetas[0], tarjetas[3] || tarjetas[1]].filter(Boolean)
-    }
-
-    return tarjetas.slice(0, 2)
-  }, [rol, tarjetas])
   const colaOperativa = useMemo(
     () => colaPriorizada.filter((pedido) => !pedidoCerrado(pedido)),
     [colaPriorizada]
@@ -257,42 +337,91 @@ export default function Dashboard() {
     return base
   }, [colaPriorizada, reglas])
   const evolucionMensual = useMemo(
-    () => construirEvolucionMensual(pedidosConStockReal, alertas),
-    [alertas, pedidosConStockReal]
+    () => construirEvolucionMensual(pedidosVisibles, alertasVisibles),
+    [alertasVisibles, pedidosVisibles]
+  )
+  const materialesPorDemanda = useMemo(
+    () => construirTopMaterialesPorDemanda(pedidosVisibles),
+    [pedidosVisibles]
+  )
+  const inventarioPorCategoria = useMemo(
+    () => construirInventarioPorCategoria(materialesFiltrados),
+    [materialesFiltrados]
+  )
+  const pedidosPorEstado = useMemo(
+    () => construirPedidosPorEstado(pedidosVisibles),
+    [pedidosVisibles]
   )
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 border-b border-[#d8d2df] pb-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#a33e00]">
-            <Warehouse size={16} />
-            {configuracionRol.etiqueta}
+    <div className="dashboard-executive space-y-5">
+      <section className="rounded-lg border border-[#d8d2df] bg-white p-5">
+        <div className="grid gap-5 xl:grid-cols-[1fr_auto] xl:items-start">
+          <div>
+            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#c8102e]">
+              <Warehouse size={16} />
+              {configuracionRol.etiqueta}
+            </div>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-[#0f0f11]">
+              Resumen ejecutivo
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-[#5f5964]">
+              {configuracionRol.descripcion}
+            </p>
           </div>
-          <h1 className="mt-2 text-3xl font-bold text-[#0f0f11]">Dashboard Operativo</h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-[#5f5964]">
-            {configuracionRol.descripcion}
-          </p>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <FiltroDashboard
+              label="Periodo"
+              value={periodoFiltro}
+              onChange={(valor) => setPeriodoFiltro(valor as PeriodoFiltro)}
+              opciones={[
+                ['todos', 'Todos'],
+                ['hoy', 'Hoy'],
+                ['30', 'Ultimos 30 dias'],
+                ['90', 'Ultimos 90 dias'],
+                ['mes', 'Este mes'],
+              ]}
+            />
+            <FiltroDashboard
+              label="Categoria"
+              value={categoriaFiltro}
+              onChange={setCategoriaFiltro}
+              opciones={opcionesSelect(categoriaOpciones)}
+            />
+            <FiltroDashboard
+              label="Almacen"
+              value={almacenFiltro}
+              onChange={setAlmacenFiltro}
+              opciones={opcionesSelect(almacenOpciones)}
+            />
+            <FiltroDashboard
+              label="Proveedor"
+              value={proveedorFiltro}
+              onChange={setProveedorFiltro}
+              opciones={opcionesSelect(proveedorOpciones)}
+            />
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-[#efe5e3] pt-4">
           <Link
             to={configuracionRol.accionPrincipal.ruta}
-            className="inline-flex items-center justify-center gap-2 bg-[#a33e00] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#842f00]"
+            className="inline-flex items-center justify-center gap-2 bg-[#c8102e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9f0d25]"
           >
             {configuracionRol.accionPrincipal.texto}
             <ArrowRight size={16} />
           </Link>
           <Link
             to={configuracionRol.accionSecundaria.ruta}
-            className="inline-flex items-center justify-center gap-2 border border-[#cfc4c5] bg-white px-4 py-2.5 text-sm font-semibold text-[#1a1a1a] hover:bg-[#f4f2fd]"
+            className="inline-flex items-center justify-center gap-2 border border-[#cfc4c5] bg-white px-4 py-2 text-sm font-semibold text-[#1a1a1a] hover:bg-[#fff0f0]"
           >
             {configuracionRol.accionSecundaria.texto}
           </Link>
         </div>
-      </div>
+      </section>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
         <TarjetaOtif
           cargando={cargando}
           indicador={otif.suministradorBodega}
@@ -303,36 +432,28 @@ export default function Dashboard() {
           indicador={otif.bodegaFranquiciado}
           titulo="OTIF bodega a franquiciado"
         />
-        {tarjetasKpi.map((item) => {
+        {tarjetas.map((item) => {
           const Icono = item.icono
 
           return (
             <article
               key={item.titulo}
-              className={`border-l-4 bg-white p-5 ${
-                item.tono === 'red'
-                  ? 'border-l-red-600'
-                  : item.tono === 'amber'
-                    ? 'border-l-yellow-500'
-                    : item.tono === 'green'
-                      ? 'border-l-green-500'
-                      : 'border-l-black'
-              }`}
+              className={`rounded-lg border border-[#d8d2df] bg-white p-4 ${bordeKpi(item.tono)}`}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#2f2f33]">
-                    {item.titulo}
-                  </p>
-                  <strong className="font-tabular mt-4 block text-4xl text-[#0f0f11]">
-                    {cargando ? '-' : item.valor}
-                  </strong>
-                </div>
-                <span className={`rounded p-2 ${colorIcono(item.tono)}`}>
+              <div className="flex items-start gap-3">
+                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded ${colorIcono(item.tono)}`}>
                   <Icono size={22} />
                 </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#2f2f33]">
+                    {item.titulo}
+                  </p>
+                  <strong className="font-tabular mt-2 block text-3xl font-black text-[#0f0f11]">
+                    {cargando ? '-' : formatearNumero(item.valor)}
+                  </strong>
+                  <p className="mt-1 text-xs leading-5 text-[#5f5964]">{item.detalle}</p>
+                </div>
               </div>
-              <p className="mt-3 text-sm text-[#5f5964]">{item.detalle}</p>
             </article>
           )
         })}
@@ -340,199 +461,80 @@ export default function Dashboard() {
 
       {rol === 'administrador' && (
         <>
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-5">
-          <div>
-              <h2 className="text-lg font-semibold text-slate-900">Evolucion mensual</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Pedidos creados, pedidos entregados y alertas generadas por mes.
-              </p>
-          </div>
-          <BarChart3 className="text-orange-600" size={22} />
-        </div>
-        <GraficoEvolucion datos={evolucionMensual} />
-      </section>
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.45fr_0.8fr_0.9fr]">
+            <PanelEjecutivo
+              titulo="Evolucion mensual"
+              descripcion="Pedidos creados, pedidos entregados y alertas generadas por mes."
+              icono={BarChart3}
+            >
+              <GraficoEvolucion datos={evolucionMensual} />
+            </PanelEjecutivo>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SiguienteAccion
-          nivel={nivelSiguiente}
-          pedido={siguientePedido}
-          puntaje={puntajeSiguiente}
-        />
+            <PanelEjecutivo
+              titulo="Prioridad de pedidos"
+              descripcion="Distribucion por nivel calculado."
+              icono={AlertTriangle}
+            >
+              <GraficoDonutPrioridad datos={distribucionPrioridad} />
+            </PanelEjecutivo>
 
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 p-5">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Prioridad de pedidos</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Distribucion grafica de pedidos segun el puntaje calculado.
-              </p>
-            </div>
-            <BarChart3 className="text-orange-600" size={22} />
-          </div>
-          <GraficoPrioridad datos={distribucionPrioridad} />
-        </section>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-5">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Cola priorizada</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Los primeros pedidos son los que requieren accion mas rapida.
-              </p>
-            </div>
-            <Truck className="text-orange-600" size={22} />
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {colaPriorizada.slice(0, 5).map((pedido) => {
-              const puntaje = calcularPrioridad(pedido, reglas)
-              const nivel = resolverNivelPrioridad(puntaje, pedido)
-              const semaforo = resolverSemaforoPedido({
-                ...pedido,
-                prioridad_calculada: puntaje,
-              })
-
-              return (
-                <div key={pedido.id} className="grid gap-3 p-5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-slate-900">{pedido.codigo}</p>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${colorPrioridad(nivel)}`}>
-                        Prioridad {puntaje}
-                      </span>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${claseSemaforoBadge(semaforo)}`}>
-                        {etiquetaSemaforoCola(semaforo)}
-                      </span>
-                      <span className="text-xs font-medium text-slate-500">
-                        Resolucion: {formatearEstado(pedido.estado)}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600">
-                      {pedido.material} - {pedido.cantidad} {pedido.unidad_medida}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {pedido.origen} a {pedido.destino} - {pedido.solicitante}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-slate-600">
-                      {describirTiempoPedido(pedido)}
-                    </p>
-                  </div>
-                  <div className="min-w-36">
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Timer size={16} className="text-slate-400" />
-                      Compromiso {formatearFecha(pedido.fecha_compromiso)}
-                    </div>
-                    <div className="mt-3 h-2 rounded-full bg-slate-200">
-                      <div
-                        className={`h-2 rounded-full ${claseSemaforoBarra(semaforo)}`}
-                        style={{ width: `${porcentajeSemaforo(semaforo)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-
-            {!cargando && colaPriorizada.length === 0 && (
-              <p className="p-8 text-center text-sm text-slate-500">
-                No hay pedidos registrados.
-              </p>
-            )}
-          </div>
-        </section>
-
-        <div className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-5">
-              <h2 className="text-lg font-semibold text-slate-900">Riesgo de stock</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Materiales que conviene reponer primero.
-              </p>
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {materialesEnRiesgo.map((material) => {
-                const stockDisponible = stockDisponibleMaterial(material)
-                const porcentaje = Math.min(
-                  Math.round((stockDisponible / Math.max(material.stock_objetivo_material, material.stock_minimo, 1)) * 100),
-                  100
-                )
-
-                return (
-                  <div key={material.id} className="p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-800">{material.nombre}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Minimo {material.stock_minimo} {material.unidad_medida}
-                        </p>
-                      </div>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          stockDisponible <= 0
-                            ? claseSemaforoBadge('critico')
-                            : claseSemaforoBadge('riesgo')
-                        }`}
-                      >
-                        {formatearNumero(stockDisponible)}
-                      </span>
-                    </div>
-                    <div className="mt-3 h-2 rounded-full bg-slate-200">
-                      <div
-                        className={`h-2 rounded-full ${
-                          stockDisponible <= 0
-                            ? claseSemaforoBarra('critico')
-                            : claseSemaforoBarra('riesgo')
-                        }`}
-                        style={{ width: `${porcentaje}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-
-              {!cargando && materialesEnRiesgo.length === 0 && (
-                <div className="flex items-center gap-3 p-5 text-sm text-green-700">
-                  <CheckCircle2 size={18} />
-                  Inventario sin materiales bajo minimo.
-                </div>
-              )}
-            </div>
+            <PanelEjecutivo
+              titulo="Top materiales por demanda"
+              descripcion="Materiales con mayor cantidad solicitada."
+              icono={Package}
+            >
+              <GraficoTopMateriales datos={materialesPorDemanda} />
+            </PanelEjecutivo>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-5">
-              <h2 className="text-lg font-semibold text-slate-900">Alertas recientes</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Eventos activos que requieren revision.
-              </p>
-            </div>
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_0.9fr_0.9fr]">
+            <PanelEjecutivo
+              titulo="Inventario por categoria"
+              descripcion="Stock disponible agrupado por catman."
+              icono={Boxes}
+            >
+              <GraficoInventarioCategoria datos={inventarioPorCategoria} />
+            </PanelEjecutivo>
 
-            <div className="divide-y divide-slate-100">
-              {alertasActivas.slice(0, 4).map((alerta) => (
-                <div key={alerta.id} className="p-5">
-                  <div className="flex items-start gap-3">
-                    <Bell size={18} className="mt-0.5 text-orange-600" />
-                    <div>
-                      <p className="font-semibold text-slate-800">{alerta.tipo_alerta}</p>
-                      <p className="mt-1 text-sm leading-5 text-slate-600">
-                        {alerta.mensaje}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <PanelEjecutivo
+              titulo="Pedidos por resolucion"
+              descripcion="Estado operativo de los pedidos visibles."
+              icono={ClipboardList}
+            >
+              <GraficoPedidosEstado datos={pedidosPorEstado} />
+            </PanelEjecutivo>
 
-              {!cargando && alertasActivas.length === 0 && (
-                <p className="p-5 text-sm text-slate-500">No hay alertas activas.</p>
-              )}
-            </div>
+            <PanelRiesgoStock
+              cargando={cargando}
+              descripcion="Materiales que conviene reponer primero."
+              materiales={materialesEnRiesgo}
+              titulo="Riesgo de stock"
+            />
           </section>
-        </div>
-      </section>
+
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+            <PanelCola
+              cargando={cargando}
+              descripcion="Los primeros pedidos son los que requieren accion mas rapida."
+              pedidos={colaPriorizada}
+              reglas={reglas}
+              titulo="Cola priorizada"
+              vacio="No hay pedidos registrados con los filtros actuales."
+            />
+
+            <PanelAlertas
+              alertas={alertasActivas}
+              cargando={cargando}
+              descripcion="Eventos activos que requieren revision."
+              titulo="Alertas recientes"
+            />
+          </section>
+
+          <SiguienteAccion
+            nivel={nivelSiguiente}
+            pedido={siguientePedido}
+            puntaje={puntajeSiguiente}
+          />
         </>
       )}
 
@@ -670,6 +672,192 @@ function VistaSuministrador({
         vacio="No hay pedidos pendientes de abastecimiento."
       />
     </section>
+  )
+}
+
+function FiltroDashboard({
+  label,
+  onChange,
+  opciones,
+  value,
+}: {
+  label: string
+  onChange: (value: string) => void
+  opciones: Array<[string, string]>
+  value: string
+}) {
+  return (
+    <label className="block min-w-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[#5f5964]">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full border border-[#cfc4c5] bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#0f0f11] outline-none focus:border-[#c8102e]"
+      >
+        {opciones.map(([valor, texto]) => (
+          <option key={valor} value={valor}>
+            {texto}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function PanelEjecutivo({
+  children,
+  descripcion,
+  icono: Icono,
+  titulo,
+}: {
+  children: ReactNode
+  descripcion: string
+  icono: typeof BarChart3
+  titulo: string
+}) {
+  return (
+    <section className="rounded-lg border border-[#d8d2df] bg-white">
+      <div className="flex items-start justify-between gap-3 border-b border-[#efe5e3] p-4">
+        <div>
+          <h2 className="text-base font-black text-[#0f0f11]">{titulo}</h2>
+          <p className="mt-1 text-xs leading-5 text-[#5f5964]">{descripcion}</p>
+        </div>
+        <Icono className="text-[#c8102e]" size={20} />
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function GraficoDonutPrioridad({
+  datos,
+}: {
+  datos: Array<{ nombre: string; valor: number; clase: string }>
+}) {
+  const total = datos.reduce((suma, item) => suma + item.valor, 0)
+  const gradiente = construirGradienteDonut(
+    datos.map((item) => ({
+      color: colorHexPrioridad(item.nombre),
+      valor: item.valor,
+    }))
+  )
+
+  return (
+    <div className="p-5">
+      <div className="mx-auto grid h-44 w-44 place-items-center rounded-full" style={{ background: gradiente }}>
+        <div className="grid h-28 w-28 place-items-center rounded-full bg-white text-center">
+          <strong className="font-tabular block text-2xl text-[#0f0f11]">{total}</strong>
+          <span className="text-xs font-semibold text-[#5f5964]">Pedidos</span>
+        </div>
+      </div>
+      <div className="mt-5 space-y-2">
+        {datos.map((item) => (
+          <div key={item.nombre} className="grid grid-cols-[1rem_1fr_auto] items-center gap-2 text-xs">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorHexPrioridad(item.nombre) }} />
+            <span className="font-semibold text-[#5f5964]">{item.nombre}</span>
+            <span className="font-tabular font-bold text-[#0f0f11]">
+              {total === 0 ? '0%' : `${Math.round((item.valor / total) * 100)}%`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function GraficoTopMateriales({
+  datos,
+}: {
+  datos: Array<{ nombre: string; valor: number }>
+}) {
+  const maximo = Math.max(...datos.map((item) => item.valor), 1)
+
+  return (
+    <div className="space-y-4 p-5">
+      {datos.map((item, index) => (
+        <div key={item.nombre} className="grid grid-cols-[1fr_auto] gap-3 text-xs">
+          <span className="truncate font-semibold text-[#2f2f33]">
+            {index + 1}. {item.nombre}
+          </span>
+          <span className="font-tabular font-bold text-[#0f0f11]">{formatearNumero(item.valor)}</span>
+          <div className="col-span-2 h-2 rounded-full bg-[#eee9e7]">
+            <div
+              className="h-2 rounded-full bg-[#c8102e]"
+              style={{ width: `${Math.max(6, (item.valor / maximo) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+
+      {datos.length === 0 && (
+        <p className="py-8 text-center text-sm text-[#5f5964]">Sin pedidos en el periodo.</p>
+      )}
+    </div>
+  )
+}
+
+function GraficoInventarioCategoria({
+  datos,
+}: {
+  datos: Array<{ nombre: string; valor: number }>
+}) {
+  const maximo = Math.max(...datos.map((item) => item.valor), 1)
+
+  return (
+    <div className="space-y-4 p-5">
+      {datos.map((item) => (
+        <div key={item.nombre} className="grid grid-cols-[7rem_1fr_auto] items-center gap-3 text-xs">
+          <span className="truncate font-semibold text-[#5f5964]">{item.nombre}</span>
+          <div className="h-3 rounded-full bg-[#eee9e7]">
+            <div
+              className="h-3 rounded-full bg-[#1a1b22]"
+              style={{ width: `${Math.max(5, (item.valor / maximo) * 100)}%` }}
+            />
+          </div>
+          <span className="font-tabular font-bold text-[#0f0f11]">{formatearNumero(item.valor)}</span>
+        </div>
+      ))}
+
+      {datos.length === 0 && (
+        <p className="py-8 text-center text-sm text-[#5f5964]">Sin materiales con los filtros actuales.</p>
+      )}
+    </div>
+  )
+}
+
+function GraficoPedidosEstado({
+  datos,
+}: {
+  datos: Array<{ nombre: string; valor: number }>
+}) {
+  const total = datos.reduce((suma, item) => suma + item.valor, 0)
+  const gradiente = construirGradienteDonut(
+    datos.map((item) => ({
+      color: colorHexEstado(item.nombre),
+      valor: item.valor,
+    }))
+  )
+
+  return (
+    <div className="grid gap-5 p-5 sm:grid-cols-[9rem_1fr] sm:items-center">
+      <div className="mx-auto grid h-36 w-36 place-items-center rounded-full" style={{ background: gradiente }}>
+        <div className="grid h-24 w-24 place-items-center rounded-full bg-white text-center">
+          <strong className="font-tabular block text-2xl text-[#0f0f11]">{total}</strong>
+          <span className="text-xs font-semibold text-[#5f5964]">Total</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {datos.map((item) => (
+          <div key={item.nombre} className="grid grid-cols-[1rem_1fr_auto] items-center gap-2 text-xs">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorHexEstado(item.nombre) }} />
+            <span className="font-semibold text-[#5f5964]">{item.nombre}</span>
+            <span className="font-tabular font-bold text-[#0f0f11]">
+              {total === 0 ? '0%' : `${Math.round((item.valor / total) * 100)}%`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -954,55 +1142,135 @@ function GraficoPrioridad({
 function GraficoEvolucion({
   datos,
 }: {
-  datos: Array<{
-    periodo: string
-    mes: string
-    anio: string
-    pedidos: number
-    entregados: number
-    alertas: number
-  }>
+  datos: EvolucionMensualItem[]
 }) {
   const maximo = Math.max(
     ...datos.flatMap((item) => [item.pedidos, item.entregados, item.alertas]),
     1
   )
+  const totalPedidos = datos.reduce((total, item) => total + item.pedidos, 0)
+  const totalEntregados = datos.reduce((total, item) => total + item.entregados, 0)
+  const totalAlertas = datos.reduce((total, item) => total + item.alertas, 0)
+  const tasaEntrega = porcentajeEntero(totalEntregados, totalPedidos)
+  const tasaAlertas = porcentajeEntero(totalAlertas, Math.max(totalPedidos, 1))
 
   return (
     <div className="p-5">
-      <div className="overflow-x-auto rounded-lg bg-slate-50">
-        <div className="flex h-60 min-w-[760px] items-end gap-3 px-4 py-5">
+      <div className="grid gap-3 md:grid-cols-4">
+        <ResumenEvolucion
+          clase="border-[#1a1b22]"
+          detalle="Pedidos creados"
+          etiqueta="Total pedidos"
+          valor={formatearNumero(totalPedidos)}
+        />
+        <ResumenEvolucion
+          clase="border-[#ff6600]"
+          detalle={`${tasaEntrega}% de los pedidos`}
+          etiqueta="Entregados"
+          valor={formatearNumero(totalEntregados)}
+        />
+        <ResumenEvolucion
+          clase="border-[#c8102e]"
+          detalle={`${tasaAlertas}% alertas/pedido`}
+          etiqueta="Alertas"
+          valor={formatearNumero(totalAlertas)}
+        />
+        <ResumenEvolucion
+          clase="border-[#ffd200]"
+          detalle="Cumplimiento del periodo"
+          etiqueta="Tasa entrega"
+          valor={`${tasaEntrega}%`}
+        />
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-lg border border-[#eee7e5] bg-[#fafafa]">
+        <div className="flex min-h-[22rem] min-w-[1020px] items-end gap-4 px-4 py-5">
           {datos.map((item) => (
-            <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-              <div className="flex h-36 w-full items-end justify-center gap-1">
-                <BarraMini valor={item.pedidos} maximo={maximo} clase="bg-[#9b95aa]" />
-                <BarraMini valor={item.entregados} maximo={maximo} clase="bg-[#ff6600]" />
-                <BarraMini valor={item.alertas} maximo={maximo} clase="bg-red-500" />
+            <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-3">
+              <div className="w-full rounded border border-[#e7dfdc] bg-white px-2 py-2 text-center shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b6262]">
+                  Entrega
+                </p>
+                <strong className={`font-tabular text-sm ${clasePorcentajeEntrega(item.tasaEntrega, item.pedidos)}`}>
+                  {item.pedidos === 0 ? '-' : `${item.tasaEntrega}%`}
+                </strong>
+                <p className="mt-1 text-[10px] font-semibold text-[#7d7070]">
+                  Alertas {item.pedidos === 0 && item.alertas === 0 ? '-' : `${item.tasaAlertas}%`}
+                </p>
               </div>
+
+              <div className="flex h-40 w-full items-end justify-center gap-1.5">
+                <BarraEvolucion valor={item.pedidos} maximo={maximo} clase="bg-[#1a1b22]" titulo="Creados" />
+                <BarraEvolucion valor={item.entregados} maximo={maximo} clase="bg-[#ff6600]" titulo="Entregados" />
+                <BarraEvolucion valor={item.alertas} maximo={maximo} clase="bg-[#c8102e]" titulo="Alertas" />
+              </div>
+
               <div className="text-center leading-none">
                 <span className="block text-xs font-semibold text-slate-600">{item.mes}</span>
                 <span className="mt-1 block text-[10px] font-medium text-slate-400">{item.anio}</span>
               </div>
+              <span className={`font-tabular rounded-full px-2 py-1 text-[10px] font-bold ${claseVariacionMes(item.variacionPedidos)}`}>
+                {textoVariacionMes(item.variacionPedidos)}
+              </span>
             </div>
           ))}
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-3 text-xs font-semibold text-slate-600">
-        <Leyenda clase="bg-[#9b95aa]" texto="Creados" />
+        <Leyenda clase="bg-[#1a1b22]" texto="Creados" />
         <Leyenda clase="bg-[#ff6600]" texto="Entregados" />
-        <Leyenda clase="bg-red-500" texto="Alertas" />
+        <Leyenda clase="bg-[#c8102e]" texto="Alertas" />
+        <span className="text-[#7d7070]">
+          % entrega = entregados / creados. % alertas = alertas / pedidos creados.
+        </span>
       </div>
     </div>
   )
 }
 
-function BarraMini({ clase, maximo, valor }: { clase: string; maximo: number; valor: number }) {
+function ResumenEvolucion({
+  clase,
+  detalle,
+  etiqueta,
+  valor,
+}: {
+  clase: string
+  detalle: string
+  etiqueta: string
+  valor: string
+}) {
   return (
-    <div
-      className={`w-full max-w-5 rounded-t ${clase}`}
-      style={{ height: `${valor === 0 ? 3 : Math.max(12, (valor / maximo) * 100)}%` }}
-      title={String(valor)}
-    />
+    <div className={`border-l-4 bg-[#fffafa] px-3 py-2 ${clase}`}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6262]">{etiqueta}</p>
+      <strong className="font-tabular mt-1 block text-xl font-black text-[#111112]">{valor}</strong>
+      <p className="mt-1 text-[11px] font-medium text-[#7d7070]">{detalle}</p>
+    </div>
+  )
+}
+
+function BarraEvolucion({
+  clase,
+  maximo,
+  titulo,
+  valor,
+}: {
+  clase: string
+  maximo: number
+  titulo: string
+  valor: number
+}) {
+  const altura = valor === 0 ? 3 : Math.max(12, (valor / maximo) * 100)
+
+  return (
+    <div className="flex h-full w-full max-w-6 flex-col items-center justify-end gap-1" title={`${titulo}: ${valor}`}>
+      <span className="font-tabular text-[10px] font-bold text-[#2f2f33]">
+        {valor > 0 ? formatearNumero(valor) : ''}
+      </span>
+      <div
+        className={`w-full rounded-t ${clase}`}
+        style={{ height: `${altura}%` }}
+      />
+    </div>
   )
 }
 
@@ -1123,7 +1391,7 @@ function crearTarjetasPorRol(
         titulo: 'Sin stock',
         valor: metricas.sinStock,
         detalle: 'Pedidos que pueden bloquearse',
-        icono: AlertTriangle,
+        icono: PackageX,
         tono: 'red',
       },
       {
@@ -1149,7 +1417,7 @@ function crearTarjetasPorRol(
         titulo: 'Stock bajo',
         valor: materialesEnRiesgo,
         detalle: 'Materiales bajo el minimo',
-        icono: Package,
+        icono: PackageX,
         tono: 'red',
       },
       {
@@ -1184,7 +1452,7 @@ function crearTarjetasPorRol(
         metricas.totalPedidos === 0
           ? 'No hay pedidos pendientes'
           : 'Pedidos esperando seguimiento',
-      icono: Timer,
+      icono: ClipboardList,
       tono: 'blue',
     },
     {
@@ -1204,7 +1472,7 @@ function crearTarjetasPorRol(
         materialesEnRiesgo > 0
           ? 'Materiales bajo el minimo'
           : 'Inventario estable',
-      icono: Package,
+      icono: Boxes,
       tono: 'amber',
     },
     {
@@ -1226,13 +1494,24 @@ function colorBarra(nivel: string) {
 
 function colorIcono(tono: string) {
   const colores = {
-    amber: 'bg-amber-100 text-amber-700',
-    blue: 'bg-blue-100 text-blue-700',
+    amber: 'bg-[#fff3bf] text-[#5f4200]',
+    blue: 'bg-[#111112] text-white',
     green: 'bg-green-100 text-green-700',
     red: 'bg-red-600 text-white',
   }
 
   return colores[tono as keyof typeof colores]
+}
+
+function bordeKpi(tono: string) {
+  const colores = {
+    amber: 'border-l-4 border-l-[#ffd200]',
+    blue: 'border-l-4 border-l-[#111112]',
+    green: 'border-l-4 border-l-green-600',
+    red: 'border-l-4 border-l-[#c8102e]',
+  }
+
+  return colores[tono as keyof typeof colores] || colores.blue
 }
 
 function colorPrioridad(nivel: string) {
@@ -1249,6 +1528,137 @@ function etiquetaOtif(valor: number) {
   if (valor >= 75) return 'En plazo'
   if (valor >= 45) return 'Atencion'
   return 'Fuera de plazo'
+}
+
+function opcionesSelect(valores: string[]): Array<[string, string]> {
+  return [['todos', 'Todos'], ...valores.map((valor): [string, string] => [valor, valor])]
+}
+
+function ordenarOpcionesUnicas(valores: string[]) {
+  return [...new Set(valores.map((valor) => valor.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b)
+  )
+}
+
+function categoriaMaterial(material: InventarioOperativo) {
+  return material.catman_categoria || material.categoria || 'Sin categoria'
+}
+
+function proveedorMaterial(material: InventarioOperativo) {
+  return material.nombre_suministrador || 'Sin proveedor'
+}
+
+function flujoPedidoLabel(pedido: Pick<Pedido, 'origen' | 'destino'>) {
+  if (pedido.origen === 'suministrador' && pedido.destino === 'bodega') {
+    return 'Suministrador a bodega'
+  }
+
+  if (pedido.origen === 'bodega' && pedido.destino === 'franquiciado') {
+    return 'Bodega a franquiciado'
+  }
+
+  return `${formatearEstado(pedido.origen)} a ${formatearEstado(pedido.destino)}`
+}
+
+function coincidePeriodoPedido(pedido: Pedido, periodo: PeriodoFiltro) {
+  return (
+    coincidePeriodoFecha(pedido.fecha_solicitud, periodo) ||
+    coincidePeriodoFecha(pedido.fecha_compromiso, periodo)
+  )
+}
+
+function coincidePeriodoFecha(fecha: string | null | undefined, periodo: PeriodoFiltro) {
+  if (periodo === 'todos') return true
+
+  const valor = fechaADiaLocal(fecha)
+  if (!valor) return false
+
+  const hoy = new Date()
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+
+  if (periodo === 'hoy') return valor.getTime() === inicioHoy.getTime()
+  if (periodo === 'mes') return valor >= inicioMes
+
+  const dias = periodo === '30' ? 30 : 90
+  const inicio = new Date(inicioHoy)
+  inicio.setDate(inicio.getDate() - dias)
+
+  return valor >= inicio && valor <= inicioHoy
+}
+
+function construirTopMaterialesPorDemanda(pedidos: Pedido[]) {
+  const mapa = new Map<string, number>()
+
+  pedidos.forEach((pedido) => {
+    const nombre = pedido.material || 'Sin material'
+    mapa.set(nombre, (mapa.get(nombre) || 0) + cantidadParaDespacho(pedido))
+  })
+
+  return [...mapa.entries()]
+    .map(([nombre, valor]) => ({ nombre, valor }))
+    .sort((a, b) => b.valor - a.valor)
+    .slice(0, 5)
+}
+
+function construirInventarioPorCategoria(materiales: InventarioOperativo[]) {
+  const mapa = new Map<string, number>()
+
+  materiales.forEach((material) => {
+    const categoria = categoriaMaterial(material)
+    mapa.set(categoria, (mapa.get(categoria) || 0) + stockDisponibleMaterial(material))
+  })
+
+  return [...mapa.entries()]
+    .map(([nombre, valor]) => ({ nombre, valor }))
+    .sort((a, b) => b.valor - a.valor)
+    .slice(0, 5)
+}
+
+function construirPedidosPorEstado(pedidos: Pedido[]) {
+  const mapa = new Map<string, number>()
+
+  pedidos.forEach((pedido) => {
+    const estado = formatearEstado(pedido.estado)
+    mapa.set(estado, (mapa.get(estado) || 0) + 1)
+  })
+
+  return [...mapa.entries()]
+    .map(([nombre, valor]) => ({ nombre, valor }))
+    .sort((a, b) => b.valor - a.valor)
+}
+
+function construirGradienteDonut(datos: Array<{ color: string; valor: number }>) {
+  const total = datos.reduce((suma, item) => suma + item.valor, 0)
+
+  if (total === 0) return 'conic-gradient(#eee9e7 0deg 360deg)'
+
+  let acumulado = 0
+  const segmentos = datos.map((item) => {
+    const inicio = acumulado
+    const grados = (item.valor / total) * 360
+    acumulado += grados
+    return `${item.color} ${inicio}deg ${acumulado}deg`
+  })
+
+  return `conic-gradient(${segmentos.join(', ')})`
+}
+
+function colorHexPrioridad(nombre: string) {
+  if (nombre === 'Critica') return '#c8102e'
+  if (nombre === 'Alta') return '#ffd200'
+  if (nombre === 'Media') return '#f5b000'
+  return '#118744'
+}
+
+function colorHexEstado(nombre: string) {
+  const texto = normalizarTexto(nombre)
+
+  if (texto.includes('entregado') || texto.includes('cerrado')) return '#118744'
+  if (texto.includes('despacho') || texto.includes('revision') || texto.includes('aprobado')) return '#ffd200'
+  if (texto.includes('cancelado') || texto.includes('rechazado') || texto.includes('stock')) return '#c8102e'
+  if (texto.includes('retrasado')) return '#c8102e'
+  return '#1a1b22'
 }
 
 function formatearEstado(estado: string) {
@@ -1326,6 +1736,31 @@ function formatearNumero(valor: number) {
   return new Intl.NumberFormat('es-EC', { maximumFractionDigits: 2 }).format(valor)
 }
 
+function porcentajeEntero(valor: number, total: number) {
+  if (total <= 0) return 0
+  return Math.round((valor / total) * 100)
+}
+
+function clasePorcentajeEntrega(valor: number, pedidos: number) {
+  if (pedidos === 0) return 'text-[#6b6262]'
+  if (valor >= 75) return 'text-green-700'
+  if (valor >= 45) return 'text-[#9b6a00]'
+  return 'text-[#c8102e]'
+}
+
+function textoVariacionMes(valor: number | null) {
+  if (valor === null) return 'sin base'
+  if (valor === 0) return '0% pedidos'
+  return `${valor > 0 ? '+' : ''}${valor}% pedidos`
+}
+
+function claseVariacionMes(valor: number | null) {
+  if (valor === null) return 'bg-[#eee7e5] text-[#6b6262]'
+  if (valor > 0) return 'bg-[#fff3bf] text-[#6b4b00]'
+  if (valor < 0) return 'bg-green-100 text-green-700'
+  return 'bg-[#eee7e5] text-[#6b6262]'
+}
+
 function otifInicial(): OtifOperativo {
   return {
     suministradorBodega: {
@@ -1343,7 +1778,7 @@ function otifInicial(): OtifOperativo {
   }
 }
 
-function construirEvolucionMensual(pedidos: Pedido[], alertas: Alerta[]) {
+function construirEvolucionMensual(pedidos: Pedido[], alertas: Alerta[]): EvolucionMensualItem[] {
   const fechaReferencia =
     fechaMaximaOperativa([
       ...pedidos.flatMap((pedido) => [
@@ -1368,6 +1803,9 @@ function construirEvolucionMensual(pedidos: Pedido[], alertas: Alerta[]) {
       pedidos: 0,
       entregados: 0,
       alertas: 0,
+      tasaEntrega: 0,
+      tasaAlertas: 0,
+      variacionPedidos: null,
     }
   })
 
@@ -1391,14 +1829,20 @@ function construirEvolucionMensual(pedidos: Pedido[], alertas: Alerta[]) {
     if (item) item.alertas += 1
   })
 
-  return meses.map(({ periodo, mes, anio, pedidos, entregados, alertas }) => ({
-    periodo,
-    mes,
-    anio,
-    pedidos,
-    entregados,
-    alertas,
-  }))
+  return meses.map((item, index) => {
+    const mesAnterior = index > 0 ? meses[index - 1] : null
+    const variacionPedidos =
+      mesAnterior && mesAnterior.pedidos > 0
+        ? Math.round(((item.pedidos - mesAnterior.pedidos) / mesAnterior.pedidos) * 100)
+        : null
+
+    return {
+      ...item,
+      tasaEntrega: porcentajeEntero(item.entregados, item.pedidos),
+      tasaAlertas: porcentajeEntero(item.alertas, Math.max(item.pedidos, 1)),
+      variacionPedidos,
+    }
+  })
 }
 
 function fechaOperativaAlerta(alerta: Alerta) {

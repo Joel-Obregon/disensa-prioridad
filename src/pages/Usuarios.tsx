@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { ShieldCheck, UserPlus, X } from 'lucide-react'
 import { useAuth } from '../auth/authState'
-import { describirRol, esRolSoloLectura } from '../auth/permisos'
+import { describirRol } from '../auth/permisos'
+import { esCorreoValido, soloTextoNombre } from '../lib/validacionesFormulario'
 import {
   actualizarEstadoUsuario,
   crearUsuarioApp,
@@ -26,11 +27,10 @@ const formularioInicial: UsuarioForm = {
   crearAccesoAuth: true,
 }
 
-const roles: RolUsuario[] = ['administrador', 'suministrador', 'bodega', 'observador']
+const roles: RolUsuario[] = ['administrador', 'suministrador', 'bodega']
 
 export default function Usuarios() {
   const { perfil } = useAuth()
-  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [usuarios, setUsuarios] = useState<UsuarioApp[]>([])
   const [formulario, setFormulario] = useState<UsuarioForm>(formularioInicial)
   const [cargando, setCargando] = useState(true)
@@ -58,11 +58,6 @@ export default function Usuarios() {
 
   async function registrarUsuario(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (soloLectura) {
-      setError('Rol observador: no puedes crear ni modificar usuarios.')
-      return
-    }
-
     setGuardando(true)
     setError('')
     setMensaje('')
@@ -72,6 +67,12 @@ export default function Usuarios() {
       !formulario.correo.trim()
     ) {
       setError('Completa nombre y correo.')
+      setGuardando(false)
+      return
+    }
+
+    if (!esCorreoValido(formulario.correo)) {
+      setError('Ingresa un correo valido.')
       setGuardando(false)
       return
     }
@@ -113,11 +114,6 @@ export default function Usuarios() {
   }
 
   async function cambiarEstado(usuario: UsuarioApp) {
-    if (soloLectura) {
-      setError('Rol observador: no puedes activar ni desactivar usuarios.')
-      return
-    }
-
     const estado = usuario.estado === 'activo' ? 'inactivo' : 'activo'
     const { error } = await actualizarEstadoUsuario(usuario.id, estado)
 
@@ -151,7 +147,7 @@ export default function Usuarios() {
     ]
   }, [usuarios])
 
-  if (perfil?.rol !== 'administrador' && !soloLectura) {
+  if (perfil?.rol !== 'administrador') {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
         Solo el administrador puede registrar y administrar usuarios.
@@ -168,20 +164,18 @@ export default function Usuarios() {
             Registra usuarios autenticados y asigna interfaz por rol.
           </p>
         </div>
-        {!soloLectura && (
-          <button
-            type="button"
-            onClick={() => {
-              setMostrarFormulario((actual) => !actual)
-              setError('')
-              setMensaje('')
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            <UserPlus size={17} />
-            {mostrarFormulario ? 'Ocultar formulario' : 'Crear usuario'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setMostrarFormulario((actual) => !actual)
+            setError('')
+            setMensaje('')
+          }}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+        >
+          <UserPlus size={17} />
+          {mostrarFormulario ? 'Ocultar formulario' : 'Crear usuario'}
+        </button>
       </div>
 
       {error && (
@@ -207,7 +201,7 @@ export default function Usuarios() {
         ))}
       </div>
 
-      {mostrarFormulario && !soloLectura && (
+      {mostrarFormulario && (
       <form
         onSubmit={registrarUsuario}
         className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
@@ -222,14 +216,18 @@ export default function Usuarios() {
             label="Nombre"
             value={formulario.nombre}
             placeholder="Ej. Bodega Norte"
-            onChange={(nombre) => setFormulario({ ...formulario, nombre })}
+            onChange={(nombre) =>
+              setFormulario({ ...formulario, nombre: soloTextoNombre(nombre, 80) })
+            }
           />
           <Campo
             label="Correo"
             type="email"
             value={formulario.correo}
             placeholder="usuario@disensa.local"
-            onChange={(correo) => setFormulario({ ...formulario, correo })}
+            onChange={(correo) =>
+              setFormulario({ ...formulario, correo: correo.replace(/\s/g, '').slice(0, 120) })
+            }
           />
           <Campo
             label="Contrasena"
@@ -327,7 +325,6 @@ export default function Usuarios() {
                     <button
                       type="button"
                       onClick={() => cambiarEstado(usuario)}
-                      disabled={soloLectura}
                       className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                       {usuario.estado === 'activo' ? 'Desactivar' : 'Activar'}

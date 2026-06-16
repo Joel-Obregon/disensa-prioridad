@@ -5,7 +5,6 @@ import {
   Edit3,
   PackageCheck,
   PackagePlus,
-  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -13,6 +12,14 @@ import {
   X,
 } from 'lucide-react'
 import { claseSemaforoBadge, claseSemaforoBarra } from '../lib/semaforoOperativo'
+import {
+  esCodigoMaterialValido,
+  esEnteroNoNegativo,
+  soloDigitos,
+  soloEnteroNoNegativo,
+  soloTextoNombre,
+  textoMixtoOperativo,
+} from '../lib/validacionesFormulario'
 import {
   escucharInventarioOperativo,
   obtenerInventarioOperativo,
@@ -24,11 +31,10 @@ import {
   escucharMateriales,
   type MaterialInput,
 } from '../services/materialesService'
-import { useAuth } from '../auth/authState'
-import { esRolSoloLectura } from '../auth/permisos'
 import type { InventarioOperativo } from '../types/material'
 
 type MaterialForm = {
+  codigo_material: string
   nombre: string
   categoria: string
   stock_actual: string
@@ -46,6 +52,7 @@ type EstadoStockFiltro =
   | 'reabastecimiento'
 
 const formularioInicial: MaterialForm = {
+  codigo_material: '',
   nombre: '',
   categoria: '',
   stock_actual: '',
@@ -55,8 +62,6 @@ const formularioInicial: MaterialForm = {
 const MATERIALES_INVENTARIO_POR_PAGINA = 100
 
 export default function Inventario() {
-  const { perfil } = useAuth()
-  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
@@ -94,11 +99,6 @@ export default function Inventario() {
 
   async function registrarMaterial(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (soloLectura) {
-      setError('Rol observador: puedes abrir el formulario, pero no guardar materiales.')
-      return
-    }
-
     setGuardando(true)
     setError('')
     setAviso('')
@@ -106,7 +106,7 @@ export default function Inventario() {
     const payload = prepararPayload(formulario, 0)
 
     if (!payload) {
-      setError('Completa nombre, catman, stock disponible y UMB.')
+      setError('Completa codigo, nombre, catman, UMB y stock disponible. El codigo del material debe tener exactamente 8 digitos.')
       setGuardando(false)
       return
     }
@@ -122,20 +122,18 @@ export default function Inventario() {
     setFormulario(formularioInicial)
     setMostrarFormulario(false)
     setGuardando(false)
-    setAviso('Material agregado y sincronizado con inventario, pedidos y alertas.')
-    cargarDatos()
+    setAviso(
+      'Material agregado. Ya esta disponible en inventario y en el selector de pedidos.'
+    )
+    await cargarDatos()
   }
 
   function iniciarEdicion(material: InventarioOperativo) {
-    if (soloLectura) {
-      setError('Rol observador: no puedes editar materiales.')
-      return
-    }
-
     setError('')
     setAviso('')
     setEditandoId(material.id)
     setEdicion({
+      codigo_material: material.codigo_material || '',
       nombre: material.nombre,
       categoria: material.catman_categoria || material.categoria,
       stock_actual: String(material.stock_disponible_operativo),
@@ -144,11 +142,6 @@ export default function Inventario() {
   }
 
   async function guardarEdicion(material: InventarioOperativo) {
-    if (soloLectura) {
-      setError('Rol observador: no puedes guardar cambios de inventario.')
-      return
-    }
-
     setGuardando(true)
     setError('')
     setAviso('')
@@ -177,11 +170,6 @@ export default function Inventario() {
   }
 
   async function eliminarMaterialSeleccionado(material: InventarioOperativo) {
-    if (soloLectura) {
-      setError('Rol observador: no puedes eliminar materiales.')
-      return
-    }
-
     const confirmado = window.confirm(
       `Eliminar ${material.nombre}? Se quitara del inventario y se cerraran sus alertas relacionadas.`
     )
@@ -362,14 +350,6 @@ export default function Inventario() {
             <PackagePlus size={16} />
             {mostrarFormulario ? 'Ocultar' : 'Agregar'}
           </button>
-          <button
-            type="button"
-            onClick={cargarDatos}
-            className="inline-flex items-center justify-center gap-2 border border-[#cfc4c5] bg-white px-4 py-2 text-sm font-semibold text-[#1a1a1a] transition hover:bg-[#f4f2fd]"
-          >
-            <RefreshCw size={16} />
-            Actualizar materiales
-          </button>
         </div>
       </div>
 
@@ -404,24 +384,40 @@ export default function Inventario() {
               Cancelar
             </button>
           </div>
-          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-6">
+            <CampoTexto
+              label="Codigo material"
+              value={formulario.codigo_material}
+              onChange={(codigo_material) =>
+                setFormulario({ ...formulario, codigo_material: soloDigitos(codigo_material, 8) })
+              }
+              placeholder="Ej. 91004161"
+            />
             <CampoTexto
               label="Material"
               value={formulario.nombre}
-              onChange={(nombre) => setFormulario({ ...formulario, nombre })}
+              onChange={(nombre) =>
+                setFormulario({ ...formulario, nombre: textoMixtoOperativo(nombre, 120) })
+              }
               placeholder="Nombre del material"
             />
             <CampoTexto
               label="Catman"
               value={formulario.categoria}
-              onChange={(categoria) => setFormulario({ ...formulario, categoria })}
+              onChange={(categoria) =>
+                setFormulario({ ...formulario, categoria: soloTextoNombre(categoria, 60) })
+              }
               placeholder="Catman / categoria"
             />
             <CampoTexto
               label="Stock disponible"
-              type="number"
               value={formulario.stock_actual}
-              onChange={(stock_actual) => setFormulario({ ...formulario, stock_actual })}
+              onChange={(stock_actual) =>
+                setFormulario({
+                  ...formulario,
+                  stock_actual: soloEnteroNoNegativo(stock_actual, 9),
+                })
+              }
               placeholder="Ej. 100"
             />
             <FiltroSelect
@@ -433,7 +429,7 @@ export default function Inventario() {
             <div className="flex items-end">
               <button
                 type="submit"
-                disabled={guardando || soloLectura}
+                disabled={guardando}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
               >
                 <Save size={16} />
@@ -562,10 +558,25 @@ export default function Inventario() {
                   <tr key={material.id} className="border-t border-slate-100 align-top">
                     <td className={`border-l-4 px-5 py-4 ${bordeEstadoStock(estadoStock)}`}>
                       {editando ? (
-                        <CampoInline
-                          value={edicion.nombre}
-                          onChange={(nombre) => setEdicion({ ...edicion, nombre })}
-                        />
+                        <div className="space-y-2">
+                          <CampoInline
+                            value={edicion.nombre}
+                            onChange={(nombre) =>
+                              setEdicion({ ...edicion, nombre: textoMixtoOperativo(nombre, 120) })
+                            }
+                            placeholder="Nombre del material"
+                          />
+                          <CampoInline
+                            value={edicion.codigo_material}
+                            onChange={(codigo_material) =>
+                              setEdicion({
+                                ...edicion,
+                                codigo_material: soloDigitos(codigo_material, 8),
+                              })
+                            }
+                            placeholder="Codigo material"
+                          />
+                        </div>
                       ) : (
                         <>
                           <p className="font-semibold text-slate-800">{material.nombre}</p>
@@ -590,7 +601,9 @@ export default function Inventario() {
                       {editando ? (
                         <CampoInline
                           value={edicion.categoria}
-                          onChange={(categoria) => setEdicion({ ...edicion, categoria })}
+                          onChange={(categoria) =>
+                            setEdicion({ ...edicion, categoria: soloTextoNombre(categoria, 60) })
+                          }
                         />
                       ) : (
                         <>
@@ -604,9 +617,13 @@ export default function Inventario() {
                     <td className="px-5 py-4">
                       {editando ? (
                         <CampoInline
-                          type="number"
                           value={edicion.stock_actual}
-                          onChange={(stock_actual) => setEdicion({ ...edicion, stock_actual })}
+                          onChange={(stock_actual) =>
+                            setEdicion({
+                              ...edicion,
+                              stock_actual: soloEnteroNoNegativo(stock_actual, 9),
+                            })
+                          }
                         />
                       ) : (
                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${colorEstadoStock(estadoStock)}`}>
@@ -668,7 +685,7 @@ export default function Inventario() {
                             <button
                               type="button"
                               onClick={() => guardarEdicion(material)}
-                              disabled={guardando || soloLectura}
+                              disabled={guardando}
                               className="inline-flex items-center gap-1 rounded-lg border border-green-200 px-3 py-1.5 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60"
                             >
                               <Save size={14} />
@@ -688,7 +705,6 @@ export default function Inventario() {
                             <button
                               type="button"
                               onClick={() => iniciarEdicion(material)}
-                              disabled={soloLectura}
                               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                             >
                               <Edit3 size={14} />
@@ -696,7 +712,7 @@ export default function Inventario() {
                             </button>
                             <button
                               type="button"
-                              disabled={eliminando === material.id || soloLectura}
+                              disabled={eliminando === material.id}
                               onClick={() => eliminarMaterialSeleccionado(material)}
                               className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
                             >
@@ -781,10 +797,12 @@ function CampoTexto({
 
 function CampoInline({
   onChange,
+  placeholder,
   type = 'text',
   value,
 }: {
   onChange: (value: string) => void
+  placeholder?: string
   type?: string
   value: string
 }) {
@@ -795,6 +813,7 @@ function CampoInline({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       className="w-full min-w-32 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+      placeholder={placeholder}
     />
   )
 }
@@ -830,18 +849,22 @@ function FiltroSelect({
 
 function prepararPayload(form: MaterialForm, stockMinimo: number): MaterialInput | null {
   const stockActual = Number(form.stock_actual)
+  const codigoMaterial = form.codigo_material.trim()
 
   if (
     !form.nombre.trim() ||
     !form.categoria.trim() ||
     !form.unidad_medida.trim() ||
-    Number.isNaN(stockActual) ||
-    stockActual < 0
+    !codigoMaterial ||
+    !esCodigoMaterialValido(codigoMaterial) ||
+    !esEnteroNoNegativo(form.stock_actual) ||
+    Number.isNaN(stockActual)
   ) {
     return null
   }
 
   return {
+    codigo_material: codigoMaterial || null,
     nombre: form.nombre.trim(),
     categoria: form.categoria.trim(),
     stock_actual: stockActual,

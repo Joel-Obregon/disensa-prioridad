@@ -11,9 +11,9 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../auth/authState'
-import { esRolSoloLectura } from '../auth/permisos'
 import MaterialSearchSelect from '../components/MaterialSearchSelect'
 import { claseSemaforoBadge } from '../lib/semaforoOperativo'
+import { textoDescripcion, textoMixtoOperativo } from '../lib/validacionesFormulario'
 import {
   escucharReportesFranquiciado,
   obtenerReportesFranquiciado,
@@ -117,7 +117,6 @@ const prioridadesReporteOperativo: PrioridadReporteOperativo[] = [
 
 export default function Reportes() {
   const { perfil } = useAuth()
-  const soloLectura = esRolSoloLectura(perfil?.rol)
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [reportesFranquiciado, setReportesFranquiciado] = useState<ReporteFranquiciado[]>([])
@@ -155,11 +154,6 @@ export default function Reportes() {
 
   async function registrarReporteOperativo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (soloLectura) {
-      setErrorReporte('Rol observador: no puedes crear reportes operativos.')
-      return
-    }
-
     setGuardandoReporte(true)
     setErrorReporte('')
     setMensajeReporte('')
@@ -174,11 +168,11 @@ export default function Reportes() {
     }
 
     const { error } = await crearReporteOperativo({
-      titulo: formularioReporte.titulo,
+      titulo: formularioReporte.titulo.trim(),
       tipo: formularioReporte.tipo,
       prioridad: formularioReporte.prioridad,
-      descripcion: formularioReporte.descripcion,
-      pedido_codigo: formularioReporte.pedido_codigo,
+      descripcion: formularioReporte.descripcion.trim(),
+      pedido_codigo: formularioReporte.pedido_codigo.trim(),
       material_id: formularioReporte.material_id,
       rol_origen: perfil?.rol || 'administrador',
       creado_por: perfil?.nombre || perfil?.correo || 'Usuario interno',
@@ -363,10 +357,6 @@ export default function Reportes() {
           <button
             type="button"
             onClick={() => {
-              if (soloLectura) {
-                setErrorReporte('Rol observador: no puedes crear reportes operativos.')
-                return
-              }
               setMostrarFormularioReporte((actual) => !actual)
               setErrorReporte('')
               setMensajeReporte('')
@@ -378,11 +368,7 @@ export default function Reportes() {
           </button>
           <button
             type="button"
-            onClick={() =>
-              soloLectura
-                ? setErrorReporte('Rol observador: no puedes exportar datos.')
-                : exportarPedidosCsv(pedidosFiltrados)
-            }
+            onClick={() => exportarPedidosCsv(pedidosFiltrados)}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
             <Download size={16} />
@@ -390,11 +376,7 @@ export default function Reportes() {
           </button>
           <button
             type="button"
-            onClick={() =>
-              soloLectura
-                ? setErrorReporte('Rol observador: no puedes exportar datos.')
-                : exportarDespachoCsv(materialesPorDespachar)
-            }
+            onClick={() => exportarDespachoCsv(materialesPorDespachar)}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700"
           >
             <Download size={16} />
@@ -423,7 +405,12 @@ export default function Reportes() {
               label="Titulo"
               value={formularioReporte.titulo}
               placeholder="Ej. Retraso por falta de despacho"
-              onChange={(titulo) => setFormularioReporte({ ...formularioReporte, titulo })}
+              onChange={(titulo) =>
+                setFormularioReporte({
+                  ...formularioReporte,
+                  titulo: textoMixtoOperativo(titulo, 100),
+                })
+              }
             />
             <CampoSelect
               label="Tipo"
@@ -453,7 +440,10 @@ export default function Reportes() {
               placeholder="Opcional, ej. PED-0004"
               list="pedidos-reporte"
               onChange={(pedido_codigo) =>
-                setFormularioReporte({ ...formularioReporte, pedido_codigo })
+                setFormularioReporte({
+                  ...formularioReporte,
+                  pedido_codigo: textoMixtoOperativo(pedido_codigo, 60),
+                })
               }
             />
           </div>
@@ -483,7 +473,7 @@ export default function Reportes() {
                 onChange={(event) =>
                   setFormularioReporte({
                     ...formularioReporte,
-                    descripcion: event.target.value,
+                    descripcion: textoDescripcion(event.target.value, 800),
                   })
                 }
                 rows={3}
@@ -507,7 +497,7 @@ export default function Reportes() {
 
           <button
             type="submit"
-            disabled={guardandoReporte || soloLectura}
+            disabled={guardandoReporte}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
           >
             <Send size={17} />

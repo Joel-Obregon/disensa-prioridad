@@ -24,6 +24,13 @@ import {
   resolverSemaforoPedido,
   type SemaforoOperativo,
 } from '../lib/semaforoOperativo'
+import {
+  esCodigoClienteORucValido,
+  esEnteroPositivo,
+  soloDigitos,
+  soloEnteroNoNegativo,
+  soloTextoNombre,
+} from '../lib/validacionesFormulario'
 import MaterialSearchSelect from '../components/MaterialSearchSelect'
 import { registrarAuditoria } from '../services/auditoriaService'
 import { obtenerAlertas } from '../services/alertasService'
@@ -33,7 +40,6 @@ import {
 } from '../services/franquiciadoService'
 import { escucharInventarioOperativo } from '../services/inventarioService'
 import { escucharMateriales, obtenerMateriales } from '../services/materialesService'
-import { esRolSoloLectura } from '../auth/permisos'
 import {
   actualizarCantidadDespachoPedido,
   actualizarPedido,
@@ -96,6 +102,11 @@ type MaterialesLookup = {
 
 type VistaPedidos = 'operativos' | 'historial'
 
+type ClienteSolicitante = {
+  nombre: string
+  documento: string
+}
+
 const formularioInicial: PedidoForm = {
   material_id: '',
   cantidad: '',
@@ -149,7 +160,6 @@ const PEDIDOS_POR_PAGINA = 100
 export default function Pedidos() {
   const { perfil } = useAuth()
   const rol = perfil?.rol || 'administrador'
-  const soloLectura = esRolSoloLectura(rol)
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [materiales, setMateriales] = useState<Material[]>([])
   const [alertas, setAlertas] = useState<Alerta[]>([])
@@ -209,44 +219,37 @@ export default function Pedidos() {
 
   async function registrarPedido(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (soloLectura) {
-      setError('Rol observador: puedes revisar el formulario, pero no guardar cambios.')
-      return
-    }
-
     setGuardando(true)
     setError('')
 
     const material = materiales.find((item) => item.id === formulario.material_id)
     const cantidad = Number(formulario.cantidad)
-    const cantidadDespacho = Number(formulario.cantidad_despacho || formulario.cantidad)
+    const cantidadDespacho = cantidad
 
     const cedulaSolicitante = normalizarCedula(formulario.cedula_solicitante)
 
     if (
       !material ||
       !formulario.solicitante.trim() ||
-      cedulaSolicitante.length < 10 ||
+      !esCodigoClienteORucValido(cedulaSolicitante) ||
       !formulario.fecha_compromiso
     ) {
-      setError('Completa material, solicitante, cedula o RUC y fecha requerida.')
+      setError('Completa material, solicitante, fecha requerida y codigo cliente/cedula/RUC entre 6 y 13 digitos.')
       setGuardando(false)
       return
     }
 
-    if (
-      Number.isNaN(cantidad) ||
-      Number.isNaN(cantidadDespacho) ||
-      cantidad <= 0 ||
-      cantidadDespacho < 0
-    ) {
-      setError('La cantidad solicitada debe ser mayor a cero.')
+    if (!esEnteroPositivo(formulario.cantidad)) {
+      setError('La cantidad solicitada debe ser un numero entero mayor a cero.')
       setGuardando(false)
       return
     }
 
     if (pedidoEditandoId) {
       const { error } = await actualizarPedido(pedidoEditandoId, {
+        codigo: pedidos.find((pedido) => pedido.id === pedidoEditandoId)?.codigo,
+        codigo_consulta: pedidos.find((pedido) => pedido.id === pedidoEditandoId)?.codigo_consulta || undefined,
+        codigo_material: material.codigo_material || null,
         material_id: material.id,
         material: material.nombre,
         cantidad,
@@ -284,6 +287,7 @@ export default function Pedidos() {
 
     const { error } = await crearPedido({
       codigo: generarCodigoPedido(),
+      codigo_material: material.codigo_material || null,
       material_id: material.id,
       material: material.nombre,
       cantidad,
@@ -329,12 +333,20 @@ export default function Pedidos() {
     setMostrarFormulario(true)
   }
 
-  function iniciarEdicion(pedido: Pedido) {
-    if (soloLectura) {
-      setPedidoDetalle(pedido)
-      return
-    }
+  function actualizarSolicitante(valor: string) {
+    const solicitante = soloTextoNombre(valor, 100)
+    const cliente = clientesDisponibles.find(
+      (item) => normalizarTexto(item.nombre) === normalizarTexto(solicitante)
+    )
 
+    setFormulario({
+      ...formulario,
+      solicitante,
+      cedula_solicitante: cliente?.documento || formulario.cedula_solicitante,
+    })
+  }
+
+  function iniciarEdicion(pedido: Pedido) {
     const material = materiales.find(
       (item) =>
         item.id === pedido.material_id ||
@@ -362,10 +374,6 @@ export default function Pedidos() {
 
   async function cambiarEstado(pedido: Pedido, estado: EstadoPedido) {
     setError('')
-    if (soloLectura) {
-      setError('Rol observador: no puedes cambiar estados de pedidos.')
-      return
-    }
 
     const contexto = contextoOperativoPedido(pedido)
     const pedidoContextual = {
@@ -404,10 +412,6 @@ export default function Pedidos() {
 
   async function despacharPedidoSeleccionado(pedido: Pedido) {
     setError('')
-    if (soloLectura) {
-      setError('Rol observador: no puedes despachar pedidos ni descontar stock.')
-      return
-    }
 
     const contexto = contextoOperativoPedido(pedido)
     const pedidoContextual = {
@@ -453,11 +457,6 @@ export default function Pedidos() {
 
   async function reponerPedidoReportado(pedido: Pedido) {
     setError('')
-
-    if (soloLectura) {
-      setError('Rol observador: no puedes reponer pedidos ni descontar stock.')
-      return
-    }
 
     const contexto = contextoOperativoPedido(pedido)
     const cantidadOriginal = Math.max(1, cantidadParaDespacho(pedido))
@@ -538,10 +537,6 @@ export default function Pedidos() {
 
   async function reactivarPedidoSeleccionado(pedido: Pedido) {
     setError('')
-    if (soloLectura) {
-      setError('Rol observador: no puedes reactivar pedidos cerrados.')
-      return
-    }
 
     const nota = window.prompt(
       `Explica por que se reactiva ${pedido.codigo}. Esta nota quedara en el historial.`
@@ -631,6 +626,27 @@ export default function Pedidos() {
 
     return { porCodigoPedido, porConsulta }
   }, [detallesOperativos])
+
+  const clientesDisponibles = useMemo<ClienteSolicitante[]>(() => {
+    const porNombre = new Map<string, ClienteSolicitante>()
+
+    pedidos.forEach((pedido) => {
+      const detalle = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
+      const nombre = pedido.solicitante?.trim()
+      const documento = normalizarCedula(detalle?.codigo_cliente || pedido.cedula_solicitante || '')
+
+      if (!nombre) return
+
+      const llave = normalizarTexto(nombre)
+      const actual = porNombre.get(llave)
+
+      if (!actual || (!actual.documento && documento)) {
+        porNombre.set(llave, { nombre, documento })
+      }
+    })
+
+    return [...porNombre.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [detallesOperativosLookup, pedidos])
 
   const pedidosConStockReal = useMemo(() => {
     return pedidos.map((pedido) => {
@@ -802,11 +818,7 @@ export default function Pedidos() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() =>
-                soloLectura
-                  ? setError('Rol observador: no puedes exportar datos.')
-                  : exportarPedidosCsv(pedidosPriorizados)
-              }
+              onClick={() => exportarPedidosCsv(pedidosPriorizados)}
               className="inline-flex items-center justify-center gap-2 border border-[#c99582] bg-white px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#2b160f] transition hover:bg-[#fff1eb]"
             >
               <Download size={17} />
@@ -919,6 +931,16 @@ export default function Pedidos() {
             {pedidoEditandoId ? 'Editar pedido' : 'Registrar pedido'}
           </h2>
 
+          <datalist id="solicitantes-pedido">
+            {clientesDisponibles.map((cliente) => (
+              <option
+                key={`${cliente.nombre}-${cliente.documento}`}
+                value={cliente.nombre}
+                label={cliente.documento ? `Codigo ${cliente.documento}` : undefined}
+              />
+            ))}
+          </datalist>
+
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
             <MaterialSearchSelect
               label="Material"
@@ -931,49 +953,47 @@ export default function Pedidos() {
 
             <Campo label="Cantidad solicitada por franquiciado">
               <input
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
+                maxLength={7}
+                pattern="\d*"
                 value={formulario.cantidad}
                 onChange={(event) =>
-                  setFormulario({ ...formulario, cantidad: event.target.value })
+                  setFormulario({
+                    ...formulario,
+                    cantidad: soloEnteroNoNegativo(event.target.value, 7),
+                  })
                 }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Ej. 50"
               />
             </Campo>
 
-            <Campo label="Entrega propuesta">
-              <input
-                type="number"
-                min={0}
-                value={formulario.cantidad_despacho}
-                onChange={(event) =>
-                  setFormulario({ ...formulario, cantidad_despacho: event.target.value })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Si esta vacio usa la solicitada"
-              />
-            </Campo>
-
             <Campo label="Solicitante">
               <input
+                list="solicitantes-pedido"
                 value={formulario.solicitante}
-                onChange={(event) =>
-                  setFormulario({ ...formulario, solicitante: event.target.value })
-                }
+                onChange={(event) => actualizarSolicitante(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Ej. Disensa Daule"
+                placeholder="Selecciona existente o escribe uno nuevo"
               />
             </Campo>
 
-            <Campo label="Cedula o RUC del franquiciado">
+            <Campo label="Codigo cliente, cedula o RUC">
               <input
+                type="text"
+                inputMode="numeric"
+                maxLength={13}
+                pattern="\d*"
                 value={formulario.cedula_solicitante}
                 onChange={(event) =>
-                  setFormulario({ ...formulario, cedula_solicitante: event.target.value })
+                  setFormulario({
+                    ...formulario,
+                    cedula_solicitante: soloDigitos(event.target.value, 13),
+                  })
                 }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Ej. 0912345678"
+                placeholder="Ej. 6192102 o 0912345678"
               />
             </Campo>
 
@@ -1100,7 +1120,7 @@ export default function Pedidos() {
           <div className="mt-6 flex justify-end">
             <button
               type="submit"
-              disabled={guardando || materiales.length === 0 || soloLectura}
+              disabled={guardando || materiales.length === 0}
               className="rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
             >
               {guardando ? 'Guardando...' : pedidoEditandoId ? 'Guardar cambios' : 'Guardar pedido'}
@@ -1266,7 +1286,7 @@ export default function Pedidos() {
                             <AccionEstado
                               label="Reponer y reenviar"
                               icono={<Truck size={14} />}
-                              disabled={soloLectura || !puedeGestionar || stockDisponible <= 0}
+                              disabled={!puedeGestionar || stockDisponible <= 0}
                               onClick={() => reponerPedidoReportado(pedido)}
                             />
                           ) : (
@@ -1274,7 +1294,7 @@ export default function Pedidos() {
                               <AccionEstado
                                 label="Editar"
                                 icono={<Edit3 size={14} />}
-                                disabled={soloLectura || !puedeGestionar || pedidoCerrado(pedido.estado)}
+                                disabled={!puedeGestionar || pedidoCerrado(pedido.estado)}
                                 onClick={() => iniciarEdicion(pedido)}
                               />
                               {flujo === 'compra' ? (
@@ -1282,7 +1302,7 @@ export default function Pedidos() {
                                   <AccionEstado
                                     label="Revisar compra"
                                     disabled={
-                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
+                                      !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
                                     }
                                     onClick={() => cambiarEstado(pedido, 'en_revision')}
                                   />
@@ -1290,7 +1310,7 @@ export default function Pedidos() {
                                     label="Planificar OC"
                                     icono={<ClipboardCheck size={14} />}
                                     disabled={
-                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'aprobado')
+                                      !puedeGestionar || !puedeCambiarA(pedido.estado, 'aprobado')
                                     }
                                     onClick={() => cambiarEstado(pedido, 'aprobado')}
                                   />
@@ -1298,7 +1318,7 @@ export default function Pedidos() {
                                     label="Recibido"
                                     icono={<CheckCircle2 size={14} />}
                                     disabled={
-                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'entregado')
+                                      !puedeGestionar || !puedeCambiarA(pedido.estado, 'entregado')
                                     }
                                     onClick={() => cambiarEstado(pedido, 'entregado')}
                                   />
@@ -1308,7 +1328,7 @@ export default function Pedidos() {
                                   <AccionEstado
                                     label="Revision"
                                     disabled={
-                                      soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
+                                      !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
                                     }
                                     onClick={() => cambiarEstado(pedido, 'en_revision')}
                                   />
@@ -1317,7 +1337,6 @@ export default function Pedidos() {
                                     icono={<ClipboardCheck size={14} />}
                                     disabled={
                                       !puedeGestionar ||
-                                      soloLectura ||
                                       !puedeCambiarA(pedido.estado, 'aprobado') ||
                                       !stockSuficiente
                                     }
@@ -1328,7 +1347,6 @@ export default function Pedidos() {
                                     icono={<Truck size={14} />}
                                     disabled={
                                       !puedeGestionar ||
-                                      soloLectura ||
                                       !puedeCambiarA(pedido.estado, 'en_despacho') ||
                                       !stockSuficiente
                                     }
@@ -1340,14 +1358,14 @@ export default function Pedidos() {
                                 label="Cancelar"
                                 icono={<XCircle size={14} />}
                                 peligro
-                                disabled={soloLectura || !puedeGestionar || !puedeCambiarA(pedido.estado, 'cancelado')}
+                                disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'cancelado')}
                                 onClick={() => cambiarEstado(pedido, 'cancelado')}
                               />
                               {pedido.estado === 'cancelado' && (
                                 <AccionEstado
                                   label="Reactivar"
                                   icono={<RotateCcw size={14} />}
-                                  disabled={soloLectura || !puedeGestionar}
+                                  disabled={!puedeGestionar}
                                   onClick={() => reactivarPedidoSeleccionado(pedido)}
                                 />
                               )}
