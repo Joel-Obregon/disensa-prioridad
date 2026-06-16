@@ -1,6 +1,7 @@
 import { emitirAlertaVisualLocal } from '../lib/alertRuntimeEvents'
 import type { Alerta } from '../types/alerta'
 import type { Material } from '../types/material'
+import { invalidarCache } from './cacheService'
 import { supabase } from './supabaseClient'
 
 type MaterialConStock = Pick<
@@ -18,9 +19,11 @@ const TIPOS_ALERTA_STOCK = ['stock_bajo', 'faltante_bodega_fq']
 
 export async function sincronizarAlertaStockMaterial(
   material: MaterialConStock,
-  stockActual = material.stock_actual
+  stockActual = material.stock_actual,
+  opciones: { emitir?: boolean; responsable?: string } = {}
 ) {
   const nivelNuevo = nivelAlertaStock(stockActual, material)
+  const responsable = opciones.responsable || 'Departamento de inventario'
 
   if (!nivelNuevo) {
     const result = await supabase
@@ -30,7 +33,12 @@ export async function sincronizarAlertaStockMaterial(
       .in('tipo_alerta', TIPOS_ALERTA_STOCK)
       .in('estado', ['activa', 'revisada'])
 
-    return esErrorTablaOColumnaOpcional(result.error) ? { data: null, error: null } : result
+    const normalizado = esErrorTablaOColumnaOpcional(result.error)
+      ? { data: null, error: null }
+      : result
+
+    if (!normalizado.error) invalidarCache('alertas')
+    return normalizado
   }
 
   const existentes = await supabase
@@ -55,13 +63,15 @@ export async function sincronizarAlertaStockMaterial(
         tipo_alerta: 'stock_bajo',
         nivel: nivelNuevo,
         mensaje,
-        responsable: 'Departamento de inventario',
+        responsable,
       })
       .eq('id', alertaMismoNivel.id)
       .select('*')
       .single<Alerta>()
 
     if (updateResult.error) return updateResult
+    if (opciones.emitir !== false) emitirAlertaVisualLocal(updateResult.data)
+    invalidarCache('alertas')
 
     const duplicadas = (existentes.data || []).filter((alerta) => alerta.id !== alertaMismoNivel.id)
     if (duplicadas.length > 0) {
@@ -86,20 +96,26 @@ export async function sincronizarAlertaStockMaterial(
       nivel: nivelNuevo,
       mensaje,
       estado: 'activa',
-      responsable: 'Departamento de inventario',
+      responsable,
     })
     .select('*')
     .single<Alerta>()
 
-  if (!crearAlerta.error) emitirAlertaVisualLocal(crearAlerta.data)
+  if (!crearAlerta.error && opciones.emitir !== false) emitirAlertaVisualLocal(crearAlerta.data)
 
-  return esErrorTablaOColumnaOpcional(crearAlerta.error)
+  const normalizado = esErrorTablaOColumnaOpcional(crearAlerta.error)
     ? { data: null, error: null }
     : crearAlerta
+
+  if (!normalizado.error) invalidarCache('alertas')
+  return normalizado
 }
 
-function cerrarAlertasStock(ids: string[]) {
-  return supabase.from('alertas').update({ estado: 'cerrada' }).in('id', ids)
+async function cerrarAlertasStock(ids: string[]) {
+  const result = await supabase.from('alertas').update({ estado: 'cerrada' }).in('id', ids)
+
+  if (!result.error) invalidarCache('alertas')
+  return result
 }
 
 function nivelAlertaStock(

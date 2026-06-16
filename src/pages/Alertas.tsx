@@ -16,6 +16,7 @@ import {
   describirTiempoPedido,
 } from '../lib/semaforoOperativo'
 import { registrarAuditoria } from '../services/auditoriaService'
+import { limpiarAlertasNoRevisadas } from '../lib/alertNotifications'
 import {
   actualizarEstadoAlerta,
   escucharCambiosAlertas,
@@ -83,8 +84,8 @@ export default function Alertas() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
 
-  async function cargarAlertas() {
-    setCargando(true)
+  async function cargarAlertas({ silencioso = false }: { silencioso?: boolean } = {}) {
+    if (!silencioso) setCargando(true)
     setError('')
 
     const { data, error } = await obtenerAlertas()
@@ -119,15 +120,24 @@ export default function Alertas() {
       detalle: `${alerta.tipo_alerta}: ${alerta.mensaje}`,
     })
 
-    cargarAlertas()
+    cargarAlertas({ silencioso: true })
   }
 
   useEffect(() => {
+    limpiarAlertasNoRevisadas()
+
     const timer = window.setTimeout(cargarAlertas, 0)
-    const dejarDeEscuchar = escucharCambiosAlertas(cargarAlertas)
+    let refrescoTimer: number | undefined
+    const dejarDeEscuchar = escucharCambiosAlertas(() => {
+      if (refrescoTimer) window.clearTimeout(refrescoTimer)
+      refrescoTimer = window.setTimeout(() => {
+        cargarAlertas({ silencioso: true })
+      }, 300)
+    })
 
     return () => {
       window.clearTimeout(timer)
+      if (refrescoTimer) window.clearTimeout(refrescoTimer)
       dejarDeEscuchar()
     }
   }, [])
@@ -302,7 +312,7 @@ export default function Alertas() {
         </div>
 
         <button
-          onClick={cargarAlertas}
+          onClick={() => cargarAlertas()}
           className="inline-flex items-center justify-center gap-2 border border-[#c99582] bg-white px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#2b160f] transition hover:bg-[#fff1eb]"
         >
           <RefreshCw size={16} />

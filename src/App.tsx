@@ -1,41 +1,53 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
-import Login from './pages/Login'
-import ConsultaPedido from './pages/ConsultaPedido'
-import Dashboard from './pages/Dashboard'
-import Inventario from './pages/Inventario'
-import Pedidos from './pages/Pedidos'
-import Reglas from './pages/Reglas'
-import Alertas from './pages/Alertas'
-import Reportes from './pages/Reportes'
-import Calendario from './pages/Calendario'
-import Usuarios from './pages/Usuarios'
-import EstadoSistema from './pages/EstadoSistema'
 import MainLayout from './components/MainLayout'
 import ProtectedRoute from './auth/ProtectedRoute'
 
+const Login = lazy(() => import('./pages/Login'))
+const ConsultaPedido = lazy(() => import('./pages/ConsultaPedido'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Inventario = lazy(() => import('./pages/Inventario'))
+const Pedidos = lazy(() => import('./pages/Pedidos'))
+const Reglas = lazy(() => import('./pages/Reglas'))
+const Alertas = lazy(() => import('./pages/Alertas'))
+const Reportes = lazy(() => import('./pages/Reportes'))
+const Calendario = lazy(() => import('./pages/Calendario'))
+const Usuarios = lazy(() => import('./pages/Usuarios'))
+const EstadoSistema = lazy(() => import('./pages/EstadoSistema'))
+
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/consulta-pedido" element={<ConsultaPedido />} />
+    <Suspense fallback={<CargandoRuta />}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/consulta-pedido" element={<ConsultaPedido />} />
 
-      <Route element={<ProtectedRoute />}>
-        <Route element={<MainLayout />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/materiales" element={<Navigate to="/inventario" replace />} />
-          <Route path="/inventario" element={<Inventario />} />
-          <Route path="/pedidos" element={<Pedidos />} />
-          <Route path="/calendario" element={<Calendario />} />
-          <Route path="/reglas" element={<Reglas />} />
-          <Route path="/alertas" element={<Alertas />} />
-          <Route path="/reportes" element={<Reportes />} />
-          <Route path="/estado-sistema" element={<EstadoSistema />} />
-          <Route path="/usuarios" element={<Usuarios />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<MainLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/materiales" element={<Navigate to="/inventario" replace />} />
+            <Route path="/inventario" element={<Inventario />} />
+            <Route path="/pedidos" element={<Pedidos />} />
+            <Route path="/calendario" element={<Calendario />} />
+            <Route path="/reglas" element={<Reglas />} />
+            <Route path="/alertas" element={<Alertas />} />
+            <Route path="/reportes" element={<Reportes />} />
+            <Route path="/estado-sistema" element={<EstadoSistema />} />
+            <Route path="/usuarios" element={<Usuarios />} />
+          </Route>
         </Route>
-      </Route>
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Suspense>
+  )
+}
+
+function CargandoRuta() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-[#f9f4f2] text-sm font-semibold text-[#c8102e] dark:bg-[#0f0f10]">
+      Cargando modulo...
+    </div>
   )
 }

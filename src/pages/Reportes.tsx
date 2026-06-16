@@ -18,8 +18,12 @@ import {
   escucharReportesFranquiciado,
   obtenerReportesFranquiciado,
 } from '../services/franquiciadoService'
-import { obtenerInventarioOperativo } from '../services/inventarioService'
-import { obtenerPedidos } from '../services/pedidosService'
+import {
+  escucharInventarioOperativo,
+  obtenerInventarioOperativo,
+} from '../services/inventarioService'
+import { escucharMateriales } from '../services/materialesService'
+import { escucharPedidos, obtenerPedidos } from '../services/pedidosService'
 import {
   crearReporteOperativo,
   escucharReportesOperativos,
@@ -197,11 +201,17 @@ export default function Reportes() {
 
   useEffect(() => {
     const timer = window.setTimeout(cargarReportes, 0)
+    const dejarDeEscucharPedidos = escucharPedidos(cargarReportes)
+    const dejarDeEscucharInventario = escucharInventarioOperativo(cargarReportes)
+    const dejarDeEscucharMateriales = escucharMateriales(cargarReportes)
     const dejarDeEscucharReportes = escucharReportesOperativos(cargarReportes)
     const dejarDeEscucharReportesFranquiciado = escucharReportesFranquiciado(cargarReportes)
 
     return () => {
       window.clearTimeout(timer)
+      dejarDeEscucharPedidos()
+      dejarDeEscucharInventario()
+      dejarDeEscucharMateriales()
       dejarDeEscucharReportes()
       dejarDeEscucharReportesFranquiciado()
     }
@@ -254,6 +264,25 @@ export default function Reportes() {
           pedidos: (anterior?.pedidos || 0) + 1,
         })
       })
+
+    materiales.forEach((material) => {
+      if (!materialNecesitaSeguimiento(material)) return
+
+      const nombre = material.nombre
+      const anterior = mapa.get(nombre)
+      const solicitado = Math.max(
+        anterior?.solicitado || 0,
+        umbralNormalMaterial(material) - Math.max(0, material.stock_disponible_operativo)
+      )
+
+      mapa.set(nombre, {
+        material: nombre,
+        solicitado,
+        stock: material.stock_disponible_operativo,
+        unidad: material.unidad_medida,
+        pedidos: anterior?.pedidos || material.casos_bodega_fq || 0,
+      })
+    })
 
     return [...mapa.values()].sort((a, b) => b.solicitado - a.solicitado)
   }, [materiales, pedidosFiltrados])
@@ -886,6 +915,23 @@ function pedidoPendienteDespacho(estado: EstadoPedido) {
   return !pedidoCerrado(estado) && estado !== 'en_despacho'
 }
 
+function materialNecesitaSeguimiento(material: InventarioOperativo) {
+  return material.stock_disponible_operativo < umbralNormalMaterial(material)
+}
+
+function umbralMinimoMaterial(material: InventarioOperativo) {
+  return Math.max(
+    1,
+    material.pedido_maximo_material || 0,
+    material.stock_minimo || 0,
+    material.demanda_bodega_fq || 0
+  )
+}
+
+function umbralNormalMaterial(material: InventarioOperativo) {
+  return Math.max(umbralMinimoMaterial(material) * 3, material.stock_objetivo_material || 0)
+}
+
 function formatearEtiqueta(valor: string) {
   return valor.replace(/_/g, ' ')
 }
@@ -960,15 +1006,16 @@ function descargarCsv(nombre: string, filas: Array<Record<string, string | numbe
 
   const encabezados = Object.keys(filas[0])
   const contenido = [
-    encabezados.join(','),
+    'sep=;',
+    encabezados.join(';'),
     ...filas.map((fila) =>
       encabezados
         .map((encabezado) => escaparCsv(String(fila[encabezado] ?? '')))
-        .join(',')
+        .join(';')
     ),
   ].join('\n')
 
-  const blob = new Blob([contenido], { type: 'text/csv;charset=utf-8;' })
+  const blob = new Blob([`\uFEFF${contenido}`], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -978,6 +1025,6 @@ function descargarCsv(nombre: string, filas: Array<Record<string, string | numbe
 }
 
 function escaparCsv(valor: string) {
-  if (!/[",\n]/.test(valor)) return valor
+  if (!/[";\n]/.test(valor)) return valor
   return `"${valor.replace(/"/g, '""')}"`
 }

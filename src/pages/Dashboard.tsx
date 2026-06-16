@@ -59,20 +59,6 @@ type DashboardMetricas = {
   totalPedidos: number
 }
 
-type EvolucionMensualItem = {
-  periodo: string
-  mes: string
-  anio: string
-  pedidos: number
-  entregados: number
-  alertas: number
-  tasaEntrega: number
-  tasaAlertas: number
-  variacionPedidos: number | null
-}
-
-type PeriodoFiltro = 'todos' | 'hoy' | '30' | '90' | 'mes'
-
 export default function Dashboard() {
   const { perfil } = useAuth()
   const rol = perfil?.rol || 'administrador'
@@ -81,10 +67,6 @@ export default function Dashboard() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [reglas, setReglas] = useState<ReglaNegocio[]>([])
   const [otif, setOtif] = useState<OtifOperativo>(otifInicial())
-  const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>('todos')
-  const [categoriaFiltro, setCategoriaFiltro] = useState('todos')
-  const [almacenFiltro, setAlmacenFiltro] = useState('todos')
-  const [proveedorFiltro, setProveedorFiltro] = useState('todos')
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -164,72 +146,9 @@ export default function Dashboard() {
     })
   }, [materialesLookup, pedidos])
 
-  const categoriaOpciones = useMemo(
-    () =>
-      ordenarOpcionesUnicas(
-        materialesUnicos.map((material) => categoriaMaterial(material))
-      ),
-    [materialesUnicos]
-  )
-
-  const proveedorOpciones = useMemo(
-    () =>
-      ordenarOpcionesUnicas(
-        materialesUnicos.map((material) => proveedorMaterial(material))
-      ),
-    [materialesUnicos]
-  )
-
-  const almacenOpciones = useMemo(
-    () =>
-      ordenarOpcionesUnicas(
-        pedidosConStockReal.map((pedido) => flujoPedidoLabel(pedido))
-      ),
-    [pedidosConStockReal]
-  )
-
-  const materialesFiltrados = useMemo(() => {
-    return materialesUnicos.filter((material) => {
-      const coincideCategoria =
-        categoriaFiltro === 'todos' || categoriaMaterial(material) === categoriaFiltro
-      const coincideProveedor =
-        proveedorFiltro === 'todos' || proveedorMaterial(material) === proveedorFiltro
-
-      return coincideCategoria && coincideProveedor
-    })
-  }, [categoriaFiltro, materialesUnicos, proveedorFiltro])
-
-  const pedidosVisibles = useMemo(() => {
-    return pedidosConStockReal.filter((pedido) => {
-      const material =
-        (pedido.material_id ? materialesLookup.porId.get(pedido.material_id) : null) ||
-        materialesLookup.porNombre.get(normalizarTexto(pedido.material))
-      const coincidePeriodo = coincidePeriodoPedido(pedido, periodoFiltro)
-      const coincideCategoria =
-        categoriaFiltro === 'todos' ||
-        (material ? categoriaMaterial(material) === categoriaFiltro : false)
-      const coincideAlmacen =
-        almacenFiltro === 'todos' || flujoPedidoLabel(pedido) === almacenFiltro
-      const coincideProveedor =
-        proveedorFiltro === 'todos' ||
-        (material ? proveedorMaterial(material) === proveedorFiltro : false)
-
-      return coincidePeriodo && coincideCategoria && coincideAlmacen && coincideProveedor
-    })
-  }, [
-    almacenFiltro,
-    categoriaFiltro,
-    materialesLookup,
-    pedidosConStockReal,
-    periodoFiltro,
-    proveedorFiltro,
-  ])
-
-  const alertasVisibles = useMemo(
-    () =>
-      alertas.filter((alerta) => coincidePeriodoFecha(fechaOperativaAlerta(alerta), periodoFiltro)),
-    [alertas, periodoFiltro]
-  )
+  const materialesFiltrados = materialesUnicos
+  const pedidosVisibles = pedidosConStockReal
+  const alertasVisibles = alertas
 
   const colaPriorizada = useMemo(
     () => ordenarPorPrioridad(pedidosVisibles, reglas),
@@ -336,10 +255,6 @@ export default function Dashboard() {
 
     return base
   }, [colaPriorizada, reglas])
-  const evolucionMensual = useMemo(
-    () => construirEvolucionMensual(pedidosVisibles, alertasVisibles),
-    [alertasVisibles, pedidosVisibles]
-  )
   const materialesPorDemanda = useMemo(
     () => construirTopMaterialesPorDemanda(pedidosVisibles),
     [pedidosVisibles]
@@ -354,57 +269,24 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="dashboard-executive space-y-5">
-      <section className="rounded-lg border border-[#d8d2df] bg-white p-5">
-        <div className="grid gap-5 xl:grid-cols-[1fr_auto] xl:items-start">
+    <div className="dashboard-executive space-y-4">
+      <section className="rounded-lg border border-[#d8d2df] bg-white p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#c8102e]">
               <Warehouse size={16} />
               {configuracionRol.etiqueta}
             </div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-[#0f0f11]">
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-[#0f0f11]">
               Resumen ejecutivo
             </h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-[#5f5964]">
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-[#5f5964]">
               {configuracionRol.descripcion}
             </p>
           </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <FiltroDashboard
-              label="Periodo"
-              value={periodoFiltro}
-              onChange={(valor) => setPeriodoFiltro(valor as PeriodoFiltro)}
-              opciones={[
-                ['todos', 'Todos'],
-                ['hoy', 'Hoy'],
-                ['30', 'Ultimos 30 dias'],
-                ['90', 'Ultimos 90 dias'],
-                ['mes', 'Este mes'],
-              ]}
-            />
-            <FiltroDashboard
-              label="Categoria"
-              value={categoriaFiltro}
-              onChange={setCategoriaFiltro}
-              opciones={opcionesSelect(categoriaOpciones)}
-            />
-            <FiltroDashboard
-              label="Almacen"
-              value={almacenFiltro}
-              onChange={setAlmacenFiltro}
-              opciones={opcionesSelect(almacenOpciones)}
-            />
-            <FiltroDashboard
-              label="Proveedor"
-              value={proveedorFiltro}
-              onChange={setProveedorFiltro}
-              opciones={opcionesSelect(proveedorOpciones)}
-            />
-          </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-[#efe5e3] pt-4">
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-[#efe5e3] pt-3">
           <Link
             to={configuracionRol.accionPrincipal.ruta}
             className="inline-flex items-center justify-center gap-2 bg-[#c8102e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9f0d25]"
@@ -421,7 +303,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <TarjetaOtif
           cargando={cargando}
           indicador={otif.suministradorBodega}
@@ -438,17 +320,17 @@ export default function Dashboard() {
           return (
             <article
               key={item.titulo}
-              className={`rounded-lg border border-[#d8d2df] bg-white p-4 ${bordeKpi(item.tono)}`}
+              className={`rounded-lg border border-[#d8d2df] bg-white p-3 ${bordeKpi(item.tono)}`}
             >
               <div className="flex items-start gap-3">
-                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded ${colorIcono(item.tono)}`}>
-                  <Icono size={22} />
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded ${colorIcono(item.tono)}`}>
+                  <Icono size={20} />
                 </span>
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#2f2f33]">
                     {item.titulo}
                   </p>
-                  <strong className="font-tabular mt-2 block text-3xl font-black text-[#0f0f11]">
+                  <strong className="font-tabular mt-1 block text-2xl font-black text-[#0f0f11]">
                     {cargando ? '-' : formatearNumero(item.valor)}
                   </strong>
                   <p className="mt-1 text-xs leading-5 text-[#5f5964]">{item.detalle}</p>
@@ -461,15 +343,7 @@ export default function Dashboard() {
 
       {rol === 'administrador' && (
         <>
-          <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.45fr_0.8fr_0.9fr]">
-            <PanelEjecutivo
-              titulo="Evolucion mensual"
-              descripcion="Pedidos creados, pedidos entregados y alertas generadas por mes."
-              icono={BarChart3}
-            >
-              <GraficoEvolucion datos={evolucionMensual} />
-            </PanelEjecutivo>
-
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelEjecutivo
               titulo="Prioridad de pedidos"
               descripcion="Distribucion por nivel calculado."
@@ -487,7 +361,7 @@ export default function Dashboard() {
             </PanelEjecutivo>
           </section>
 
-          <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_0.9fr_0.9fr]">
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.9fr_0.9fr]">
             <PanelEjecutivo
               titulo="Inventario por categoria"
               descripcion="Stock disponible agrupado por catman."
@@ -512,7 +386,7 @@ export default function Dashboard() {
             />
           </section>
 
-          <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_0.7fr]">
             <PanelCola
               cargando={cargando}
               descripcion="Los primeros pedidos son los que requieren accion mas rapida."
@@ -672,35 +546,6 @@ function VistaSuministrador({
         vacio="No hay pedidos pendientes de abastecimiento."
       />
     </section>
-  )
-}
-
-function FiltroDashboard({
-  label,
-  onChange,
-  opciones,
-  value,
-}: {
-  label: string
-  onChange: (value: string) => void
-  opciones: Array<[string, string]>
-  value: string
-}) {
-  return (
-    <label className="block min-w-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[#5f5964]">
-      {label}
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full border border-[#cfc4c5] bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#0f0f11] outline-none focus:border-[#c8102e]"
-      >
-        {opciones.map(([valor, texto]) => (
-          <option key={valor} value={valor}>
-            {texto}
-          </option>
-        ))}
-      </select>
-    </label>
   )
 }
 
@@ -1139,150 +984,6 @@ function GraficoPrioridad({
   )
 }
 
-function GraficoEvolucion({
-  datos,
-}: {
-  datos: EvolucionMensualItem[]
-}) {
-  const maximo = Math.max(
-    ...datos.flatMap((item) => [item.pedidos, item.entregados, item.alertas]),
-    1
-  )
-  const totalPedidos = datos.reduce((total, item) => total + item.pedidos, 0)
-  const totalEntregados = datos.reduce((total, item) => total + item.entregados, 0)
-  const totalAlertas = datos.reduce((total, item) => total + item.alertas, 0)
-  const tasaEntrega = porcentajeEntero(totalEntregados, totalPedidos)
-  const tasaAlertas = porcentajeEntero(totalAlertas, Math.max(totalPedidos, 1))
-
-  return (
-    <div className="p-5">
-      <div className="grid gap-3 md:grid-cols-4">
-        <ResumenEvolucion
-          clase="border-[#1a1b22]"
-          detalle="Pedidos creados"
-          etiqueta="Total pedidos"
-          valor={formatearNumero(totalPedidos)}
-        />
-        <ResumenEvolucion
-          clase="border-[#ff6600]"
-          detalle={`${tasaEntrega}% de los pedidos`}
-          etiqueta="Entregados"
-          valor={formatearNumero(totalEntregados)}
-        />
-        <ResumenEvolucion
-          clase="border-[#c8102e]"
-          detalle={`${tasaAlertas}% alertas/pedido`}
-          etiqueta="Alertas"
-          valor={formatearNumero(totalAlertas)}
-        />
-        <ResumenEvolucion
-          clase="border-[#ffd200]"
-          detalle="Cumplimiento del periodo"
-          etiqueta="Tasa entrega"
-          valor={`${tasaEntrega}%`}
-        />
-      </div>
-
-      <div className="mt-4 overflow-x-auto rounded-lg border border-[#eee7e5] bg-[#fafafa]">
-        <div className="flex min-h-[22rem] min-w-[1020px] items-end gap-4 px-4 py-5">
-          {datos.map((item) => (
-            <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-3">
-              <div className="w-full rounded border border-[#e7dfdc] bg-white px-2 py-2 text-center shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b6262]">
-                  Entrega
-                </p>
-                <strong className={`font-tabular text-sm ${clasePorcentajeEntrega(item.tasaEntrega, item.pedidos)}`}>
-                  {item.pedidos === 0 ? '-' : `${item.tasaEntrega}%`}
-                </strong>
-                <p className="mt-1 text-[10px] font-semibold text-[#7d7070]">
-                  Alertas {item.pedidos === 0 && item.alertas === 0 ? '-' : `${item.tasaAlertas}%`}
-                </p>
-              </div>
-
-              <div className="flex h-40 w-full items-end justify-center gap-1.5">
-                <BarraEvolucion valor={item.pedidos} maximo={maximo} clase="bg-[#1a1b22]" titulo="Creados" />
-                <BarraEvolucion valor={item.entregados} maximo={maximo} clase="bg-[#ff6600]" titulo="Entregados" />
-                <BarraEvolucion valor={item.alertas} maximo={maximo} clase="bg-[#c8102e]" titulo="Alertas" />
-              </div>
-
-              <div className="text-center leading-none">
-                <span className="block text-xs font-semibold text-slate-600">{item.mes}</span>
-                <span className="mt-1 block text-[10px] font-medium text-slate-400">{item.anio}</span>
-              </div>
-              <span className={`font-tabular rounded-full px-2 py-1 text-[10px] font-bold ${claseVariacionMes(item.variacionPedidos)}`}>
-                {textoVariacionMes(item.variacionPedidos)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-3 text-xs font-semibold text-slate-600">
-        <Leyenda clase="bg-[#1a1b22]" texto="Creados" />
-        <Leyenda clase="bg-[#ff6600]" texto="Entregados" />
-        <Leyenda clase="bg-[#c8102e]" texto="Alertas" />
-        <span className="text-[#7d7070]">
-          % entrega = entregados / creados. % alertas = alertas / pedidos creados.
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function ResumenEvolucion({
-  clase,
-  detalle,
-  etiqueta,
-  valor,
-}: {
-  clase: string
-  detalle: string
-  etiqueta: string
-  valor: string
-}) {
-  return (
-    <div className={`border-l-4 bg-[#fffafa] px-3 py-2 ${clase}`}>
-      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b6262]">{etiqueta}</p>
-      <strong className="font-tabular mt-1 block text-xl font-black text-[#111112]">{valor}</strong>
-      <p className="mt-1 text-[11px] font-medium text-[#7d7070]">{detalle}</p>
-    </div>
-  )
-}
-
-function BarraEvolucion({
-  clase,
-  maximo,
-  titulo,
-  valor,
-}: {
-  clase: string
-  maximo: number
-  titulo: string
-  valor: number
-}) {
-  const altura = valor === 0 ? 3 : Math.max(12, (valor / maximo) * 100)
-
-  return (
-    <div className="flex h-full w-full max-w-6 flex-col items-center justify-end gap-1" title={`${titulo}: ${valor}`}>
-      <span className="font-tabular text-[10px] font-bold text-[#2f2f33]">
-        {valor > 0 ? formatearNumero(valor) : ''}
-      </span>
-      <div
-        className={`w-full rounded-t ${clase}`}
-        style={{ height: `${altura}%` }}
-      />
-    </div>
-  )
-}
-
-function Leyenda({ clase, texto }: { clase: string; texto: string }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className={`h-3 w-3 rounded-full ${clase}`} />
-      {texto}
-    </span>
-  )
-}
-
 function TarjetaOtif({
   cargando,
   indicador,
@@ -1530,61 +1231,8 @@ function etiquetaOtif(valor: number) {
   return 'Fuera de plazo'
 }
 
-function opcionesSelect(valores: string[]): Array<[string, string]> {
-  return [['todos', 'Todos'], ...valores.map((valor): [string, string] => [valor, valor])]
-}
-
-function ordenarOpcionesUnicas(valores: string[]) {
-  return [...new Set(valores.map((valor) => valor.trim()).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b)
-  )
-}
-
 function categoriaMaterial(material: InventarioOperativo) {
   return material.catman_categoria || material.categoria || 'Sin categoria'
-}
-
-function proveedorMaterial(material: InventarioOperativo) {
-  return material.nombre_suministrador || 'Sin proveedor'
-}
-
-function flujoPedidoLabel(pedido: Pick<Pedido, 'origen' | 'destino'>) {
-  if (pedido.origen === 'suministrador' && pedido.destino === 'bodega') {
-    return 'Suministrador a bodega'
-  }
-
-  if (pedido.origen === 'bodega' && pedido.destino === 'franquiciado') {
-    return 'Bodega a franquiciado'
-  }
-
-  return `${formatearEstado(pedido.origen)} a ${formatearEstado(pedido.destino)}`
-}
-
-function coincidePeriodoPedido(pedido: Pedido, periodo: PeriodoFiltro) {
-  return (
-    coincidePeriodoFecha(pedido.fecha_solicitud, periodo) ||
-    coincidePeriodoFecha(pedido.fecha_compromiso, periodo)
-  )
-}
-
-function coincidePeriodoFecha(fecha: string | null | undefined, periodo: PeriodoFiltro) {
-  if (periodo === 'todos') return true
-
-  const valor = fechaADiaLocal(fecha)
-  if (!valor) return false
-
-  const hoy = new Date()
-  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-
-  if (periodo === 'hoy') return valor.getTime() === inicioHoy.getTime()
-  if (periodo === 'mes') return valor >= inicioMes
-
-  const dias = periodo === '30' ? 30 : 90
-  const inicio = new Date(inicioHoy)
-  inicio.setDate(inicio.getDate() - dias)
-
-  return valor >= inicio && valor <= inicioHoy
 }
 
 function construirTopMaterialesPorDemanda(pedidos: Pedido[]) {
@@ -1736,31 +1384,6 @@ function formatearNumero(valor: number) {
   return new Intl.NumberFormat('es-EC', { maximumFractionDigits: 2 }).format(valor)
 }
 
-function porcentajeEntero(valor: number, total: number) {
-  if (total <= 0) return 0
-  return Math.round((valor / total) * 100)
-}
-
-function clasePorcentajeEntrega(valor: number, pedidos: number) {
-  if (pedidos === 0) return 'text-[#6b6262]'
-  if (valor >= 75) return 'text-green-700'
-  if (valor >= 45) return 'text-[#9b6a00]'
-  return 'text-[#c8102e]'
-}
-
-function textoVariacionMes(valor: number | null) {
-  if (valor === null) return 'sin base'
-  if (valor === 0) return '0% pedidos'
-  return `${valor > 0 ? '+' : ''}${valor}% pedidos`
-}
-
-function claseVariacionMes(valor: number | null) {
-  if (valor === null) return 'bg-[#eee7e5] text-[#6b6262]'
-  if (valor > 0) return 'bg-[#fff3bf] text-[#6b4b00]'
-  if (valor < 0) return 'bg-green-100 text-green-700'
-  return 'bg-[#eee7e5] text-[#6b6262]'
-}
-
 function otifInicial(): OtifOperativo {
   return {
     suministradorBodega: {
@@ -1776,108 +1399,4 @@ function otifInicial(): OtifOperativo {
       detalle: 'Casos Bodega-FQ dentro del SLA',
     },
   }
-}
-
-function construirEvolucionMensual(pedidos: Pedido[], alertas: Alerta[]): EvolucionMensualItem[] {
-  const fechaReferencia =
-    fechaMaximaOperativa([
-      ...pedidos.flatMap((pedido) => [
-        pedido.fecha_solicitud,
-        pedido.estado === 'entregado'
-          ? pedido.despachado_at || pedido.fecha_entrega || pedido.fecha_compromiso
-          : null,
-      ]),
-      ...alertas.map((alerta) => fechaOperativaAlerta(alerta)),
-    ]) || new Date()
-  const primerMes = new Date(fechaReferencia.getFullYear(), fechaReferencia.getMonth() - 11, 1)
-
-  const meses = Array.from({ length: 12 }, (_, index) => {
-    const fecha = new Date(primerMes.getFullYear(), primerMes.getMonth() + index, 1)
-    const mes = fecha.toLocaleDateString('es-EC', { month: 'short' })
-    const anio = String(fecha.getFullYear())
-
-    return {
-      periodo: llaveMes(fecha),
-      mes,
-      anio,
-      pedidos: 0,
-      entregados: 0,
-      alertas: 0,
-      tasaEntrega: 0,
-      tasaAlertas: 0,
-      variacionPedidos: null,
-    }
-  })
-
-  pedidos.forEach((pedido) => {
-    const llave = llaveMesFecha(pedido.fecha_solicitud)
-    const item = meses.find((mes) => mes.periodo === llave)
-    if (item) item.pedidos += 1
-
-    if (pedido.estado === 'entregado') {
-      const llaveEntrega = llaveMesFecha(
-        pedido.despachado_at || pedido.fecha_entrega || pedido.fecha_compromiso
-      )
-      const entregado = meses.find((mes) => mes.periodo === llaveEntrega)
-      if (entregado) entregado.entregados += 1
-    }
-  })
-
-  alertas.forEach((alerta) => {
-    const llave = llaveMesFecha(fechaOperativaAlerta(alerta))
-    const item = meses.find((mes) => mes.periodo === llave)
-    if (item) item.alertas += 1
-  })
-
-  return meses.map((item, index) => {
-    const mesAnterior = index > 0 ? meses[index - 1] : null
-    const variacionPedidos =
-      mesAnterior && mesAnterior.pedidos > 0
-        ? Math.round(((item.pedidos - mesAnterior.pedidos) / mesAnterior.pedidos) * 100)
-        : null
-
-    return {
-      ...item,
-      tasaEntrega: porcentajeEntero(item.entregados, item.pedidos),
-      tasaAlertas: porcentajeEntero(item.alertas, Math.max(item.pedidos, 1)),
-      variacionPedidos,
-    }
-  })
-}
-
-function fechaOperativaAlerta(alerta: Alerta) {
-  return alerta.pedido_fecha_solicitud || alerta.pedido_fecha_compromiso || alerta.created_at
-}
-
-function fechaMaximaOperativa(fechas: Array<string | null | undefined>) {
-  const valores = fechas
-    .map(fechaADiaLocal)
-    .filter((fecha): fecha is Date => Boolean(fecha))
-    .sort((a, b) => b.getTime() - a.getTime())
-
-  return valores[0] || null
-}
-
-function llaveMesFecha(fecha?: string | null) {
-  const valor = fechaADiaLocal(fecha)
-  return valor ? llaveMes(valor) : ''
-}
-
-function llaveMes(fecha: Date) {
-  const year = fecha.getFullYear()
-  const month = String(fecha.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}`
-}
-
-function fechaADiaLocal(fecha?: string | null) {
-  if (!fecha) return null
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(fecha)
-  if (match) {
-    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-  }
-
-  const valor = new Date(fecha)
-  if (Number.isNaN(valor.getTime())) return null
-  return new Date(valor.getFullYear(), valor.getMonth(), valor.getDate())
 }

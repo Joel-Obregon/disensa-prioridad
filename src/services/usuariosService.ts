@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { consultarConCache, invalidarCache } from './cacheService'
 import { supabase, supabaseAnonKey, supabaseUrl } from './supabaseClient'
 import type { RolUsuario, UsuarioApp } from '../types/usuario'
 
@@ -13,11 +14,13 @@ export type UsuarioRegistroInput = UsuarioInput & {
 }
 
 export async function obtenerUsuariosApp() {
-  return supabase
-    .from('usuarios_app')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .returns<UsuarioApp[]>()
+  return consultarConCache('usuarios:app', 15_000, () =>
+    supabase
+      .from('usuarios_app')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .returns<UsuarioApp[]>()
+  )
 }
 
 export async function obtenerUsuarioPorCorreo(correo: string) {
@@ -32,13 +35,16 @@ export async function obtenerUsuarioPorCorreo(correo: string) {
 }
 
 export async function crearUsuarioApp(usuario: UsuarioInput) {
-  return supabase.from('usuarios_app').upsert(
+  const result = await supabase.from('usuarios_app').upsert(
     {
       ...usuario,
       estado: 'activo',
     },
     { onConflict: 'correo' }
   )
+
+  if (!result.error) invalidarCache('usuarios')
+  return result
 }
 
 export async function registrarUsuarioConAuth(usuario: UsuarioRegistroInput) {
@@ -82,5 +88,8 @@ export async function registrarUsuarioConAuth(usuario: UsuarioRegistroInput) {
 }
 
 export async function actualizarEstadoUsuario(id: string, estado: UsuarioApp['estado']) {
-  return supabase.from('usuarios_app').update({ estado }).eq('id', id)
+  const result = await supabase.from('usuarios_app').update({ estado }).eq('id', id)
+
+  if (!result.error) invalidarCache('usuarios')
+  return result
 }

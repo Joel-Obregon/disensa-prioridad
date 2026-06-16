@@ -1,4 +1,9 @@
 import { registrarAuditoria } from './auditoriaService'
+import {
+  consultarConCache,
+  crearNotificadorCambios,
+  invalidarCache,
+} from './cacheService'
 import { obtenerMateriales } from './materialesService'
 import { sincronizarAlertaStockMaterial } from './stockAlertasService'
 import { supabase } from './supabaseClient'
@@ -63,8 +68,17 @@ type MaterialOperativoRow = {
 }
 
 const TAMANO_BLOQUE_INVENTARIO_OPERATIVO = 1000
+const CACHE_INVENTARIO_OPERATIVO_MS = 15_000
 
 export async function obtenerInventarioOperativo() {
+  return consultarConCache(
+    'inventario:operativo',
+    CACHE_INVENTARIO_OPERATIVO_MS,
+    cargarInventarioOperativo
+  )
+}
+
+async function cargarInventarioOperativo() {
   const materialesResult = await obtenerMateriales()
 
   if (materialesResult.error) {
@@ -298,6 +312,7 @@ function camposMaterialesOperativos(incluirUmbrales: boolean) {
 }
 
 export function escucharMovimientosInventario(onChange: () => void) {
+  const notificar = crearNotificadorCambios(onChange, ['inventario', 'materiales', 'alertas'])
   const channel = supabase
     .channel('movimientos-inventario-tiempo-real')
     .on(
@@ -307,16 +322,25 @@ export function escucharMovimientosInventario(onChange: () => void) {
         schema: 'public',
         table: 'movimientos_inventario',
       },
-      onChange
+      notificar
     )
     .subscribe()
 
   return () => {
+    notificar.cancelar()
     supabase.removeChannel(channel)
   }
 }
 
 export function escucharInventarioOperativo(onChange: () => void) {
+  const notificar = crearNotificadorCambios(onChange, [
+    'inventario',
+    'materiales',
+    'pedidos',
+    'alertas',
+    'reportes',
+    'otif',
+  ])
   const channel = supabase
     .channel('inventario-operativo-tiempo-real')
     .on(
@@ -326,7 +350,7 @@ export function escucharInventarioOperativo(onChange: () => void) {
         schema: 'public',
         table: 'inventario_bodega',
       },
-      onChange
+      notificar
     )
     .on(
       'postgres_changes',
@@ -335,7 +359,7 @@ export function escucharInventarioOperativo(onChange: () => void) {
         schema: 'public',
         table: 'oc_pendientes_bodega',
       },
-      onChange
+      notificar
     )
     .on(
       'postgres_changes',
@@ -344,7 +368,7 @@ export function escucharInventarioOperativo(onChange: () => void) {
         schema: 'public',
         table: 'transito_bodega',
       },
-      onChange
+      notificar
     )
     .on(
       'postgres_changes',
@@ -353,11 +377,12 @@ export function escucharInventarioOperativo(onChange: () => void) {
         schema: 'public',
         table: 'pedidos_bodega_fq',
       },
-      onChange
+      notificar
     )
     .subscribe()
 
   return () => {
+    notificar.cancelar()
     supabase.removeChannel(channel)
   }
 }
@@ -421,6 +446,7 @@ export async function registrarMovimientoInventario(input: MovimientoInventarioI
     responsable: input.responsable,
   })
 
+  invalidarDatosInventario()
   return movimientoResult
 }
 
@@ -606,4 +632,8 @@ function categoriaPorCobertura(estadoCobertura: string | null) {
   if (estadoCobertura === 'cubierto_con_transito') return 'Cubierto con transito'
   if (estadoCobertura === 'cubierto') return 'Demanda bodega-franquiciado'
   return 'Catalogo operativo'
+}
+
+function invalidarDatosInventario() {
+  invalidarCache('inventario', 'materiales', 'pedidos', 'alertas', 'reportes', 'otif')
 }

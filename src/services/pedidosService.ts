@@ -1,4 +1,10 @@
 import { supabase } from './supabaseClient'
+import {
+  consultarConCache,
+  crearNotificadorCambios,
+  invalidarCache,
+} from './cacheService'
+import { sincronizarAlertaSemaforoPedido } from './pedidoAlertasService'
 import type {
   AccionSolicitante,
   CondicionMaterial,
@@ -63,13 +69,16 @@ const CENTRO_BODEGA_MANUAL = {
   sociedad: 'EC10',
   nombre_empresa: 'Disensa Ecuador',
 }
+const CACHE_PEDIDOS_MS = 10_000
 
 export async function obtenerPedidos() {
-  return supabase
-    .from('pedidos')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .returns<Pedido[]>()
+  return consultarConCache('pedidos:todos', CACHE_PEDIDOS_MS, () =>
+    supabase
+      .from('pedidos')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .returns<Pedido[]>()
+  )
 }
 
 export async function crearPedido(pedido: PedidoInput) {
@@ -82,7 +91,7 @@ export async function crearPedido(pedido: PedidoInput) {
 
   if (fuenteResult.error) return fuenteResult
 
-  return supabase.from('pedidos').insert({
+  const result = await supabase.from('pedidos').insert({
     codigo: pedido.codigo,
     codigo_consulta: pedido.codigo_consulta || pedido.codigo,
     tipo_pedido: `${pedido.origen}_${pedido.destino}`,
@@ -110,6 +119,12 @@ export async function crearPedido(pedido: PedidoInput) {
     condicion_material: pedido.condicion_material,
     cantidad_despacho: pedido.cantidad_despacho,
   }).select().single<Pedido>()
+
+  if (!result.error) {
+    await sincronizarAlertasPedidoSinBloquear(result.data)
+    invalidarDatosPedidos()
+  }
+  return result
 }
 
 export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
@@ -125,7 +140,7 @@ export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
 
   if (fuenteResult.error) return fuenteResult
 
-  return supabase
+  const result = await supabase
     .from('pedidos')
     .update({
       tipo_pedido: `${pedido.origen}_${pedido.destino}`,
@@ -153,13 +168,22 @@ export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
     .eq('id', id)
     .select()
     .maybeSingle<Pedido>()
+
+  if (!result.error && result.data) {
+    await sincronizarAlertasPedidoSinBloquear(result.data)
+    invalidarDatosPedidos()
+  }
+  return result
 }
 
 export async function actualizarCantidadDespachoPedido(id: string, cantidadDespacho: number | null) {
-  return supabase
+  const result = await supabase
     .from('pedidos')
     .update({ cantidad_despacho: cantidadDespacho })
     .eq('id', id)
+
+  if (!result.error) invalidarDatosPedidos()
+  return result
 }
 
 function normalizarCedula(valor: string) {
@@ -290,6 +314,15 @@ export async function actualizarEstadoPedido(
     if (syncResult.error) return { ...result, error: syncResult.error }
   }
 
+  if (result.data) {
+    await sincronizarAlertasPedidoSinBloquear({
+      ...result.data,
+      material_id: opciones.pedido?.material_id || result.data.material_id,
+      stock_disponible: opciones.pedido?.stock_disponible ?? result.data.stock_disponible,
+    })
+  }
+
+  invalidarDatosPedidos()
   return result
 }
 
@@ -320,7 +353,15 @@ export async function despacharPedido(
     })
     .returns<DespachoSeguroResult[]>()
 
-  if (!operativoResult.error) return operativoResult
+  if (!operativoResult.error) {
+    const despacho = Array.isArray(operativoResult.data) ? operativoResult.data[0] : null
+    await sincronizarAlertasPedidoSinBloquear({
+      ...pedido,
+      estado: despacho?.pedido_estado || 'en_despacho',
+    })
+    invalidarDatosPedidos()
+    return operativoResult
+  }
 
   if (
     !esFuncionNoDisponible(operativoResult.error) &&
@@ -332,11 +373,22 @@ export async function despacharPedido(
     }
   }
 
-  return despacharPedidoConFuncionBase(pedido, {
+  const result = await despacharPedidoConFuncionBase(pedido, {
     ...opciones,
     codigo_material: codigoMaterial,
     stock_disponible_operativo: stockOperativo,
   })
+
+  if (!result.error) {
+    await sincronizarAlertasPedidoSinBloquear({
+      ...pedido,
+      estado: 'en_despacho',
+      stock_disponible:
+        stockOperativo !== null ? Math.max(0, stockOperativo - cantidad) : pedido.stock_disponible,
+    })
+    invalidarDatosPedidos()
+  }
+  return result
 }
 
 async function despacharPedidoConFuncionBase(
@@ -424,6 +476,14 @@ async function despacharPedidoConFuncionBase(
 }
 
 export function escucharPedidos(onChange: () => void) {
+  const notificar = crearNotificadorCambios(onChange, [
+    'pedidos',
+    'inventario',
+    'alertas',
+    'reportes',
+    'otif',
+    'detalles-pedidos',
+  ])
   const channel = supabase
     .channel('pedidos-tiempo-real')
     .on(
@@ -433,11 +493,12 @@ export function escucharPedidos(onChange: () => void) {
         schema: 'public',
         table: 'pedidos',
       },
-      onChange
+      notificar
     )
     .subscribe()
 
   return () => {
+    notificar.cancelar()
     supabase.removeChannel(channel)
   }
 }
@@ -731,4 +792,12 @@ function errorAplicacion(message: string) {
     data: null,
     error: new Error(message),
   }
+}
+
+async function sincronizarAlertasPedidoSinBloquear(pedido: Pedido) {
+  await sincronizarAlertaSemaforoPedido(pedido).catch(() => undefined)
+}
+
+function invalidarDatosPedidos() {
+  invalidarCache('pedidos', 'inventario', 'alertas', 'reportes', 'otif', 'detalles-pedidos')
 }

@@ -1,4 +1,9 @@
 import { supabase } from './supabaseClient'
+import {
+  consultarConCache,
+  crearNotificadorCambios,
+  invalidarCache,
+} from './cacheService'
 import type {
   EstadoReporteOperativo,
   PrioridadReporteOperativo,
@@ -19,15 +24,17 @@ export type ReporteOperativoInput = {
 }
 
 export async function obtenerReportesOperativos() {
-  return supabase
-    .from('reportes_operativos')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .returns<ReporteOperativo[]>()
+  return consultarConCache('reportes:operativos', 10_000, () =>
+    supabase
+      .from('reportes_operativos')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .returns<ReporteOperativo[]>()
+  )
 }
 
 export async function crearReporteOperativo(reporte: ReporteOperativoInput) {
-  return supabase
+  const result = await supabase
     .from('reportes_operativos')
     .insert({
       ...reporte,
@@ -39,22 +46,29 @@ export async function crearReporteOperativo(reporte: ReporteOperativoInput) {
     })
     .select()
     .single<ReporteOperativo>()
+
+  if (!result.error) invalidarDatosReportes()
+  return result
 }
 
 export async function actualizarEstadoReporteOperativo(
   id: string,
   estado: EstadoReporteOperativo
 ) {
-  return supabase
+  const result = await supabase
     .from('reportes_operativos')
     .update({
       estado,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+
+  if (!result.error) invalidarDatosReportes()
+  return result
 }
 
 export function escucharReportesOperativos(onChange: () => void) {
+  const notificar = crearNotificadorCambios(onChange, ['reportes', 'pedidos', 'alertas'])
   const channel = supabase
     .channel('reportes-operativos-tiempo-real')
     .on(
@@ -64,11 +78,16 @@ export function escucharReportesOperativos(onChange: () => void) {
         schema: 'public',
         table: 'reportes_operativos',
       },
-      onChange
+      notificar
     )
     .subscribe()
 
   return () => {
+    notificar.cancelar()
     supabase.removeChannel(channel)
   }
+}
+
+function invalidarDatosReportes() {
+  invalidarCache('reportes', 'pedidos', 'alertas')
 }

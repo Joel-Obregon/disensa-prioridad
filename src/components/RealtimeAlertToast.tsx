@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { BellRing, CheckCircle2, ShieldAlert, X } from 'lucide-react'
 import {
   actualizarEstadoAlerta,
@@ -17,9 +17,10 @@ import { escucharAlertasVisualesLocales } from '../lib/alertRuntimeEvents'
 import type { Alerta } from '../types/alerta'
 
 const DURACION_TOAST_MS = 6000
-const INTERVALO_RESPALDO_MS = 5000
+const INTERVALO_RESPALDO_MS = 30000
 
 export default function RealtimeAlertToast() {
+  const location = useLocation()
   const [alerta, setAlerta] = useState<Alerta | null>(null)
   const [cola, setCola] = useState<Alerta[]>([])
   const [alertasCentro, setAlertasCentro] = useState<Alerta[]>([])
@@ -27,26 +28,48 @@ export default function RealtimeAlertToast() {
   const [visible, setVisible] = useState(false)
   const [centroAbierto, setCentroAbierto] = useState(false)
   const [cargandoCentro, setCargandoCentro] = useState(false)
-  const alertasConocidasRef = useRef<Set<string>>(new Set())
+  const alertasConocidasRef = useRef<Map<string, string>>(new Map())
   const lineaBaseListaRef = useRef(false)
+  const enPaginaAlertasRef = useRef(false)
 
-  function registrarAlertaEntrante(nuevaAlerta: Alerta) {
+  function registrarAlertaEntrante(nuevaAlerta: Alerta, opciones: { notificar?: boolean } = {}) {
     if (nuevaAlerta.estado === 'cerrada' || nuevaAlerta.nivel === 'informativa') return
 
-    const yaConocida = alertasConocidasRef.current.has(nuevaAlerta.id)
-    alertasConocidasRef.current.add(nuevaAlerta.id)
+    const firma = firmaAlerta(nuevaAlerta)
+    const yaConocida = alertasConocidasRef.current.get(nuevaAlerta.id) === firma
+    alertasConocidasRef.current.set(nuevaAlerta.id, firma)
     setAlertasCentro((actual) => agregarAlerta(actual, nuevaAlerta))
 
-    if (yaConocida) return
+    if (yaConocida || opciones.notificar === false || enPaginaAlertasRef.current) return
 
     setCola((actual) => agregarAlerta(actual, nuevaAlerta))
     agregarAlertaNoRevisada(nuevaAlerta.id)
     setIdsNoRevisados(obtenerAlertasNoRevisadas())
   }
 
+  async function establecerLineaBase() {
+    const { data, error } = await obtenerAlertasVisualesActivas()
+    if (error) return
+
+    alertasConocidasRef.current = new Map(
+      (data || []).map((item) => [item.id, firmaAlerta(item)])
+    )
+    lineaBaseListaRef.current = true
+  }
+
+  function limpiarNotificacionesVistas() {
+    limpiarAlertasNoRevisadas()
+    setIdsNoRevisados([])
+    setCola([])
+    setVisible(false)
+    setAlerta(null)
+  }
+
   useEffect(() => {
     const dejarDeEscuchar = escucharAlertas((nuevaAlerta) => {
-      registrarAlertaEntrante(nuevaAlerta)
+      registrarAlertaEntrante(nuevaAlerta, {
+        notificar: !esAlertaStockSincronizada(nuevaAlerta),
+      })
     })
 
     return dejarDeEscuchar
@@ -61,16 +84,13 @@ export default function RealtimeAlertToast() {
   useEffect(() => {
     let cancelado = false
 
-    async function establecerLineaBase() {
-      const { data, error } = await obtenerAlertasVisualesActivas()
-
-      if (cancelado || error) return
-
-      alertasConocidasRef.current = new Set((data || []).map((item) => item.id))
-      lineaBaseListaRef.current = true
-    }
-
     async function detectarAlertasNuevas() {
+      if (enPaginaAlertasRef.current) {
+        limpiarNotificacionesVistas()
+        await establecerLineaBase()
+        return
+      }
+
       if (!lineaBaseListaRef.current) {
         await establecerLineaBase()
         return
@@ -83,14 +103,18 @@ export default function RealtimeAlertToast() {
       const activas = data || []
       const idsActivos = new Set(activas.map((item) => item.id))
 
-      alertasConocidasRef.current.forEach((id) => {
+      alertasConocidasRef.current.forEach((_, id) => {
         if (!idsActivos.has(id)) alertasConocidasRef.current.delete(id)
       })
 
       activas
-        .filter((item) => !alertasConocidasRef.current.has(item.id))
+        .filter((item) => alertasConocidasRef.current.get(item.id) !== firmaAlerta(item))
         .reverse()
-        .forEach(registrarAlertaEntrante)
+        .forEach((item) =>
+          registrarAlertaEntrante(item, {
+            notificar: !esAlertaStockSincronizada(item),
+          })
+        )
     }
 
     establecerLineaBase()
@@ -101,6 +125,15 @@ export default function RealtimeAlertToast() {
       window.clearInterval(intervalo)
     }
   }, [])
+
+  useEffect(() => {
+    enPaginaAlertasRef.current = location.pathname.startsWith('/alertas')
+
+    if (!enPaginaAlertasRef.current) return
+
+    limpiarNotificacionesVistas()
+    void establecerLineaBase()
+  }, [location.pathname])
 
   useEffect(() => escucharAlertasNoRevisadas(setIdsNoRevisados), [])
 
@@ -189,10 +222,7 @@ export default function RealtimeAlertToast() {
                 <Link
                   to="/alertas"
                   onClick={() => {
-                    setVisible(false)
-                    setAlerta(null)
-                    limpiarAlertasNoRevisadas()
-                    setIdsNoRevisados([])
+                    limpiarNotificacionesVistas()
                   }}
                   className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-semibold transition hover:bg-white/30"
                 >
@@ -311,6 +341,18 @@ function agregarAlerta(alertas: Alerta[], alerta: Alerta) {
   return [...alertas, alerta].slice(-5)
 }
 
+function firmaAlerta(alerta: Alerta) {
+  return [
+    alerta.estado,
+    alerta.nivel,
+    alerta.tipo_alerta,
+    alerta.mensaje,
+    alerta.pedido_codigo || '',
+    alerta.pedido_estado || '',
+    alerta.pedido_stock_disponible ?? '',
+  ].join('|')
+}
+
 function formatearEtiqueta(valor: string) {
   return valor.replace(/_/g, ' ')
 }
@@ -319,4 +361,21 @@ function colorNivel(nivel: Alerta['nivel']) {
   if (nivel === 'critica') return 'bg-red-500'
   if (nivel === 'alta' || nivel === 'media') return 'bg-yellow-400'
   return 'bg-green-400'
+}
+
+function esAlertaStockSincronizada(alerta: Alerta) {
+  const responsable = normalizarTexto(alerta.responsable || '')
+
+  return (
+    alerta.id.startsWith('stock-operativo-') ||
+    responsable.includes('sincronizacion automatica')
+  )
+}
+
+function normalizarTexto(texto: string) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 }

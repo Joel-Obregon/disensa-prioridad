@@ -1,4 +1,9 @@
 import { supabase } from './supabaseClient'
+import {
+  consultarConCache,
+  crearNotificadorCambios,
+  invalidarCache,
+} from './cacheService'
 import { actualizarEstadoPedido } from './pedidosService'
 import type { Pedido } from '../types/pedido'
 import type {
@@ -42,7 +47,7 @@ export async function consultarPedidoInvitado(codigo: string, cedula: string) {
 }
 
 export async function crearReporteFranquiciado(reporte: ReporteFranquiciadoInput) {
-  return supabase
+  const result = await supabase
     .from('reportes_franquiciado')
     .insert({
       ...reporte,
@@ -53,6 +58,9 @@ export async function crearReporteFranquiciado(reporte: ReporteFranquiciadoInput
     })
     .select()
     .single<ReporteFranquiciado>()
+
+  if (!result.error) invalidarDatosReportesFranquiciado()
+  return result
 }
 
 export async function confirmarEntregaFranquiciado(pedido: Pedido, cedula: string) {
@@ -80,14 +88,17 @@ export async function confirmarEntregaFranquiciado(pedido: Pedido, cedula: strin
 }
 
 export async function obtenerReportesFranquiciado() {
-  return supabase
-    .from('reportes_franquiciado')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .returns<ReporteFranquiciado[]>()
+  return consultarConCache('reportes:franquiciado', 10_000, () =>
+    supabase
+      .from('reportes_franquiciado')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .returns<ReporteFranquiciado[]>()
+  )
 }
 
 export function escucharReportesFranquiciado(onChange: () => void) {
+  const notificar = crearNotificadorCambios(onChange, ['reportes', 'pedidos', 'alertas'])
   const channel = supabase
     .channel('reportes-franquiciado-tiempo-real')
     .on(
@@ -97,11 +108,12 @@ export function escucharReportesFranquiciado(onChange: () => void) {
         schema: 'public',
         table: 'reportes_franquiciado',
       },
-      onChange
+      notificar
     )
     .subscribe()
 
   return () => {
+    notificar.cancelar()
     supabase.removeChannel(channel)
   }
 }
@@ -126,4 +138,8 @@ function generarCodigosConsulta(codigo: string) {
   }
 
   return [...candidatos]
+}
+
+function invalidarDatosReportesFranquiciado() {
+  invalidarCache('reportes', 'pedidos', 'alertas')
 }

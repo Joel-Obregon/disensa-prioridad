@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { consultarConCache } from './cacheService'
 
 export type OtifIndicador = {
   valor: number
@@ -40,6 +41,10 @@ type OtifOperativoRow = {
 const SLA_SUMINISTRADOR_BODEGA_DIAS = 30
 
 export async function obtenerOtifOperativo() {
+  return consultarConCache('otif:operativo', 15_000, cargarOtifOperativo)
+}
+
+async function cargarOtifOperativo() {
   const vistaResult = await supabase
     .from('otif_operativo_v')
     .select('*')

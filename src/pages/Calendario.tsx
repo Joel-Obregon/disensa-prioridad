@@ -14,7 +14,7 @@ import {
   resolverSemaforoPedido,
   type SemaforoOperativo,
 } from '../lib/semaforoOperativo'
-import { obtenerPedidos } from '../services/pedidosService'
+import { escucharPedidos, obtenerPedidos } from '../services/pedidosService'
 import type { Pedido } from '../types/pedido'
 
 const DIAS_SEMANA = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -54,7 +54,13 @@ export default function Calendario() {
       setCargando(false)
     }
 
-    cargarPedidos()
+    const timer = window.setTimeout(cargarPedidos, 0)
+    const dejarDeEscucharPedidos = escucharPedidos(cargarPedidos)
+
+    return () => {
+      window.clearTimeout(timer)
+      dejarDeEscucharPedidos()
+    }
   }, [])
 
   const pedidosOrdenados = useMemo(() => ordenarPedidosCalendario(pedidos), [pedidos])

@@ -1,5 +1,10 @@
 import { supabase } from './supabaseClient'
 import { sincronizarAlertaStockMaterial } from './stockAlertasService'
+import {
+  consultarConCache,
+  crearNotificadorCambios,
+  invalidarCache,
+} from './cacheService'
 import type { Material } from '../types/material'
 
 export type MaterialInput = {
@@ -34,9 +39,10 @@ const CENTRO_BODEGA_MANUAL = {
 // Supabase entrega resultados en bloques. Este valor NO limita el total:
 // consultarMateriales() sigue pidiendo bloques hasta traer todos los materiales.
 const TAMANO_BLOQUE_MATERIALES = 1000
+const CACHE_MATERIALES_MS = 20_000
 
 export async function obtenerMateriales() {
-  return consultarMateriales()
+  return consultarConCache('materiales:todos', CACHE_MATERIALES_MS, consultarMateriales)
 }
 
 async function consultarMateriales() {
@@ -106,7 +112,10 @@ export async function crearMaterial(material: MaterialInput) {
 
   const syncResult = await sincronizarMaterialEnModulos(result.data)
 
-  return syncResult.error ? { ...result, error: syncResult.error } : result
+  if (syncResult.error) return { ...result, error: syncResult.error }
+
+  invalidarDatosMateriales()
+  return result
 }
 
 export async function actualizarMaterial(id: string, material: MaterialInput) {
@@ -153,7 +162,10 @@ export async function actualizarMaterial(id: string, material: MaterialInput) {
 
   const syncResult = await sincronizarMaterialEnModulos(result.data, anterior.data.nombre)
 
-  return syncResult.error ? { ...result, error: syncResult.error } : result
+  if (syncResult.error) return { ...result, error: syncResult.error }
+
+  invalidarDatosMateriales()
+  return result
 }
 
 export async function eliminarMaterial(id: string) {
@@ -181,10 +193,20 @@ export async function eliminarMaterial(id: string) {
     return reportesResult
   }
 
-  return supabase.from('materiales').delete().eq('id', id)
+  const result = await supabase.from('materiales').delete().eq('id', id)
+
+  if (!result.error) invalidarDatosMateriales()
+  return result
 }
 
 export function escucharMateriales(onChange: () => void) {
+  const notificar = crearNotificadorCambios(onChange, [
+    'materiales',
+    'inventario',
+    'pedidos',
+    'alertas',
+    'reportes',
+  ])
   const channel = supabase
     .channel('materiales-tiempo-real')
     .on(
@@ -194,11 +216,12 @@ export function escucharMateriales(onChange: () => void) {
         schema: 'public',
         table: 'materiales',
       },
-      onChange
+      notificar
     )
     .subscribe()
 
   return () => {
+    notificar.cancelar()
     supabase.removeChannel(channel)
   }
 }
@@ -254,7 +277,10 @@ async function fusionarMaterialConExistente(
 
   const syncResult = await sincronizarMaterialEnModulos(updateResult.data)
 
-  return syncResult.error ? { ...updateResult, error: syncResult.error } : updateResult
+  if (syncResult.error) return { ...updateResult, error: syncResult.error }
+
+  invalidarDatosMateriales()
+  return updateResult
 }
 
 async function moverReferenciasMaterial(origenId: string, destino: Material) {
@@ -705,4 +731,8 @@ function normalizarCodigoMaterial(codigo?: string | null) {
 
 function llaveMaterial(nombre: string, unidad: string) {
   return `${normalizarTexto(nombre)}__${normalizarTexto(unidad)}`
+}
+
+function invalidarDatosMateriales() {
+  invalidarCache('materiales', 'inventario', 'pedidos', 'alertas', 'reportes')
 }

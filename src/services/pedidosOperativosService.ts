@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { consultarConCache } from './cacheService'
 
 export type PedidoDetalleOperativo = {
   codigo_pedido: string
@@ -28,6 +29,10 @@ export type PedidoDetalleOperativo = {
 }
 
 export async function obtenerDetallesPedidosOperativos() {
+  return consultarConCache('detalles-pedidos:operativos', 12_000, cargarDetallesPedidosOperativos)
+}
+
+async function cargarDetallesPedidosOperativos() {
   const result = await supabase
     .from('pedido_detalle_operativo_v')
     .select('*')

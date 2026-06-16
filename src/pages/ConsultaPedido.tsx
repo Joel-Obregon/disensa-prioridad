@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import {
   AlertTriangle,
@@ -18,6 +18,7 @@ import {
   crearReporteFranquiciado,
   normalizarCedula,
 } from '../services/franquiciadoService'
+import { escucharPedidos } from '../services/pedidosService'
 import { registrarAuditoria } from '../services/auditoriaService'
 import {
   claseSemaforoBadge,
@@ -183,6 +184,26 @@ export default function ConsultaPedido() {
     setMensaje('Entrega confirmada. El equipo operativo ya vera el pedido como entregado.')
     setConfirmandoEntrega(false)
   }
+
+  const pedidoConsultadoId = pedido?.id
+
+  useEffect(() => {
+    if (!pedidoConsultadoId || !consulta.codigo || !consulta.cedula) return
+
+    let cancelado = false
+
+    async function refrescarPedidoConsultado() {
+      const { data } = await consultarPedidoInvitado(consulta.codigo, consulta.cedula)
+      if (!cancelado && data) setPedido(data)
+    }
+
+    const dejarDeEscucharPedidos = escucharPedidos(refrescarPedidoConsultado)
+
+    return () => {
+      cancelado = true
+      dejarDeEscucharPedidos()
+    }
+  }, [consulta.cedula, consulta.codigo, pedidoConsultadoId])
 
   const progreso = useMemo(() => calcularProgreso(pedido?.estado), [pedido?.estado])
   const semaforo = pedido ? resolverSemaforoPedido(pedido) : null
