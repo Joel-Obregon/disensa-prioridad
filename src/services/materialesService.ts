@@ -1,5 +1,8 @@
 import { supabase } from './supabaseClient'
-import { sincronizarAlertaStockMaterial } from './stockAlertasService'
+import {
+  resolverNivelAlertaStock,
+  sincronizarAlertaStockMaterial,
+} from './stockAlertasService'
 import {
   consultarConCache,
   crearNotificadorCambios,
@@ -17,11 +20,15 @@ export type MaterialInput = {
   es_critico: boolean
 }
 
+export type MaterialAlertasContexto = {
+  demanda_bodega_fq?: number | null
+  pedido_maximo_material?: number | null
+  stockAnterior?: number | null
+  stock_objetivo_material?: number | null
+}
+
 type PedidoMaterialSync = {
   id: string
-  cantidad: number
-  cantidad_despacho?: number | null
-  estado: string
 }
 
 type InventarioBodegaMaterialRow = {
@@ -118,7 +125,11 @@ export async function crearMaterial(material: MaterialInput) {
   return result
 }
 
-export async function actualizarMaterial(id: string, material: MaterialInput) {
+export async function actualizarMaterial(
+  id: string,
+  material: MaterialInput,
+  contextoAlertas: MaterialAlertasContexto = {}
+) {
   const anterior = await supabase
     .from('materiales')
     .select('*')
@@ -160,7 +171,20 @@ export async function actualizarMaterial(id: string, material: MaterialInput) {
     return errorAplicacion('Supabase no devolvio el material actualizado. Verifica permisos de la tabla materiales.')
   }
 
-  const syncResult = await sincronizarMaterialEnModulos(result.data, anterior.data.nombre)
+  const materialAlertaAnterior = materialConContextoAlertas(
+    anterior.data,
+    contextoAlertas,
+    contextoAlertas.stockAnterior ?? anterior.data.stock_actual
+  )
+  const materialAlertaNuevo = materialConContextoAlertas(result.data, contextoAlertas)
+  const nivelAnterior = resolverNivelAlertaStock(materialAlertaAnterior)
+  const nivelNuevo = resolverNivelAlertaStock(materialAlertaNuevo)
+  const syncResult = await sincronizarMaterialEnModulos(
+    result.data,
+    anterior.data.nombre,
+    Boolean(nivelAnterior && nivelAnterior !== nivelNuevo),
+    contextoAlertas
+  )
 
   if (syncResult.error) return { ...result, error: syncResult.error }
 
@@ -318,7 +342,12 @@ async function moverReferenciasMaterial(origenId: string, destino: Material) {
   return { data: null, error: null }
 }
 
-async function sincronizarMaterialEnModulos(material: Material, nombreAnterior?: string) {
+async function sincronizarMaterialEnModulos(
+  material: Material,
+  nombreAnterior?: string,
+  forzarNotificacionStock = false,
+  contextoAlertas: MaterialAlertasContexto = {}
+) {
   const catalogoResult = await sincronizarMaterialCatalogo(material)
 
   if (catalogoResult.error) return catalogoResult
@@ -336,30 +365,19 @@ async function sincronizarMaterialEnModulos(material: Material, nombreAnterior?:
   if (pedidosResult.error) return pedidosResult
 
   for (const pedido of pedidosResult.data || []) {
-    const cantidadOperativa =
-      pedido.cantidad_despacho && pedido.cantidad_despacho > 0
-        ? pedido.cantidad_despacho
-        : pedido.cantidad
-    const estado = resolverEstadoPedidoPorStock(
-      pedido.estado,
-      material.stock_actual,
-      cantidadOperativa
-    )
     const updateResult = await supabase
       .from('pedidos')
       .update({
         material_id: material.id,
         material: material.nombre,
         unidad_medida: material.unidad_medida,
-        stock_disponible: material.stock_actual,
-        estado,
       })
       .eq('id', pedido.id)
 
     if (updateResult.error) return updateResult
   }
 
-  return sincronizarAlertaStock(material)
+  return sincronizarAlertaStock(material, forzarNotificacionStock, contextoAlertas)
 }
 
 async function sincronizarMaterialCatalogo(material: Material) {
@@ -561,12 +579,12 @@ async function obtenerPedidosRelacionados(material: Material, nombreAnterior?: s
   const consultas = [
     supabase
       .from('pedidos')
-      .select('id,cantidad,cantidad_despacho,estado')
+      .select('id')
       .eq('material_id', material.id)
       .returns<PedidoMaterialSync[]>(),
     supabase
       .from('pedidos')
-      .select('id,cantidad,cantidad_despacho,estado')
+      .select('id')
       .eq('material', material.nombre)
       .returns<PedidoMaterialSync[]>(),
   ]
@@ -575,7 +593,7 @@ async function obtenerPedidosRelacionados(material: Material, nombreAnterior?: s
     consultas.push(
       supabase
         .from('pedidos')
-        .select('id,cantidad,cantidad_despacho,estado')
+        .select('id')
         .eq('material', nombreAnterior)
         .returns<PedidoMaterialSync[]>()
     )
@@ -607,12 +625,12 @@ async function obtenerPedidosRelacionadosSinCantidadDespacho(
   const consultas = [
     supabase
       .from('pedidos')
-      .select('id,cantidad,estado')
+      .select('id')
       .eq('material_id', material.id)
       .returns<PedidoMaterialSync[]>(),
     supabase
       .from('pedidos')
-      .select('id,cantidad,estado')
+      .select('id')
       .eq('material', material.nombre)
       .returns<PedidoMaterialSync[]>(),
   ]
@@ -621,7 +639,7 @@ async function obtenerPedidosRelacionadosSinCantidadDespacho(
     consultas.push(
       supabase
         .from('pedidos')
-        .select('id,cantidad,estado')
+        .select('id')
         .eq('material', nombreAnterior)
         .returns<PedidoMaterialSync[]>()
     )
@@ -642,8 +660,16 @@ async function obtenerPedidosRelacionadosSinCantidadDespacho(
   return { data: [...mapa.values()], error: null }
 }
 
-async function sincronizarAlertaStock(material: Material) {
-  return sincronizarAlertaStockMaterial(material)
+async function sincronizarAlertaStock(
+  material: Material,
+  forzarNotificacion = false,
+  contextoAlertas: MaterialAlertasContexto = {}
+) {
+  const materialAlerta = materialConContextoAlertas(material, contextoAlertas)
+
+  return sincronizarAlertaStockMaterial(materialAlerta, materialAlerta.stock_actual, {
+    forzarNotificacion,
+  })
 }
 
 async function moverMaterialEnMovimientos(origenId: string, destino: Material) {
@@ -701,20 +727,22 @@ function errorAplicacion(message: string) {
   }
 }
 
-function resolverEstadoPedidoPorStock(
-  estadoActual: string,
-  stockActual: number,
-  cantidadOperativa: number
+function materialConContextoAlertas(
+  material: Material,
+  contexto: MaterialAlertasContexto,
+  stockActual = material.stock_actual
 ) {
-  if (['entregado', 'cancelado', 'rechazado'].includes(estadoActual)) {
-    return estadoActual
+  const pedidoMaximo = contexto.pedido_maximo_material ?? material.stock_minimo
+  const demanda = contexto.demanda_bodega_fq ?? material.stock_minimo
+
+  return {
+    ...material,
+    demanda_bodega_fq: demanda,
+    pedido_maximo_material: pedidoMaximo,
+    stock_actual: stockActual,
+    stock_objetivo_material:
+      contexto.stock_objetivo_material ?? Math.max(1, pedidoMaximo || material.stock_minimo) * 3,
   }
-
-  if (estadoActual === 'en_despacho') return estadoActual
-
-  if (stockActual < cantidadOperativa) return 'sin_stock'
-  if (estadoActual === 'sin_stock') return 'pendiente'
-  return estadoActual
 }
 
 function normalizarTexto(texto: string) {

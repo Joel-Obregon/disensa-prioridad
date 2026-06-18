@@ -14,18 +14,34 @@ type MaterialConStock = Pick<
 }
 
 type AlertaStockExistente = Pick<Alerta, 'id' | 'nivel' | 'estado'>
+type OpcionesSyncStock = {
+  emitir?: boolean
+  forzarNotificacion?: boolean
+  responsable?: string
+}
 
 const TIPOS_ALERTA_STOCK = ['stock_bajo', 'faltante_bodega_fq']
 
 export async function sincronizarAlertaStockMaterial(
   material: MaterialConStock,
   stockActual = material.stock_actual,
-  opciones: { emitir?: boolean; responsable?: string } = {}
+  opciones: OpcionesSyncStock = {}
 ) {
   const nivelNuevo = nivelAlertaStock(stockActual, material)
   const responsable = opciones.responsable || 'Departamento de inventario'
 
   if (!nivelNuevo) {
+    const existentes = await supabase
+      .from('alertas')
+      .select('id,nivel,estado')
+      .eq('material_id', material.id)
+      .in('tipo_alerta', TIPOS_ALERTA_STOCK)
+      .in('estado', ['activa', 'revisada'])
+      .returns<AlertaStockExistente[]>()
+
+    if (esErrorTablaOColumnaOpcional(existentes.error)) return { data: null, error: null }
+    if (existentes.error) return existentes
+
     const result = await supabase
       .from('alertas')
       .update({ estado: 'cerrada' })
@@ -37,7 +53,16 @@ export async function sincronizarAlertaStockMaterial(
       ? { data: null, error: null }
       : result
 
-    if (!normalizado.error) invalidarCache('alertas')
+    if (!normalizado.error) {
+      invalidarCache('alertas')
+
+      if (opciones.forzarNotificacion && opciones.emitir !== false && (existentes.data || []).length > 0) {
+        emitirAlertaVisualLocal(alertaStockNormalizado(material, stockActual, responsable), {
+          forzarNotificacion: true,
+        })
+      }
+    }
+
     return normalizado
   }
 
@@ -56,6 +81,7 @@ export async function sincronizarAlertaStockMaterial(
   const alertaMismoNivel = (existentes.data || []).find((alerta) => alerta.nivel === nivelNuevo)
 
   if (alertaMismoNivel) {
+    const debeEmitir = opciones.forzarNotificacion || alertaMismoNivel.estado !== 'activa'
     const updateResult = await supabase
       .from('alertas')
       .update({
@@ -70,7 +96,11 @@ export async function sincronizarAlertaStockMaterial(
       .single<Alerta>()
 
     if (updateResult.error) return updateResult
-    if (opciones.emitir !== false) emitirAlertaVisualLocal(updateResult.data)
+    if (debeEmitir && opciones.emitir !== false) {
+      emitirAlertaVisualLocal(updateResult.data, {
+        forzarNotificacion: opciones.forzarNotificacion,
+      })
+    }
     invalidarCache('alertas')
 
     const duplicadas = (existentes.data || []).filter((alerta) => alerta.id !== alertaMismoNivel.id)
@@ -101,7 +131,11 @@ export async function sincronizarAlertaStockMaterial(
     .select('*')
     .single<Alerta>()
 
-  if (!crearAlerta.error && opciones.emitir !== false) emitirAlertaVisualLocal(crearAlerta.data)
+  if (!crearAlerta.error && opciones.emitir !== false) {
+    emitirAlertaVisualLocal(crearAlerta.data, {
+      forzarNotificacion: opciones.forzarNotificacion,
+    })
+  }
 
   const normalizado = esErrorTablaOColumnaOpcional(crearAlerta.error)
     ? { data: null, error: null }
@@ -130,6 +164,13 @@ function nivelAlertaStock(
   return 'alta'
 }
 
+export function resolverNivelAlertaStock(
+  material: MaterialConStock,
+  stockActual = material.stock_actual
+) {
+  return nivelAlertaStock(stockActual, material)
+}
+
 function mensajeAlertaStock(
   material: MaterialConStock,
   stockActual: number,
@@ -144,6 +185,51 @@ function mensajeAlertaStock(
     0,
     stockActual
   )} / minimo ${minimo} / normal ${normal}. Departamento debe verificar reposicion.`
+}
+
+function alertaStockNormalizado(
+  material: MaterialConStock,
+  stockActual: number,
+  responsable: string
+): Alerta {
+  const codigo = material.codigo_material ? `${material.codigo_material} - ` : ''
+  const normal = umbralNormalStock(material)
+
+  return {
+    id: `stock-normalizado-${material.id}-${Date.now()}`,
+    pedido_id: null,
+    material_id: material.id,
+    tipo_alerta: 'stock_normalizado',
+    nivel: 'informativa',
+    mensaje: `Material ${codigo}${material.nombre} normalizado: stock ${Math.max(
+      0,
+      stockActual
+    )} / normal ${normal}. La alerta anterior fue cerrada.`,
+    estado: 'activa',
+    responsable,
+    pedido_codigo: null,
+    pedido_estado: null,
+    pedido_fecha_compromiso: null,
+    pedido_fecha_solicitud: null,
+    pedido_stock_disponible: stockActual,
+    pedido_cantidad: normal,
+    pedido_cantidad_despacho: normal,
+    pedido_cantidad_despachada: null,
+    pedido_material: material.nombre,
+    pedido_unidad_medida: null,
+    pedido_origen: null,
+    pedido_destino: null,
+    pedido_solicitante: null,
+    pedido_cedula_solicitante: null,
+    pedido_urgencia: null,
+    pedido_tipo_cliente: null,
+    pedido_accion_solicitante: null,
+    pedido_condicion_material: null,
+    pedido_prioridad_calculada: null,
+    pedido_despachado_at: null,
+    pedido_despachado_por: null,
+    created_at: new Date().toISOString(),
+  }
 }
 
 function umbralMinimoStock(

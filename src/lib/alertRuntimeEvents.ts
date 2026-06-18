@@ -2,22 +2,37 @@ import type { Alerta } from '../types/alerta'
 
 export const ALERTA_VISUAL_LOCAL_EVENT = 'disensa:alerta-visual-local'
 
-export function emitirAlertaVisualLocal(alerta: Alerta | null | undefined) {
+export type OpcionesAlertaVisualLocal = {
+  forzarNotificacion?: boolean
+}
+
+export function emitirAlertaVisualLocal(
+  alerta: Alerta | null | undefined,
+  opciones: OpcionesAlertaVisualLocal = {}
+) {
   if (typeof window === 'undefined' || !alerta) return
 
   window.dispatchEvent(
     new CustomEvent(ALERTA_VISUAL_LOCAL_EVENT, {
-      detail: alerta,
+      detail: {
+        alerta,
+        opciones,
+      },
     })
   )
 }
 
-export function escucharAlertasVisualesLocales(onAlerta: (alerta: Alerta) => void) {
+export function escucharAlertasVisualesLocales(
+  onAlerta: (alerta: Alerta, opciones: OpcionesAlertaVisualLocal) => void
+) {
   if (typeof window === 'undefined') return () => undefined
 
   const manejarAlerta = (event: Event) => {
-    const alerta = event instanceof CustomEvent ? event.detail : null
-    if (alerta?.id) onAlerta(alerta as Alerta)
+    const detail = event instanceof CustomEvent ? event.detail : null
+    const alerta = detail?.alerta || detail
+    const opciones = detail?.opciones || {}
+
+    if (alerta?.id) onAlerta(alerta as Alerta, opciones)
   }
 
   window.addEventListener(ALERTA_VISUAL_LOCAL_EVENT, manejarAlerta)

@@ -154,7 +154,12 @@ export default function Inventario() {
       return
     }
 
-    const resultado = await actualizarMaterial(material.id, payload)
+    const resultado = await actualizarMaterial(material.id, payload, {
+      demanda_bodega_fq: material.demanda_bodega_fq,
+      pedido_maximo_material: material.pedido_maximo_material,
+      stockAnterior: material.stock_disponible_operativo,
+      stock_objetivo_material: material.stock_objetivo_material,
+    })
 
     if (resultado.error) {
       setError(resultado.error.message)

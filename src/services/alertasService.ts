@@ -299,7 +299,9 @@ export function escucharAlertas(onChange: (alerta: Alerta) => void) {
       }
 
       void normalizarAlertasConContexto([alerta]).then(([validada]) => {
-        if (validada && alertaVisualVigente(validada)) onChange(validada)
+        if (validada && (alertaVisualVigente(validada) || validada.estado === 'cerrada')) {
+          onChange(validada)
+        }
       })
     }
   )

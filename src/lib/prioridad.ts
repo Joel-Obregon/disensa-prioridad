@@ -42,16 +42,39 @@ const PESO_DEFECTO = {
   valor_pendiente: 15,
 } as const
 
+const PARAMETROS_DEFECTO = {
+  cantidad_pendiente: {
+    cantidadMinima: 1,
+    cantidadAlta: 100,
+    cantidadCritica: 500,
+  },
+  nota_credito: {
+    notasMinimas: 1,
+    notasCriticas: 2,
+  },
+  antiguedad: {
+    diasSeguimiento: 14,
+    diasCriticos: 30,
+    diasProximos: 2,
+    diasRetrasoCritico: 60,
+  },
+  valor_pendiente: {
+    valorRelevante: 1000,
+    valorAlto: 3000,
+    valorCritico: 5000,
+  },
+} as const
+
 function pesoRegla(
   reglas: ReglaNegocio[],
   nombre: keyof typeof NOMBRE_REGLA,
 ): number {
-  const regla = reglas.find(
-    (r) =>
-      r.nombre === NOMBRE_REGLA[nombre] &&
-      (r.estado ?? 'activa') === 'activa',
-  )
-  return regla?.peso ?? PESO_DEFECTO[nombre]
+  const regla = reglas.find((r) => r.nombre === NOMBRE_REGLA[nombre])
+
+  if (!regla) return PESO_DEFECTO[nombre]
+  if ((regla.estado ?? 'activa') === 'inactiva' || regla.activo === false) return 0
+
+  return regla.peso
 }
 
 /**
@@ -66,10 +89,6 @@ export function calcularPrioridad(
   pedido: Pedido,
   reglas: ReglaNegocio[] = [],
 ): number {
-  if (pedido.codigo.startsWith('BFQ-')) {
-    return pedido.prioridad_calculada ?? 0
-  }
-
   let puntaje = 0
 
   const estado = pedido.estado ?? 'pendiente'
@@ -81,38 +100,62 @@ export function calcularPrioridad(
   }
 
   if (tieneNotaCreditoPendiente(pedido)) {
-    puntaje += pesoRegla(reglas, 'nota_credito')
+    const parametros = parametrosRegla(reglas, 'nota_credito')
+    const pesoNotaCredito = pesoRegla(reglas, 'nota_credito')
+    const notasPendientes = pedido.nc_pendientes ?? 1
+
+    if (pesoNotaCredito > 0 && notasPendientes >= parametros.notasCriticas) {
+      puntaje += Math.min(40, pesoNotaCredito + 5)
+    } else if (pesoNotaCredito > 0 && notasPendientes >= parametros.notasMinimas) {
+      puntaje += pesoNotaCredito
+    }
   }
 
   const cantidadPendiente = cantidadPendientePedido(pedido)
-  if (cantidadPendiente > 0) {
+  const parametrosCantidad = parametrosRegla(reglas, 'cantidad_pendiente')
+  if (cantidadPendiente >= parametrosCantidad.cantidadMinima) {
     const pesoCantidad = pesoRegla(reglas, 'cantidad_pendiente')
-    puntaje += Math.min(pesoCantidad, 5 + Math.floor(cantidadPendiente / 100))
+    if (pesoCantidad > 0 && cantidadPendiente >= parametrosCantidad.cantidadCritica) {
+      puntaje += pesoCantidad
+    } else if (pesoCantidad > 0 && cantidadPendiente >= parametrosCantidad.cantidadAlta) {
+      puntaje += Math.round(pesoCantidad * 0.75)
+    } else if (pesoCantidad > 0) {
+      puntaje += Math.max(5, Math.round(pesoCantidad * 0.35))
+    }
   }
 
   const valorPendiente = pedido.valor_pendiente ?? 0
   const pesoValor = pesoRegla(reglas, 'valor_pendiente')
-  if (valorPendiente >= 5000) {
+  const parametrosValor = parametrosRegla(reglas, 'valor_pendiente')
+  if (pesoValor > 0 && valorPendiente >= parametrosValor.valorCritico) {
     puntaje += pesoValor + 5
-  } else if (valorPendiente >= 1000) {
-    puntaje += Math.round(pesoValor * 0.8)
-  } else if (valorPendiente > 0) {
-    puntaje += Math.round(pesoValor * 0.4)
+  } else if (pesoValor > 0 && valorPendiente >= parametrosValor.valorAlto) {
+    puntaje += pesoValor
+  } else if (pesoValor > 0 && valorPendiente >= parametrosValor.valorRelevante) {
+    puntaje += Math.round(pesoValor * 0.7)
+  } else if (pesoValor > 0 && valorPendiente > 0) {
+    puntaje += Math.round(pesoValor * 0.35)
   }
 
-  const diasObjetivo = calcularDiasHasta(pedido.fecha_compromiso)
-  if (diasObjetivo < 0) {
-    puntaje += 22
-  } else if (diasObjetivo <= 2) {
-    puntaje += 14
-  }
-
-  const diasPedido = calcularDiasDesde(pedido.fecha_solicitud)
+  const parametrosAntiguedad = parametrosRegla(reglas, 'antiguedad')
   const pesoAntiguedad = pesoRegla(reglas, 'antiguedad')
-  if (diasPedido >= 30) {
-    puntaje += pesoAntiguedad - 2
-  } else if (diasPedido >= 14) {
-    puntaje += Math.round(pesoAntiguedad * 0.5)
+  const diasObjetivo = calcularDiasHasta(pedido.fecha_compromiso)
+  const diasPedido = calcularDiasDesde(pedido.fecha_solicitud)
+
+  if (pesoAntiguedad > 0) {
+    if (diasObjetivo < -parametrosAntiguedad.diasRetrasoCritico) {
+      puntaje += 26
+    } else if (diasObjetivo < 0) {
+      puntaje += 22
+    } else if (diasObjetivo <= parametrosAntiguedad.diasProximos) {
+      puntaje += 14
+    }
+
+    if (diasPedido >= parametrosAntiguedad.diasCriticos) {
+      puntaje += Math.max(0, pesoAntiguedad - 2)
+    } else if (diasPedido >= parametrosAntiguedad.diasSeguimiento) {
+      puntaje += Math.round(pesoAntiguedad * 0.5)
+    }
   }
 
   return Math.min(100, Math.max(0, puntaje))
@@ -184,6 +227,30 @@ function cantidadPendientePedido(pedido: Pedido): number {
   }
 
   return pedido.cantidad ?? 0
+}
+
+function parametrosRegla<K extends keyof typeof PARAMETROS_DEFECTO>(
+  reglas: ReglaNegocio[],
+  nombre: K,
+): (typeof PARAMETROS_DEFECTO)[K] {
+  const regla = reglas.find((item) => item.nombre === NOMBRE_REGLA[nombre])
+  const parametrosDefecto = PARAMETROS_DEFECTO[nombre]
+
+  if (!regla?.condicion?.trim().startsWith('{')) return parametrosDefecto
+
+  try {
+    const guardados = JSON.parse(regla.condicion) as Record<string, unknown>
+    const parametros = { ...parametrosDefecto } as Record<string, number>
+
+    Object.keys(parametros).forEach((llave) => {
+      const valor = Number(guardados[llave])
+      if (Number.isFinite(valor) && valor >= 0) parametros[llave] = valor
+    })
+
+    return parametros as (typeof PARAMETROS_DEFECTO)[K]
+  } catch {
+    return parametrosDefecto
+  }
 }
 
 function normalizarTexto(valor?: string | null): string {

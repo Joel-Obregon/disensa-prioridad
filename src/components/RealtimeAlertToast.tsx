@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { BellRing, CheckCircle2, ShieldAlert, X } from 'lucide-react'
 import {
@@ -13,7 +13,10 @@ import {
   limpiarAlertasNoRevisadas,
   obtenerAlertasNoRevisadas,
 } from '../lib/alertNotifications'
-import { escucharAlertasVisualesLocales } from '../lib/alertRuntimeEvents'
+import {
+  type OpcionesAlertaVisualLocal,
+  escucharAlertasVisualesLocales,
+} from '../lib/alertRuntimeEvents'
 import type { Alerta } from '../types/alerta'
 
 const DURACION_TOAST_MS = 6000
@@ -29,33 +32,79 @@ export default function RealtimeAlertToast() {
   const [centroAbierto, setCentroAbierto] = useState(false)
   const [cargandoCentro, setCargandoCentro] = useState(false)
   const alertasConocidasRef = useRef<Map<string, string>>(new Map())
+  const firmasVisualesConocidasRef = useRef<Set<string>>(new Set())
   const lineaBaseListaRef = useRef(false)
   const enPaginaAlertasRef = useRef(false)
 
-  function registrarAlertaEntrante(nuevaAlerta: Alerta, opciones: { notificar?: boolean } = {}) {
-    if (nuevaAlerta.estado === 'cerrada' || nuevaAlerta.nivel === 'informativa') return
+  const sincronizarFirmasVisualesConocidas = useCallback(() => {
+    firmasVisualesConocidasRef.current = new Set(alertasConocidasRef.current.values())
+  }, [])
+
+  const registrarAlertaEntrante = useCallback((
+    nuevaAlerta: Alerta,
+    opciones: { notificar?: boolean } & OpcionesAlertaVisualLocal = {}
+  ) => {
+    const esResolucionForzada =
+      opciones.forzarNotificacion && esAlertaResolucionStock(nuevaAlerta)
+
+    if (
+      nuevaAlerta.estado === 'cerrada' ||
+      (nuevaAlerta.nivel === 'informativa' && !esResolucionForzada)
+    ) {
+      const firmaAnterior = alertasConocidasRef.current.get(nuevaAlerta.id)
+      alertasConocidasRef.current.delete(nuevaAlerta.id)
+      if (firmaAnterior) sincronizarFirmasVisualesConocidas()
+      setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
+      return
+    }
 
     const firma = firmaAlerta(nuevaAlerta)
-    const yaConocida = alertasConocidasRef.current.get(nuevaAlerta.id) === firma
+    const yaConocidaPorId = alertasConocidasRef.current.get(nuevaAlerta.id) === firma
+    const yaConocidaPorFirma = firmasVisualesConocidasRef.current.has(firma)
     alertasConocidasRef.current.set(nuevaAlerta.id, firma)
-    setAlertasCentro((actual) => agregarAlerta(actual, nuevaAlerta))
+    firmasVisualesConocidasRef.current.add(firma)
+    setAlertasCentro((actual) =>
+      esResolucionForzada
+        ? actual.filter((item) => !mismaAlertaStockMaterial(item, nuevaAlerta))
+        : agregarAlerta(
+            actual.filter((item) => !mismaAlertaStockMaterial(item, nuevaAlerta)),
+            nuevaAlerta
+          )
+    )
 
-    if (yaConocida || opciones.notificar === false || enPaginaAlertasRef.current) return
+    if (
+      (!opciones.forzarNotificacion && (yaConocidaPorId || yaConocidaPorFirma)) ||
+      (!opciones.forzarNotificacion && opciones.notificar === false) ||
+      enPaginaAlertasRef.current
+    ) {
+      return
+    }
+
+    setCola((actual) => actual.filter((item) => !mismaAlertaStockMaterial(item, nuevaAlerta)))
+
+    if (opciones.forzarNotificacion && esAlertaStockMaterial(nuevaAlerta)) {
+      setAlerta(nuevaAlerta)
+      setVisible(true)
+      agregarAlertaNoRevisada(nuevaAlerta.id)
+      setIdsNoRevisados(obtenerAlertasNoRevisadas())
+      return
+    }
 
     setCola((actual) => agregarAlerta(actual, nuevaAlerta))
     agregarAlertaNoRevisada(nuevaAlerta.id)
     setIdsNoRevisados(obtenerAlertasNoRevisadas())
-  }
+  }, [sincronizarFirmasVisualesConocidas])
 
-  async function establecerLineaBase() {
+  const establecerLineaBase = useCallback(async () => {
     const { data, error } = await obtenerAlertasVisualesActivas()
     if (error) return
 
     alertasConocidasRef.current = new Map(
       (data || []).map((item) => [item.id, firmaAlerta(item)])
     )
+    sincronizarFirmasVisualesConocidas()
     lineaBaseListaRef.current = true
-  }
+  }, [sincronizarFirmasVisualesConocidas])
 
   function limpiarNotificacionesVistas() {
     limpiarAlertasNoRevisadas()
@@ -73,13 +122,13 @@ export default function RealtimeAlertToast() {
     })
 
     return dejarDeEscuchar
-  }, [])
+  }, [registrarAlertaEntrante])
 
   useEffect(() => {
-    return escucharAlertasVisualesLocales((nuevaAlerta) => {
-      registrarAlertaEntrante(nuevaAlerta)
+    return escucharAlertasVisualesLocales((nuevaAlerta, opciones) => {
+      registrarAlertaEntrante(nuevaAlerta, opciones)
     })
-  }, [])
+  }, [registrarAlertaEntrante])
 
   useEffect(() => {
     let cancelado = false
@@ -106,6 +155,7 @@ export default function RealtimeAlertToast() {
       alertasConocidasRef.current.forEach((_, id) => {
         if (!idsActivos.has(id)) alertasConocidasRef.current.delete(id)
       })
+      sincronizarFirmasVisualesConocidas()
 
       activas
         .filter((item) => alertasConocidasRef.current.get(item.id) !== firmaAlerta(item))
@@ -124,7 +174,7 @@ export default function RealtimeAlertToast() {
       cancelado = true
       window.clearInterval(intervalo)
     }
-  }, [])
+  }, [establecerLineaBase, registrarAlertaEntrante, sincronizarFirmasVisualesConocidas])
 
   useEffect(() => {
     enPaginaAlertasRef.current = location.pathname.startsWith('/alertas')
@@ -133,7 +183,7 @@ export default function RealtimeAlertToast() {
 
     limpiarNotificacionesVistas()
     void establecerLineaBase()
-  }, [location.pathname])
+  }, [establecerLineaBase, location.pathname])
 
   useEffect(() => escucharAlertasNoRevisadas(setIdsNoRevisados), [])
 
@@ -346,10 +396,11 @@ function firmaAlerta(alerta: Alerta) {
     alerta.estado,
     alerta.nivel,
     alerta.tipo_alerta,
-    alerta.mensaje,
+    alerta.pedido_id || '',
+    alerta.material_id || '',
     alerta.pedido_codigo || '',
     alerta.pedido_estado || '',
-    alerta.pedido_stock_disponible ?? '',
+    normalizarTexto(alerta.pedido_material || ''),
   ].join('|')
 }
 
@@ -361,6 +412,31 @@ function colorNivel(nivel: Alerta['nivel']) {
   if (nivel === 'critica') return 'bg-red-500'
   if (nivel === 'alta' || nivel === 'media') return 'bg-yellow-400'
   return 'bg-green-400'
+}
+
+function esAlertaStockMaterial(alerta: Alerta) {
+  return (
+    ['stock_bajo', 'faltante_bodega_fq', 'stock_normalizado'].includes(alerta.tipo_alerta) &&
+    Boolean(alerta.material_id || alerta.pedido_material)
+  )
+}
+
+function esAlertaResolucionStock(alerta: Alerta) {
+  return alerta.tipo_alerta === 'stock_normalizado'
+}
+
+function mismaAlertaStockMaterial(actual: Alerta, entrante: Alerta) {
+  if (actual.id === entrante.id) return false
+  if (!esAlertaStockMaterial(actual) || !esAlertaStockMaterial(entrante)) return false
+
+  if (actual.material_id && entrante.material_id) {
+    return actual.material_id === entrante.material_id
+  }
+
+  return (
+    normalizarTexto(actual.pedido_material || '') !== '' &&
+    normalizarTexto(actual.pedido_material || '') === normalizarTexto(entrante.pedido_material || '')
+  )
 }
 
 function esAlertaStockSincronizada(alerta: Alerta) {

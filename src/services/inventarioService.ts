@@ -5,7 +5,10 @@ import {
   invalidarCache,
 } from './cacheService'
 import { obtenerMateriales } from './materialesService'
-import { sincronizarAlertaStockMaterial } from './stockAlertasService'
+import {
+  resolverNivelAlertaStock,
+  sincronizarAlertaStockMaterial,
+} from './stockAlertasService'
 import { supabase } from './supabaseClient'
 import type { InventarioOperativo, Material } from '../types/material'
 import type {
@@ -19,13 +22,6 @@ export type MovimientoInventarioInput = {
   cantidad: number
   motivo: string
   responsable: string
-}
-
-type PedidoStock = {
-  id: string
-  cantidad: number
-  cantidad_despacho?: number | null
-  estado: string
 }
 
 type PedidoMaterialDemanda = {
@@ -434,7 +430,13 @@ export async function registrarMovimientoInventario(input: MovimientoInventarioI
 
   if (movimientoResult.error) return movimientoResult
 
-  const syncResult = await sincronizarMaterialEnOperacion(material, stockNuevo)
+  const nivelAnterior = resolverNivelAlertaStock(material, stockAnterior)
+  const nivelNuevo = resolverNivelAlertaStock(material, stockNuevo)
+  const syncResult = await sincronizarMaterialEnOperacion(
+    material,
+    stockNuevo,
+    Boolean(nivelAnterior && nivelAnterior !== nivelNuevo)
+  )
 
   if (syncResult.error) return syncResult
 
@@ -450,26 +452,14 @@ export async function registrarMovimientoInventario(input: MovimientoInventarioI
   return movimientoResult
 }
 
-async function sincronizarMaterialEnOperacion(material: Material, stockNuevo: number) {
-  const pedidosResult = await obtenerPedidosMaterial(material)
-
-  if (pedidosResult.error) return pedidosResult
-
-  for (const pedido of pedidosResult.data || []) {
-    const cantidadOperativa =
-      pedido.cantidad_despacho && pedido.cantidad_despacho > 0
-        ? pedido.cantidad_despacho
-        : pedido.cantidad
-    const estado = resolverEstadoPedidoPorStock(pedido.estado, stockNuevo, cantidadOperativa)
-    const updateResult = await supabase
-      .from('pedidos')
-      .update({ stock_disponible: stockNuevo, estado })
-      .eq('id', pedido.id)
-
-    if (updateResult.error) return updateResult
-  }
-
-  const alertaResult = await sincronizarAlertaStockMaterial(material, stockNuevo)
+async function sincronizarMaterialEnOperacion(
+  material: Material,
+  stockNuevo: number,
+  forzarNotificacionStock = false
+) {
+  const alertaResult = await sincronizarAlertaStockMaterial(material, stockNuevo, {
+    forzarNotificacion: forzarNotificacionStock,
+  })
   if (alertaResult.error) return alertaResult
 
   return { data: null, error: null }
@@ -488,67 +478,6 @@ async function verificarMovimientosDisponibles() {
   }
 
   return { data: null, error: null }
-}
-
-async function obtenerPedidosMaterial(material: Material) {
-  const porId = await supabase
-    .from('pedidos')
-    .select('id,cantidad,cantidad_despacho,estado')
-    .eq('material_id', material.id)
-    .returns<PedidoStock[]>()
-
-  const porNombre = await supabase
-    .from('pedidos')
-    .select('id,cantidad,cantidad_despacho,estado')
-    .eq('material', material.nombre)
-    .returns<PedidoStock[]>()
-
-  if (porId.error || porNombre.error) {
-    const porIdFallback = await supabase
-      .from('pedidos')
-      .select('id,cantidad,estado')
-      .eq('material_id', material.id)
-      .returns<PedidoStock[]>()
-
-    const porNombreFallback = await supabase
-      .from('pedidos')
-      .select('id,cantidad,estado')
-      .eq('material', material.nombre)
-      .returns<PedidoStock[]>()
-
-    if (porIdFallback.error) return porIdFallback
-    if (porNombreFallback.error) return porNombreFallback
-
-    return unirPedidos(porIdFallback.data || [], porNombreFallback.data || [])
-  }
-
-  return unirPedidos(porId.data || [], porNombre.data || [])
-}
-
-function unirPedidos(porId: PedidoStock[], porNombre: PedidoStock[]) {
-  const mapa = new Map<string, PedidoStock>()
-
-  ;[...porId, ...porNombre].forEach((pedido) => {
-    mapa.set(pedido.id, pedido)
-  })
-
-  return { data: [...mapa.values()], error: null }
-}
-
-function resolverEstadoPedidoPorStock(
-  estadoActual: string,
-  stockNuevo: number,
-  cantidadOperativa: number
-) {
-  if (['entregado', 'cancelado', 'rechazado'].includes(estadoActual)) {
-    return estadoActual
-  }
-
-  if (estadoActual === 'en_despacho') return estadoActual
-
-  if (stockNuevo < cantidadOperativa) return 'sin_stock'
-  if (estadoActual === 'sin_stock') return 'pendiente'
-  return estadoActual
 }
 
 function calcularStockNuevo(

@@ -46,7 +46,6 @@ export async function sincronizarAlertaSemaforoPedido(
   const cambioVisual =
     !alertaActual ||
     alertaActual.nivel !== nivel ||
-    alertaActual.mensaje !== mensaje ||
     alertaActual.estado !== 'activa'
 
   const payload = {

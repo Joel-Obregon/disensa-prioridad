@@ -18,6 +18,16 @@ export async function obtenerAuditoria() {
     .returns<Auditoria[]>()
 }
 
+export async function obtenerAuditoriaPorEntidad(entidad: string, limite = 20) {
+  return supabase
+    .from('auditoria')
+    .select('*')
+    .eq('entidad', entidad)
+    .order('created_at', { ascending: false })
+    .limit(limite)
+    .returns<Auditoria[]>()
+}
+
 export async function registrarAuditoria(input: AuditoriaInput) {
   return supabase.from('auditoria').insert({
     entidad: input.entidad,
