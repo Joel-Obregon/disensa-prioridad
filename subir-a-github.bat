@@ -7,26 +7,33 @@ echo   Subiendo Disensa-prioridad a GitHub
 echo ================================================
 echo.
 
+REM Habilita el administrador de credenciales (abre login de GitHub si hace falta)
+git config --global credential.helper manager
+git config --global credential.helper manager-core
+
 REM Quita el candado de git si quedo de una operacion previa
 if exist ".git\index.lock" del /f /q ".git\index.lock"
 
-REM Confirma identidad de git (solo si no esta configurada)
+REM Identidad de git (solo si no esta configurada)
 for /f "delims=" %%i in ('git config user.email 2^>nul') do set GITMAIL=%%i
 if "%GITMAIL%"=="" git config user.email "joelobr123@gmail.com"
 for /f "delims=" %%i in ('git config user.name 2^>nul') do set GITNAME=%%i
 if "%GITNAME%"=="" git config user.name "Joel Obregon"
 
-echo Agregando cambios...
+echo Agregando y guardando cambios...
 git add -A
+git commit -m "Actualizacion Disensa: NC, reposicion, alertas por tramo" 2>nul
 
-echo Creando commit...
-git commit -m "Actualizacion: nota de credito, modulo reposicion, alertas de falta = reposiciones, suministrador solo reposicion, nivel de alerta por tramo del semaforo"
-
-echo Subiendo a GitHub (rama main)...
+echo.
+echo Subiendo a GitHub...
+echo (Si se abre una ventana de GitHub, inicia sesion. Si pide contrasena,
+echo  usa un TOKEN de acceso personal, NO tu contrasena normal.)
+echo.
 git push origin main
 
 echo.
 echo ================================================
-echo   Listo. Revisa: https://github.com/Joel-Obregon/disensa-prioridad
+echo   Si NO ves errores en rojo, ya se actualizo:
+echo   https://github.com/Joel-Obregon/disensa-prioridad
 echo ================================================
 pause
