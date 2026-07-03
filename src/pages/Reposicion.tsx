@@ -15,6 +15,7 @@ import { useConfirmar } from '../components/ConfirmacionProvider'
 import { registrarAuditoria } from '../services/auditoriaService'
 import { obtenerInventarioOperativo } from '../services/inventarioService'
 import {
+  actualizarEstadoPedido,
   crearPedido,
   marcarReposicionSinStock,
   obtenerPedidos,
@@ -288,6 +289,32 @@ export default function Reposicion() {
     cargar()
   }
 
+  async function cancelarReposicion(pedido: Pedido) {
+    const ok = await confirmar({
+      titulo: 'Cancelar reposición',
+      mensaje: `¿Cancelar la reposición de ${pedido.cantidad} ${pedido.unidad_medida} de ${pedido.material} (${pedido.codigo})?`,
+      confirmarTexto: 'Sí, cancelar',
+      peligro: true,
+    })
+    if (!ok) return
+    const { error: e } = await actualizarEstadoPedido(pedido.id, 'cancelado', {
+      pedido,
+      responsable: 'Administrador',
+    })
+    if (e) {
+      setError(e.message)
+      return
+    }
+    await registrarAuditoria({
+      entidad: 'pedidos',
+      entidad_id: pedido.id,
+      accion: 'reposicion_cancelada',
+      detalle: `${pedido.codigo}: reposición cancelada por el administrador.`,
+    })
+    setModalExito('Reposición cancelada.')
+    cargar()
+  }
+
   return (
     <div className="space-y-6">
       <ModalExito mensaje={modalExito} onClose={() => setModalExito('')} />
@@ -299,9 +326,11 @@ export default function Reposicion() {
             <PackagePlus className="text-[#c8102e]" size={22} />
             <h1 className="text-2xl font-bold text-slate-800">Reposición de materiales</h1>
           </div>
-          <p className="mt-1 text-slate-500">
-            Reposición de bodega. {puedeCrear ? 'Pide al suministrador el material que necesitas reponer.' : 'Confirma el envío o marca si no hay stock.'}
-          </p>
+          {puedeCrear && (
+            <p className="mt-1 text-slate-500">
+              Pide al suministrador el material que necesitas reponer.
+            </p>
+          )}
         </div>
         {puedeCrear && (
           <button
@@ -446,7 +475,7 @@ export default function Reposicion() {
                 <th className="px-5 py-3 text-left">Suministrador</th>
                 <th className="px-5 py-3 text-left">Cantidad</th>
                 <th className="px-5 py-3 text-left">Estado</th>
-                {esSuministrador && <th className="px-5 py-3 text-left">Acción</th>}
+                {(esSuministrador || puedeCrear) && <th className="px-5 py-3 text-left">Acción</th>}
               </tr>
             </thead>
             <tbody>
@@ -470,25 +499,38 @@ export default function Reposicion() {
                         </p>
                       )}
                     </td>
-                    {esSuministrador && (
+                    {(esSuministrador || puedeCrear) && (
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
                           {['pendiente', 'en_revision', 'aprobado', 'en_despacho'].includes(pedido.estado) ? (
                             <>
-                              <button
-                                type="button"
-                                onClick={() => enviarReposicion(pedido)}
-                                className="inline-flex items-center gap-1 rounded border border-green-400 bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-100"
-                              >
-                                <Truck size={13} /> Confirmar y enviar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => sinStockReposicion(pedido)}
-                                className="inline-flex items-center gap-1 rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
-                              >
-                                <XCircle size={13} /> Sin stock
-                              </button>
+                              {esSuministrador && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => enviarReposicion(pedido)}
+                                    className="inline-flex items-center gap-1 rounded border border-green-400 bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-100"
+                                  >
+                                    <Truck size={13} /> Confirmar y enviar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => sinStockReposicion(pedido)}
+                                    className="inline-flex items-center gap-1 rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                                  >
+                                    <XCircle size={13} /> Sin stock
+                                  </button>
+                                </>
+                              )}
+                              {puedeCrear && (
+                                <button
+                                  type="button"
+                                  onClick={() => cancelarReposicion(pedido)}
+                                  className="inline-flex items-center gap-1 rounded border border-red-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                                >
+                                  <XCircle size={13} /> Cancelar
+                                </button>
+                              )}
                             </>
                           ) : (
                             <span className="text-xs text-slate-400">—</span>
@@ -502,7 +544,7 @@ export default function Reposicion() {
 
               {!cargando && reposiciones.length === 0 && (
                 <tr>
-                  <td colSpan={esSuministrador ? 6 : 5} className="px-5 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={(esSuministrador || puedeCrear) ? 6 : 5} className="px-5 py-10 text-center text-sm text-slate-500">
                     No hay reposiciones registradas todavía.
                   </td>
                 </tr>

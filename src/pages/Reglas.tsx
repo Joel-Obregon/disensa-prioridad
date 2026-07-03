@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
-  BellRing,
   Boxes,
   ChevronDown,
   Clock3,
@@ -230,32 +229,11 @@ export default function Reglas() {
         <div className="max-w-4xl">
           <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#a33e00]">
             <Settings size={16} />
-            Motor de reglas parametrizables
+            Reglas parametrizables
           </div>
           <h1 className="mt-3 text-3xl font-bold leading-tight text-[#0f0f11]">
             Reglas operativas configurables
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-            Ajusta cada regla: su condición, prioridad y la acción del sistema.
-          </p>
-        </div>
-
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          <FuncionMotor
-            icono={<Boxes size={20} />}
-            titulo="Evalúa datos reales"
-            texto="Stock, despacho pendiente, retrasos, notas de crédito y reportes."
-          />
-          <FuncionMotor
-            icono={<Truck size={20} />}
-            titulo="Prioriza la atención"
-            texto="Ordena la cola de pedidos según las reglas activas."
-          />
-          <FuncionMotor
-            icono={<BellRing size={20} />}
-            titulo="Genera alertas"
-            texto="Comunica el motivo, el nivel y la acción que debe ejecutarse."
-          />
         </div>
 
         {!puedeEditar && (
@@ -281,7 +259,7 @@ export default function Reglas() {
         <div className="border-b border-[#d8d2df] p-5 lg:p-6">
           <h2 className="text-xl font-bold text-[#0f0f11]">Orden de prioridad de la cola</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Arrastra el orden: manda el criterio 1; si dos pedidos empatan, decide el 2 y luego el 3. Los cambios se aplican en el acto.
+            Arrastra para reordenar.
           </p>
         </div>
         <div className="divide-y divide-slate-100">
@@ -324,7 +302,7 @@ export default function Reglas() {
             <div>
               <h2 className="text-xl font-bold text-[#0f0f11]">Configuración del motor</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                Estas reglas definen las alertas del sistema. El orden de la cola se ajusta arriba.
+                Estas reglas definen las alertas del sistema.
               </p>
             </div>
           </div>
@@ -810,24 +788,6 @@ function VistaPreviaRegla({ formulario }: { formulario: FormularioRegla }) {
       </div>
       <p className="mt-2 text-sm leading-5 text-slate-600">{nivel.descripcion}</p>
     </section>
-  )
-}
-
-function FuncionMotor({
-  icono,
-  texto,
-  titulo,
-}: {
-  icono: ReactNode
-  texto: string
-  titulo: string
-}) {
-  return (
-    <div className="border border-slate-200 bg-slate-50 p-4">
-      <span className="text-[#a33e00]">{icono}</span>
-      <h2 className="mt-3 font-semibold text-slate-900">{titulo}</h2>
-      <p className="mt-1 text-sm leading-5 text-slate-600">{texto}</p>
-    </div>
   )
 }
 

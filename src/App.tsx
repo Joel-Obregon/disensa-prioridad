@@ -6,6 +6,7 @@ import { ConfirmacionProvider } from './components/ConfirmacionProvider'
 
 const Login = lazy(() => import('./pages/Login'))
 const ConsultaPedido = lazy(() => import('./pages/ConsultaPedido'))
+const RestablecerContrasena = lazy(() => import('./pages/RestablecerContrasena'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Inventario = lazy(() => import('./pages/Inventario'))
 const Pedidos = lazy(() => import('./pages/Pedidos'))
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/consulta-pedido" element={<ConsultaPedido />} />
+        <Route path="/restablecer-contrasena" element={<RestablecerContrasena />} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>

@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { ArrowRight, Lock, Mail, Search } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Lock, Mail, Search } from 'lucide-react'
 import { esRolInterno, rutaInicialPorRol } from '../auth/permisos'
 import ThemeToggle from '../components/ThemeToggle'
 import { esCorreoValido } from '../lib/validacionesFormulario'
@@ -14,6 +14,8 @@ export default function Login() {
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [mostrarPassword, setMostrarPassword] = useState(false)
+  const [avisoRecuperacion, setAvisoRecuperacion] = useState('')
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState('')
 
@@ -51,6 +53,28 @@ export default function Login() {
     }
 
     navigate(rutaInicialPorRol(perfil.rol))
+  }
+
+  async function enviarRecuperacion() {
+    setError('')
+    setAvisoRecuperacion('')
+    const correoNormalizado = email.trim().toLowerCase()
+    if (!esCorreoValido(correoNormalizado)) {
+      setError('Escribe tu correo arriba y vuelve a tocar "Olvidaste tu contrasena".')
+      return
+    }
+    setCargando(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(correoNormalizado, {
+      redirectTo: `${window.location.origin}/restablecer-contrasena`,
+    })
+    setCargando(false)
+    if (error) {
+      setError('No se pudo enviar el correo de recuperacion. Intenta de nuevo en un momento.')
+      return
+    }
+    setAvisoRecuperacion(
+      'Si el correo esta registrado, te enviamos un enlace para crear una nueva contrasena. Revisa tu bandeja de entrada y la carpeta de spam.',
+    )
   }
 
   return (
@@ -139,19 +163,42 @@ export default function Login() {
             <div className="login-field mt-2 flex items-center border border-[#d7d3d0] px-3 focus-within:border-[#c8102e] focus-within:ring-1 focus-within:ring-[#c8102e]">
               <Lock size={18} className="text-[#8e7164]" />
               <input
-                type="password"
+                type={mostrarPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="login-clean-input w-full border-0 bg-transparent px-3 py-2.5 outline-none"
                 placeholder="********"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setMostrarPassword((valor) => !valor)}
+                className="ml-1 shrink-0 rounded p-1 text-[#8e7164] transition hover:bg-[#f4ebe7] hover:text-[#c8102e]"
+                aria-label={mostrarPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+                title={mostrarPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+              >
+                {mostrarPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
+            <button
+              type="button"
+              onClick={enviarRecuperacion}
+              disabled={cargando}
+              className="mt-2 text-xs font-semibold text-[#c8102e] underline-offset-2 transition hover:underline disabled:opacity-60"
+            >
+              Olvidaste tu contrasena?
+            </button>
           </div>
 
           {error && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
+            </p>
+          )}
+
+          {avisoRecuperacion && (
+            <p className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              {avisoRecuperacion}
             </p>
           )}
 

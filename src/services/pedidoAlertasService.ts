@@ -20,6 +20,18 @@ export async function sincronizarAlertaSemaforoPedido(
   pedido: Pedido,
   opciones: OpcionesSyncPedido = {}
 ) {
+  // Las reposiciones (suministrador -> bodega) se siguen en la pestana
+  // "Falta de materiales"; no generan alertas de priorizacion de pedidos.
+  const esReposicion =
+    pedido.tipo_cliente === 'bodega' ||
+    pedido.origen === 'suministrador' ||
+    pedido.destino === 'bodega'
+  if (esReposicion) {
+    const cierre = await cerrarAlertasPedido(pedido.id)
+    if (!cierre.error) invalidarCache('alertas')
+    return cierre
+  }
+
   const nivel = nivelAlertaPedido(pedido)
 
   if (!nivel) {

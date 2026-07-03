@@ -74,6 +74,14 @@ type DashboardMetricas = {
   totalPedidos: number
 }
 
+function esReposicionPedido(pedido: Pedido) {
+  return (
+    pedido.tipo_cliente === 'bodega' ||
+    pedido.origen === 'suministrador' ||
+    pedido.destino === 'bodega'
+  )
+}
+
 export default function Dashboard() {
   const { perfil } = useAuth()
   const rol = perfil?.rol || 'administrador'
@@ -166,12 +174,24 @@ export default function Dashboard() {
   }, [materialesLookup, pedidos])
 
   const materialesFiltrados = materialesUnicos
-  const pedidosVisibles = pedidosConStockReal
+  // El modulo Pedidos es solo bodega -> franquiciado. Las reposiciones
+  // (suministrador -> bodega) NO cuentan como pedidos: se resumen en Abastecimiento.
+  const pedidosVisibles = useMemo(
+    () => pedidosConStockReal.filter((pedido) => !esReposicionPedido(pedido)),
+    [pedidosConStockReal],
+  )
+  const reposicionesActivas = useMemo(
+    () =>
+      pedidosConStockReal.filter(
+        (pedido) => esReposicionPedido(pedido) && !pedidoCerrado(pedido),
+      ),
+    [pedidosConStockReal],
+  )
   const alertasVisibles = alertas
 
   const colaPriorizada = useMemo(
-    () => ordenarPorPrioridad(pedidosVisibles, criteriosPrioridad, construirFrecuenciaClientes(pedidos)),
-    [pedidosVisibles, criteriosPrioridad, pedidos]
+    () => ordenarPorPrioridad(pedidosVisibles, criteriosPrioridad, construirFrecuenciaClientes(pedidosVisibles)),
+    [pedidosVisibles, criteriosPrioridad]
   )
 
   useEffect(() => {
@@ -257,15 +277,10 @@ export default function Dashboard() {
   )
   const pedidosAbastecimiento = useMemo(
     () =>
-      colaPriorizada.filter(
-        (pedido) =>
-          pedidoPendienteDespacho(pedido) &&
-          (pedido.stock_disponible < cantidadParaDespacho(pedido) ||
-            pedido.estado === 'sin_stock' ||
-            pedido.origen === 'suministrador' ||
-            pedido.destino === 'bodega')
+      [...reposicionesActivas].sort((a, b) =>
+        (a.fecha_compromiso || '').localeCompare(b.fecha_compromiso || ''),
       ),
-    [colaPriorizada]
+    [reposicionesActivas]
   )
   const distribucionPrioridad = useMemo(() => {
     const base = [
