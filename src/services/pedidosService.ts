@@ -10,15 +10,18 @@ import type {
   CondicionMaterial,
   EstadoPedido,
   Pedido,
+  TipoCasoPedido,
   UrgenciaPedido,
 } from '../types/pedido'
+import { ETIQUETAS_TIPO_CASO } from '../types/pedido'
 
 export type PedidoInput = {
   codigo: string
   codigo_consulta?: string
   codigo_material?: string | null
-  material_id: string
+  material_id: string | null
   material: string
+  grupo_id?: string | null
   cantidad: number
   unidad_medida: string
   stock_disponible: number
@@ -31,6 +34,7 @@ export type PedidoInput = {
   tipo_cliente: 'bodega' | 'franquiciado' | 'obra_critica'
   accion_solicitante: AccionSolicitante
   condicion_material: CondicionMaterial
+  tipo_caso?: TipoCasoPedido | null
   cantidad_despacho: number
 }
 
@@ -81,6 +85,14 @@ export async function obtenerPedidos() {
   )
 }
 
+export async function obtenerClientesFranquiciado() {
+  return supabase
+    .from('clientes_franquiciado')
+    .select('codigo_cliente, nombre_cliente')
+    .order('nombre_cliente', { ascending: true })
+    .returns<{ codigo_cliente: string | null; nombre_cliente: string | null }[]>()
+}
+
 export async function crearPedido(pedido: PedidoInput) {
   const fechaCompromiso = new Date(pedido.fecha_compromiso)
   const fechaCompromisoDate = fechaCompromiso.toISOString().slice(0, 10)
@@ -94,13 +106,10 @@ export async function crearPedido(pedido: PedidoInput) {
   const result = await supabase.from('pedidos').insert({
     codigo: pedido.codigo,
     codigo_consulta: pedido.codigo_consulta || pedido.codigo,
-    tipo_pedido: `${pedido.origen}_${pedido.destino}`,
+    grupo_id: pedido.grupo_id ?? null,
+    codigo_material: pedido.codigo_material ?? null,
     descripcion: `Pedido de ${pedido.material} para ${pedido.solicitante}`,
-    fecha_pedido: new Date().toISOString().slice(0, 10),
-    fecha_requerida: fechaCompromisoDate,
     fecha_entrega: fechaCompromisoDate,
-    prioridad: pedido.urgencia === 'critica' ? 'alta' : pedido.urgencia,
-    observaciones: 'Registrado desde la plataforma web.',
     material_id: pedido.material_id,
     material: pedido.material,
     cantidad: pedido.cantidad,
@@ -117,6 +126,7 @@ export async function crearPedido(pedido: PedidoInput) {
     tipo_cliente: pedido.tipo_cliente,
     accion_solicitante: pedido.accion_solicitante,
     condicion_material: pedido.condicion_material,
+    tipo_caso: pedido.tipo_caso ?? null,
     cantidad_despacho: pedido.cantidad_despacho,
   }).select().single<Pedido>()
 
@@ -143,11 +153,8 @@ export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
   const result = await supabase
     .from('pedidos')
     .update({
-      tipo_pedido: `${pedido.origen}_${pedido.destino}`,
       descripcion: `Pedido de ${pedido.material} para ${pedido.solicitante}`,
-      fecha_requerida: fechaCompromisoDate,
       fecha_entrega: fechaCompromisoDate,
-      prioridad: pedido.urgencia === 'critica' ? 'alta' : pedido.urgencia,
       material_id: pedido.material_id,
       material: pedido.material,
       cantidad: pedido.cantidad,
@@ -163,6 +170,7 @@ export async function actualizarPedido(id: string, pedido: PedidoUpdateInput) {
       tipo_cliente: pedido.tipo_cliente,
       accion_solicitante: pedido.accion_solicitante,
       condicion_material: pedido.condicion_material,
+      tipo_caso: pedido.tipo_caso ?? null,
       cantidad_despacho: pedido.cantidad_despacho,
     })
     .eq('id', id)
@@ -182,6 +190,54 @@ export async function actualizarCantidadDespachoPedido(id: string, cantidadDespa
     .update({ cantidad_despacho: cantidadDespacho })
     .eq('id', id)
 
+  if (!result.error) invalidarDatosPedidos()
+  return result
+}
+
+export async function recibirReposicionBodega(pedidoId: string) {
+  const { data, error } = await supabase.rpc('recibir_reposicion_bodega', { p_pedido_id: pedidoId })
+  if (!error) invalidarDatosPedidos()
+  const errorFinal = error || (data && data.ok === false ? new Error(data.error) : null)
+  return { data, error: errorFinal }
+}
+
+export async function marcarReposicionSinStock(id: string, mensaje: string) {
+  const result = await supabase
+    .from('pedidos')
+    .update({ estado: 'rechazado', mensaje_suministrador: mensaje, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (!result.error) invalidarDatosPedidos()
+  return result
+}
+
+// Nota de credito: solicitud (franquiciado) y avance del proceso (bodega).
+export async function solicitarNotaCredito(id: string, motivo: string) {
+  return supabase
+    .from('pedidos')
+    .update({
+      estado_nc: 'solicitada',
+      motivo_nc: motivo,
+      fecha_nc: new Date().toISOString(),
+      accion_solicitante: 'nota_credito',
+    })
+    .eq('id', id)
+}
+
+export async function actualizarNotaCredito(
+  id: string,
+  estadoNc: 'en_revision' | 'aprobada' | 'efectiva' | 'rechazada',
+  opciones?: { motivo?: string },
+) {
+  const payload: Record<string, unknown> = {
+    estado_nc: estadoNc,
+    fecha_nc: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+  if (opciones?.motivo !== undefined) payload.motivo_nc = opciones.motivo
+  // Efectiva = reembolsado: se saca de pendientes marcando el pedido como cerrado.
+  if (estadoNc === 'efectiva') payload.estado = 'cancelado'
+
+  const result = await supabase.from('pedidos').update(payload).eq('id', id)
   if (!result.error) invalidarDatosPedidos()
   return result
 }
@@ -218,6 +274,17 @@ async function sincronizarClienteFranquiciado(pedido: PedidoInput | PedidoUpdate
 }
 
 async function sincronizarPedidoBodegaFq(pedido: PedidoInput) {
+  // Las reposiciones (suministrador -> bodega) no son pedidos de franquiciado:
+  // no se sincronizan a la tabla operativa bodega -> franquiciado (evita violar
+  // la FK codigo_cliente, que apunta a clientes_franquiciado).
+  if (
+    pedido.tipo_cliente === 'bodega' ||
+    pedido.destino === 'bodega' ||
+    pedido.origen === 'suministrador'
+  ) {
+    return { data: null, error: null }
+  }
+
   const codigoMaterial = normalizarCodigoMaterial(pedido.codigo_material)
   if (!codigoMaterial) return { data: null, error: null }
 
@@ -263,7 +330,7 @@ async function sincronizarPedidoBodegaFq(pedido: PedidoInput) {
     .upsert(
       {
         pedido_key: pedidoKey,
-        tipo_caso: 'REGISTRO MANUAL',
+        tipo_caso: pedido.tipo_caso ? ETIQUETAS_TIPO_CASO[pedido.tipo_caso] : 'REGISTRO MANUAL',
         responsable: 'BODEGA',
         resolucion: resolucionFuenteInicial(pedido),
         estado: 'Pendiente',

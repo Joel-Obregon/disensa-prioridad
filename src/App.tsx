@@ -2,12 +2,14 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import MainLayout from './components/MainLayout'
 import ProtectedRoute from './auth/ProtectedRoute'
+import { ConfirmacionProvider } from './components/ConfirmacionProvider'
 
 const Login = lazy(() => import('./pages/Login'))
 const ConsultaPedido = lazy(() => import('./pages/ConsultaPedido'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Inventario = lazy(() => import('./pages/Inventario'))
 const Pedidos = lazy(() => import('./pages/Pedidos'))
+const Reposicion = lazy(() => import('./pages/Reposicion'))
 const Reglas = lazy(() => import('./pages/Reglas'))
 const Alertas = lazy(() => import('./pages/Alertas'))
 const Reportes = lazy(() => import('./pages/Reportes'))
@@ -17,8 +19,9 @@ const EstadoSistema = lazy(() => import('./pages/EstadoSistema'))
 
 export default function App() {
   return (
-    <Suspense fallback={<CargandoRuta />}>
-      <Routes>
+    <ConfirmacionProvider>
+      <Suspense fallback={<CargandoRuta />}>
+        <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/consulta-pedido" element={<ConsultaPedido />} />
@@ -29,6 +32,7 @@ export default function App() {
             <Route path="/materiales" element={<Navigate to="/inventario" replace />} />
             <Route path="/inventario" element={<Inventario />} />
             <Route path="/pedidos" element={<Pedidos />} />
+            <Route path="/reposicion" element={<Reposicion />} />
             <Route path="/calendario" element={<Calendario />} />
             <Route path="/reglas" element={<Reglas />} />
             <Route path="/alertas" element={<Alertas />} />
@@ -39,8 +43,9 @@ export default function App() {
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </ConfirmacionProvider>
   )
 }
 

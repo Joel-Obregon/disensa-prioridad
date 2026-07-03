@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useConfirmar } from '../components/ConfirmacionProvider'
 import {
   AlertTriangle,
   Boxes,
@@ -17,7 +18,6 @@ import {
   esEnteroNoNegativo,
   soloDigitos,
   soloEnteroNoNegativo,
-  soloTextoNombre,
   textoMixtoOperativo,
 } from '../lib/validacionesFormulario'
 import {
@@ -31,6 +31,7 @@ import {
   escucharMateriales,
   type MaterialInput,
 } from '../services/materialesService'
+import ModalExito from '../components/ModalExito'
 import type { InventarioOperativo } from '../types/material'
 
 type MaterialForm = {
@@ -56,12 +57,13 @@ const formularioInicial: MaterialForm = {
   nombre: '',
   categoria: '',
   stock_actual: '',
-  unidad_medida: 'UND',
+  unidad_medida: 'UN',
 }
 
 const MATERIALES_INVENTARIO_POR_PAGINA = 100
 
 export default function Inventario() {
+  const confirmar = useConfirmar()
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
@@ -79,6 +81,7 @@ export default function Inventario() {
   const [edicion, setEdicion] = useState<MaterialForm>(formularioInicial)
   const [error, setError] = useState('')
   const [aviso, setAviso] = useState('')
+  const [modalExito, setModalExito] = useState('')
 
   async function cargarDatos() {
     setCargando(true)
@@ -122,9 +125,7 @@ export default function Inventario() {
     setFormulario(formularioInicial)
     setMostrarFormulario(false)
     setGuardando(false)
-    setAviso(
-      'Material agregado. Ya esta disponible en inventario y en el selector de pedidos.'
-    )
+    setModalExito('Material anadido exitosamente.')
     await cargarDatos()
   }
 
@@ -175,9 +176,11 @@ export default function Inventario() {
   }
 
   async function eliminarMaterialSeleccionado(material: InventarioOperativo) {
-    const confirmado = window.confirm(
-      `Eliminar ${material.nombre}? Se quitara del inventario y se cerraran sus alertas relacionadas.`
-    )
+    const confirmado = await confirmar({
+      titulo: 'Eliminar material',
+      mensaje: `¿Eliminar ${material.nombre}? Se quitará del inventario y se cerrarán sus alertas relacionadas.`,
+      confirmarTexto: 'Eliminar',
+    })
 
     if (!confirmado) return
 
@@ -229,21 +232,18 @@ export default function Inventario() {
       {
         titulo: 'Materiales',
         valor: materiales.length,
-        detalle: 'Registros activos en inventario',
         icono: Boxes,
         tono: 'text-blue-600',
       },
       {
         titulo: 'Stock disponible',
         valor: formatearNumero(stockDisponible),
-        detalle: 'Disponible operativo acumulado',
         icono: PackageCheck,
         tono: 'text-green-600',
       },
       {
         titulo: 'Suministradores',
         valor: suministradores.size,
-        detalle: 'Proveedores relacionados',
         icono: Users,
         tono: 'text-orange-600',
       },
@@ -266,6 +266,21 @@ export default function Inventario() {
       ),
     ].sort((a, b) => a.localeCompare(b))
   }, [materiales])
+
+  // Nombre del catman (persona) por categoria, para mostrarlo en los selectores.
+  const catmanNombrePorCategoria = useMemo(() => {
+    const mapa = new Map<string, string>()
+    materiales.forEach((material) => {
+      const categoria = material.catman_categoria || material.categoria
+      if (categoria && material.catman_nombre && !mapa.has(categoria)) {
+        mapa.set(categoria, material.catman_nombre)
+      }
+    })
+    return mapa
+  }, [materiales])
+
+  const etiquetaCatman = (categoria: string) =>
+    catmanNombrePorCategoria.get(categoria) || categoria
 
   const suministradorOpciones = useMemo(() => {
     return [
@@ -337,12 +352,12 @@ export default function Inventario() {
 
   return (
     <div>
+      <ModalExito mensaje={modalExito} onClose={() => setModalExito('')} />
+
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Inventario y materiales</h1>
-          <p className="mt-1 text-slate-500">
-            Catalogo operativo con stock, suministradores, catman y estado planificable.
-          </p>
+          <p className="mt-1 text-slate-500">Stock, suministradores y catman por material.</p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -406,14 +421,23 @@ export default function Inventario() {
               }
               placeholder="Nombre del material"
             />
-            <CampoTexto
-              label="Catman"
-              value={formulario.categoria}
-              onChange={(categoria) =>
-                setFormulario({ ...formulario, categoria: soloTextoNombre(categoria, 60) })
-              }
-              placeholder="Catman / categoria"
-            />
+            <label className="block text-sm font-medium text-slate-700">
+              Catman
+              <select
+                value={formulario.categoria}
+                onChange={(event) =>
+                  setFormulario({ ...formulario, categoria: event.target.value })
+                }
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="">Selecciona catman</option>
+                {catmanOpciones.map((catman) => (
+                  <option key={catman} value={catman}>
+                    {etiquetaCatman(catman)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <CampoTexto
               label="Stock disponible"
               value={formulario.stock_actual}
@@ -429,7 +453,7 @@ export default function Inventario() {
               label="UMB"
               value={formulario.unidad_medida}
               onChange={(unidad_medida) => setFormulario({ ...formulario, unidad_medida })}
-              opciones={['UND', 'SAC', 'T']}
+              opciones={['UN', 'CAJ', 'SAC', 'GLL', 'M2', 'T', 'PAQ', 'L']}
             />
             <div className="flex items-end">
               <button
@@ -458,7 +482,9 @@ export default function Inventario() {
               <strong className="mt-2 block text-3xl text-slate-900">
                 {cargando ? '-' : item.valor}
               </strong>
-              <p className="mt-3 text-sm text-slate-500">{item.detalle}</p>
+              {item.detalle && (
+                <p className="mt-3 text-sm text-slate-500">{item.detalle}</p>
+              )}
             </article>
           )
         })}
@@ -604,12 +630,23 @@ export default function Inventario() {
                     </td>
                     <td className="px-5 py-4 text-slate-600">
                       {editando ? (
-                        <CampoInline
+                        <select
                           value={edicion.categoria}
-                          onChange={(categoria) =>
-                            setEdicion({ ...edicion, categoria: soloTextoNombre(categoria, 60) })
+                          onChange={(event) =>
+                            setEdicion({ ...edicion, categoria: event.target.value })
                           }
-                        />
+                          className="w-full min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          {edicion.categoria && !catmanOpciones.includes(edicion.categoria) && (
+                            <option value={edicion.categoria}>{etiquetaCatman(edicion.categoria)}</option>
+                          )}
+                          <option value="">Sin catman</option>
+                          {catmanOpciones.map((catman) => (
+                            <option key={catman} value={catman}>
+                              {etiquetaCatman(catman)}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         <>
                           <p className="font-semibold text-slate-700">{material.catman_nombre}</p>
@@ -648,9 +685,14 @@ export default function Inventario() {
                           onChange={(event) => setEdicion({ ...edicion, unidad_medida: event.target.value })}
                           className="w-24 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
                         >
-                          <option value="UND">UND</option>
+                          <option value="UN">UN</option>
+                          <option value="CAJ">CAJ</option>
                           <option value="SAC">SAC</option>
+                          <option value="GLL">GLL</option>
+                          <option value="M2">M2</option>
                           <option value="T">T</option>
+                          <option value="PAQ">PAQ</option>
+                          <option value="L">L</option>
                         </select>
                       ) : (
                         normalizarUmb(material.unidad_medida)
@@ -793,7 +835,7 @@ function CampoTexto({
         min={type === 'number' ? 0 : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+        className="mt-1 w-full rounded-lg border-2 border-slate-400 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
         placeholder={placeholder}
       />
     </label>
@@ -817,7 +859,7 @@ function CampoInline({
       min={type === 'number' ? 0 : undefined}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full min-w-32 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+      className="w-full min-w-32 rounded-lg border-2 border-slate-400 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
       placeholder={placeholder}
     />
   )
@@ -840,7 +882,7 @@ function FiltroSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+        className="mt-1 w-full rounded-lg border-2 border-slate-400 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
       >
         {opciones.map((opcion) => (
           <option key={opcion} value={opcion}>
@@ -955,12 +997,15 @@ function umbralVerdeMaterial(material: InventarioOperativo) {
   return Math.max(umbralMinimoMaterial(material) * 3, material.stock_objetivo_material || 0)
 }
 
+// Nota: en la vista del ERP, stock_transito, stock_en_curso_pedido y
+// cantidad_oc_pendiente traen EL MISMO valor por material. Se usa una sola
+// columna para no contar el reabastecimiento por duplicado/triplicado.
 function stockTransitoOperativo(material: InventarioOperativo) {
-  return Math.max(0, material.stock_transito) + Math.max(0, material.stock_en_curso_pedido)
+  return Math.max(0, material.stock_transito)
 }
 
 function reabastecimientoPendiente(material: InventarioOperativo) {
-  return stockTransitoOperativo(material) + Math.max(0, material.cantidad_oc_pendiente)
+  return stockTransitoOperativo(material)
 }
 
 function normalizarEstadoPlanificable(valor?: string | null): EstadoPlanificableFiltro {
@@ -972,9 +1017,11 @@ function normalizarEstadoPlanificable(valor?: string | null): EstadoPlanificable
 
 function normalizarUmb(valor?: string | null) {
   const texto = normalizarTexto(valor || '')
-  if (['sac', 'saco', 'bag'].includes(texto)) return 'SAC'
-  if (['t', 'ton', 'tona', 'tonelada', 'tm'].includes(texto)) return 'T'
-  return 'UND'
+  if (!texto) return 'UN'
+  if (['un', 'und', 'u', 'unidad', 'unidades'].includes(texto)) return 'UN'
+  if (['sac', 'saco', 'sacos', 'bag'].includes(texto)) return 'SAC'
+  if (['t', 'ton', 'tona', 'tonelada', 'toneladas', 'tm'].includes(texto)) return 'T'
+  return (valor || '').trim().toUpperCase()
 }
 
 function formatearNumero(valor: number) {

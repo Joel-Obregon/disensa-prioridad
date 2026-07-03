@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useConfirmar } from '../components/ConfirmacionProvider'
 import { ShieldCheck, UserPlus, X } from 'lucide-react'
 import { useAuth } from '../auth/authState'
 import { describirRol } from '../auth/permisos'
@@ -6,6 +7,7 @@ import { esCorreoValido, soloTextoNombre } from '../lib/validacionesFormulario'
 import {
   actualizarEstadoUsuario,
   crearUsuarioApp,
+  eliminarUsuarioApp,
   obtenerUsuariosApp,
   registrarUsuarioConAuth,
 } from '../services/usuariosService'
@@ -30,6 +32,7 @@ const formularioInicial: UsuarioForm = {
 const roles: RolUsuario[] = ['administrador', 'suministrador', 'bodega']
 
 export default function Usuarios() {
+  const confirmar = useConfirmar()
   const { perfil } = useAuth()
   const [usuarios, setUsuarios] = useState<UsuarioApp[]>([])
   const [formulario, setFormulario] = useState<UsuarioForm>(formularioInicial)
@@ -115,6 +118,16 @@ export default function Usuarios() {
 
   async function cambiarEstado(usuario: UsuarioApp) {
     const estado = usuario.estado === 'activo' ? 'inactivo' : 'activo'
+
+    if (estado === 'inactivo') {
+      const confirmado = await confirmar({
+        titulo: 'Desactivar usuario',
+        mensaje: '¿Seguro que quieres desactivar este usuario? Perderá el acceso al sistema.',
+        confirmarTexto: 'Sí, desactivar',
+      })
+      if (!confirmado) return
+    }
+
     const { error } = await actualizarEstadoUsuario(usuario.id, estado)
 
     if (error) {
@@ -122,6 +135,27 @@ export default function Usuarios() {
       return
     }
 
+    cargarUsuarios()
+  }
+
+  async function eliminarUsuario(usuario: UsuarioApp) {
+    const confirmado = await confirmar({
+      titulo: 'Eliminar usuario',
+      mensaje: `¿Eliminar a ${usuario.nombre} definitivamente? Se borrará de Supabase (rol interno y acceso) y no podrá iniciar sesión.`,
+      confirmarTexto: 'Sí, eliminar',
+    })
+    if (!confirmado) return
+
+    setError('')
+    setMensaje('')
+    const { error } = await eliminarUsuarioApp(usuario.correo)
+
+    if (error) {
+      setError(error.message || 'No se pudo eliminar el usuario.')
+      return
+    }
+
+    setMensaje('Usuario eliminado de Supabase (rol interno y acceso).')
     cargarUsuarios()
   }
 
@@ -322,13 +356,22 @@ export default function Usuarios() {
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <button
-                      type="button"
-                      onClick={() => cambiarEstado(usuario)}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      {usuario.estado === 'activo' ? 'Desactivar' : 'Activar'}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cambiarEstado(usuario)}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        {usuario.estado === 'activo' ? 'Desactivar' : 'Activar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => eliminarUsuario(usuario)}
+                        className="rounded-lg border-2 border-[#c8102e] px-3 py-2 text-xs font-semibold text-[#c8102e] transition hover:bg-[#fff0f0]"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

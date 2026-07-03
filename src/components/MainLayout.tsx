@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
+  PackagePlus,
   AlertTriangle,
   BarChart3,
   Boxes,
@@ -12,7 +13,6 @@ import {
   SlidersHorizontal,
   Truck,
 } from 'lucide-react'
-import disensaLogo from '../assets/disensa-logo.svg'
 import { useAuth } from '../auth/authState'
 import { describirRol, puedeAcceder } from '../auth/permisos'
 import {
@@ -27,12 +27,14 @@ import {
   obtenerReportesNoRevisados,
 } from '../lib/reportNotifications'
 import { supabase } from '../services/supabaseClient'
+import { obtenerReglas } from '../services/reglasService'
 import RealtimeAlertToast from './RealtimeAlertToast'
 import ThemeToggle from './ThemeToggle'
 
 const menu = [
   { nombre: 'Dashboard', ruta: '/dashboard', icono: BarChart3 },
   { nombre: 'Pedidos', ruta: '/pedidos', icono: Truck },
+  { nombre: 'Reposición', ruta: '/reposicion', icono: PackagePlus },
   { nombre: 'Inventario', ruta: '/inventario', icono: Boxes },
   { nombre: 'Alertas', ruta: '/alertas', icono: AlertTriangle },
   { nombre: 'Reglas', ruta: '/reglas', icono: SlidersHorizontal },
@@ -42,16 +44,81 @@ const menu = [
   { nombre: 'Usuarios', ruta: '/usuarios', icono: ShieldCheck },
 ]
 
+const disensaLogo = '/disensa-holcim-logo-source.png'
+
 export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { cerrarSesion: cerrarSesionAuth, perfil, user } = useAuth()
   const [alertasNoRevisadas, setAlertasNoRevisadas] = useState(obtenerAlertasNoRevisadas)
   const [reportesNoRevisados, setReportesNoRevisados] = useState(obtenerReportesNoRevisados)
+  const [segundosTitileo, setSegundosTitileo] = useState(30)
+  const [titilando, setTitilando] = useState(true)
   const menuVisible = menu.filter((item) => puedeAcceder(perfil?.rol, item.ruta))
 
   useEffect(() => escucharAlertasNoRevisadas(setAlertasNoRevisadas), [])
   useEffect(() => escucharReportesNoRevisados(setReportesNoRevisados), [])
+
+  // Regla parametrizable: cada cuantos segundos titila el aviso de alertas.
+  useEffect(() => {
+    let activo = true
+    obtenerReglas().then((resultado) => {
+      if (!activo || resultado.error) return
+      const regla = (resultado.data || []).find(
+        (item) => item.nombre === 'Recordatorio de alertas pendientes',
+      )
+      const activa = regla && regla.estado !== 'inactiva' && regla.activo !== false
+      if (!regla || !activa) {
+        setSegundosTitileo(0)
+        return
+      }
+      try {
+        const condicion = JSON.parse(regla.condicion || '{}') as { segundosTitileo?: number }
+        const segundos = Number(condicion.segundosTitileo)
+        setSegundosTitileo(Number.isFinite(segundos) && segundos > 0 ? segundos : 30)
+      } catch {
+        setSegundosTitileo(30)
+      }
+    })
+    return () => {
+      activo = false
+    }
+  }, [])
+
+  // Titileo periodico mientras haya alertas pendientes (setState solo en timers).
+  useEffect(() => {
+    if (alertasNoRevisadas.length === 0 || segundosTitileo <= 0) return
+    const parpadear = () => {
+      setTitilando(true)
+      window.setTimeout(() => setTitilando(false), 1500)
+    }
+    const inicial = window.setTimeout(parpadear, 100)
+    const intervalo = window.setInterval(parpadear, segundosTitileo * 1000)
+    return () => {
+      window.clearTimeout(inicial)
+      window.clearInterval(intervalo)
+    }
+  }, [alertasNoRevisadas.length, segundosTitileo])
+
+  // Re-sincroniza por tiempo las alertas de retraso: cuando un pedido cruza de
+  // tramo (amarillo->naranja->rojo o de vuelta) su alerta se actualiza y salta
+  // via realtime, sin que nadie tenga que tocar el pedido.
+  useEffect(() => {
+    let activo = true
+    const sincronizar = () => {
+      if (!activo) return
+      void supabase
+        .rpc('sincronizar_alertas_retraso_pedidos')
+        .then(undefined, () => undefined)
+    }
+    const arranque = window.setTimeout(sincronizar, 2000)
+    const ciclo = window.setInterval(sincronizar, 180_000)
+    return () => {
+      activo = false
+      window.clearTimeout(arranque)
+      window.clearInterval(ciclo)
+    }
+  }, [])
 
   useEffect(() => {
     const channel = supabase
@@ -109,7 +176,7 @@ export default function MainLayout() {
           <img
             src={disensaLogo}
             alt="Disensa"
-            className="app-brand-logo h-10 w-10 rounded-lg bg-white object-contain ring-1 ring-[#e5dde9] lg:mb-3 lg:h-12 lg:w-12"
+            className="h-9 w-auto rounded object-contain lg:mb-3 lg:h-11"
           />
           <div>
             <h1 className="text-xl font-bold tracking-tight text-[#0f0f11]">Disensa Prioridad</h1>
@@ -148,7 +215,9 @@ export default function MainLayout() {
                 <span>{item.nombre}</span>
                 {item.ruta === '/alertas' && alertasNoRevisadas.length > 0 && (
                   <span className="absolute right-2 top-1/2 flex h-3 w-3 -translate-y-1/2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    {titilando && (
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    )}
                     <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
                   </span>
                 )}

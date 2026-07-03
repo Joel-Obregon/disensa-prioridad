@@ -40,7 +40,7 @@ export async function sincronizarAlertaSemaforoPedido(
   if (esErrorTablaOColumnaOpcional(existentes.error)) return { data: null, error: null }
   if (existentes.error) return existentes
 
-  const mensaje = mensajeAlertaPedido(pedido, nivel)
+  const mensaje = mensajeAlertaPedido(pedido)
   const responsable = opciones.responsable || responsablePedido(pedido)
   const alertaActual = existentes.data?.[0]
   const cambioVisual =
@@ -87,18 +87,24 @@ export async function sincronizarAlertaSemaforoPedido(
 function nivelAlertaPedido(pedido: Pedido): Alerta['nivel'] | null {
   const semaforo = resolverSemaforoPedido(pedido)
 
-  if (semaforo === 'critico') return 'critica'
-  if (semaforo === 'riesgo') return 'alta'
+  // El nivel escala con el tramo del semaforo para que cada paso (amarillo ->
+  // naranja -> rojo) re-dispare la alerta.
+  if (semaforo === 'critico') return 'critica' // rojo: +30 d de retraso
+  if (semaforo === 'alto') return 'critica'     // naranja/reprogramado: alerta ROJA
+  if (semaforo === 'riesgo') return 'media'     // amarillo: 1-6 d de retraso
   return null
 }
 
-function mensajeAlertaPedido(pedido: Pedido, nivel: Alerta['nivel']) {
+function mensajeAlertaPedido(pedido: Pedido) {
   const codigo = pedido.codigo_consulta || pedido.codigo
   const tiempo = describirTiempoPedido(pedido)
+  const semaforo = resolverSemaforoPedido(pedido)
   const prefijo =
-    nivel === 'critica'
+    semaforo === 'critico'
       ? 'Pedido en retraso critico'
-      : 'Pedido con retraso operativo'
+      : semaforo === 'alto'
+        ? 'Pedido reprogramado por retraso'
+        : 'Pedido con retraso'
 
   return `${prefijo}: ${codigo} requiere seguimiento. ${tiempo} para ${pedido.material}.`
 }

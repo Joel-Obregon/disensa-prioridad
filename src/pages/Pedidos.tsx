@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Clock3,
   Download,
   Edit3,
   Eye,
@@ -15,7 +16,9 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useAuth } from '../auth/authState'
-import { ordenarPorPrioridad } from '../lib/prioridad'
+import { construirFrecuenciaClientes, ordenarPorPrioridad } from '../lib/prioridad'
+import { useConfirmar } from '../components/ConfirmacionProvider'
+import { silenciarAlertasPedido } from '../lib/alertSilencio'
 import {
   claseSemaforoBadge,
   claseSemaforoBarra,
@@ -36,24 +39,33 @@ import { registrarAuditoria } from '../services/auditoriaService'
 import { obtenerAlertas } from '../services/alertasService'
 import {
   escucharReportesFranquiciado,
+  marcarReposicionEnviada,
   obtenerReportesFranquiciado,
 } from '../services/franquiciadoService'
-import { escucharInventarioOperativo } from '../services/inventarioService'
+import { escucharInventarioOperativo, obtenerInventarioOperativo } from '../services/inventarioService'
+import ModalExito from '../components/ModalExito'
+import ModalAlerta from '../components/ModalAlerta'
+import {
+  obtenerPrioridadCriterios,
+  suscribirseACriteriosPrioridad,
+  type PrioridadCriterio,
+} from '../services/prioridadCriteriosService'
 import { escucharMateriales, obtenerMateriales } from '../services/materialesService'
 import {
   actualizarCantidadDespachoPedido,
+  actualizarNotaCredito,
   actualizarPedido,
   actualizarEstadoPedido,
   crearPedido,
   despacharPedido,
   escucharPedidos,
+  obtenerClientesFranquiciado,
   obtenerPedidos,
 } from '../services/pedidosService'
 import {
   obtenerDetallesPedidosOperativos,
   type PedidoDetalleOperativo,
 } from '../services/pedidosOperativosService'
-import { obtenerReglas } from '../services/reglasService'
 import type { Alerta } from '../types/alerta'
 import type { Material } from '../types/material'
 import type {
@@ -61,10 +73,11 @@ import type {
   CondicionMaterial,
   EstadoPedido,
   Pedido,
+  TipoCasoPedido,
   UrgenciaPedido,
 } from '../types/pedido'
+import { ETIQUETAS_TIPO_CASO } from '../types/pedido'
 import type { ReporteFranquiciado } from '../types/reporteFranquiciado'
-import type { ReglaNegocio } from '../types/regla'
 import type { RolUsuario } from '../types/usuario'
 
 type PedidoForm = {
@@ -80,6 +93,7 @@ type PedidoForm = {
   tipo_cliente: 'bodega' | 'franquiciado' | 'obra_critica'
   accion_solicitante: AccionSolicitante
   condicion_material: CondicionMaterial
+  tipo_caso: TipoCasoPedido
 }
 
 type FiltrosPedido = {
@@ -120,6 +134,7 @@ const formularioInicial: PedidoForm = {
   tipo_cliente: 'franquiciado',
   accion_solicitante: 'despachar',
   condicion_material: 'normal',
+  tipo_caso: 'falta_stock',
 }
 
 const filtrosIniciales: FiltrosPedido = {
@@ -141,20 +156,6 @@ const estadosPedido: EstadoPedido[] = [
   'rechazado',
 ]
 
-const accionesSolicitante: AccionSolicitante[] = [
-  'despachar',
-  'nota_credito',
-  'esperar_pedido',
-]
-
-const condicionesMaterial: CondicionMaterial[] = [
-  'normal',
-  'no_planificable',
-  'restrictivo',
-  'urgente_despacho',
-  'caducidad',
-]
-
 const PEDIDOS_POR_PAGINA = 100
 
 export default function Pedidos() {
@@ -165,7 +166,11 @@ export default function Pedidos() {
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [reportesFranquiciado, setReportesFranquiciado] = useState<ReporteFranquiciado[]>([])
   const [detallesOperativos, setDetallesOperativos] = useState<PedidoDetalleOperativo[]>([])
-  const [reglas, setReglas] = useState<ReglaNegocio[]>([])
+  const [clientesMaestro, setClientesMaestro] = useState<{ codigo_cliente: string | null; nombre_cliente: string | null }[]>([])
+  const [catmanResponsable, setCatmanResponsable] = useState<Map<string, string>>(new Map())
+  const [modalExito, setModalExito] = useState('')
+  const [modalAlerta, setModalAlerta] = useState('')
+  const [criteriosPrioridad, setCriteriosPrioridad] = useState<PrioridadCriterio[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const [vistaPedidos, setVistaPedidos] = useState<VistaPedidos>('operativos')
@@ -176,7 +181,9 @@ export default function Pedidos() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [pedidoEditandoId, setPedidoEditandoId] = useState('')
   const [pedidoDetalle, setPedidoDetalle] = useState<Pedido | null>(null)
+  const [reponiendoId, setReponiendoId] = useState<string | null>(null)
   const [formulario, setFormulario] = useState<PedidoForm>(formularioInicial)
+  const [materialesPedido, setMaterialesPedido] = useState<{ material_id: string; cantidad: string }[]>([])
 
   async function cargarDatos() {
     const [
@@ -185,7 +192,6 @@ export default function Pedidos() {
       alertasResult,
       reportesFranquiciadoResult,
       detallesOperativosResult,
-      reglasResult,
     ] =
       await Promise.all([
         obtenerPedidos(),
@@ -193,7 +199,6 @@ export default function Pedidos() {
         obtenerAlertas({ incluirStockDerivado: false, sincronizarStock: false }),
         obtenerReportesFranquiciado(),
         obtenerDetallesPedidosOperativos(),
-        obtenerReglas(),
       ])
 
     if (!materialesResult.error) {
@@ -204,7 +209,6 @@ export default function Pedidos() {
       setReportesFranquiciado(reportesFranquiciadoResult.data || [])
     }
     if (!detallesOperativosResult.error) setDetallesOperativos(detallesOperativosResult.data || [])
-    if (!reglasResult.error) setReglas(reglasResult.data || [])
 
     if (pedidosResult.error) {
       setError('No se pudieron cargar los pedidos desde Supabase.')
@@ -223,29 +227,32 @@ export default function Pedidos() {
     setError('')
 
     const material = materiales.find((item) => item.id === formulario.material_id)
-    const cantidad = Number(formulario.cantidad)
-    const cantidadDespacho = cantidad
-
     const cedulaSolicitante = normalizarCedula(formulario.cedula_solicitante)
 
     if (
-      !material ||
       !formulario.solicitante.trim() ||
       !esCodigoClienteORucValido(cedulaSolicitante) ||
       !formulario.fecha_compromiso
     ) {
-      setError('Completa material, solicitante, fecha requerida y codigo cliente/cedula/RUC entre 6 y 13 digitos.')
+      setError('Completa solicitante, fecha requerida y codigo cliente/cedula/RUC entre 6 y 13 digitos.')
       setGuardando(false)
       return
     }
 
-    if (!esEnteroPositivo(formulario.cantidad)) {
+    if (formulario.material_id && !esEnteroPositivo(formulario.cantidad)) {
       setError('La cantidad solicitada debe ser un numero entero mayor a cero.')
       setGuardando(false)
       return
     }
 
     if (pedidoEditandoId) {
+      if (!material) {
+        setError('Selecciona un material para el pedido.')
+        setGuardando(false)
+        return
+      }
+
+      const cantidad = Number(formulario.cantidad)
       const { error } = await actualizarPedido(pedidoEditandoId, {
         codigo: pedidos.find((pedido) => pedido.id === pedidoEditandoId)?.codigo,
         codigo_consulta: pedidos.find((pedido) => pedido.id === pedidoEditandoId)?.codigo_consulta || undefined,
@@ -253,7 +260,7 @@ export default function Pedidos() {
         material_id: material.id,
         material: material.nombre,
         cantidad,
-        cantidad_despacho: cantidadDespacho,
+        cantidad_despacho: cantidad,
         unidad_medida: material.unidad_medida,
         stock_disponible: material.stock_actual,
         origen: formulario.origen,
@@ -265,6 +272,7 @@ export default function Pedidos() {
         tipo_cliente: formulario.tipo_cliente,
         accion_solicitante: formulario.accion_solicitante,
         condicion_material: formulario.condicion_material,
+        tipo_caso: formulario.tipo_caso,
       })
 
       if (error) {
@@ -285,41 +293,94 @@ export default function Pedidos() {
       return
     }
 
-    const { error } = await crearPedido({
-      codigo: generarCodigoPedido(),
-      codigo_material: material.codigo_material || null,
-      material_id: material.id,
-      material: material.nombre,
-      cantidad,
-      cantidad_despacho: cantidadDespacho,
-      unidad_medida: material.unidad_medida,
-      stock_disponible: material.stock_actual,
-      origen: formulario.origen,
-      destino: formulario.destino,
-      solicitante: formulario.solicitante.trim(),
-      cedula_solicitante: cedulaSolicitante,
-      fecha_compromiso: formulario.fecha_compromiso,
-      urgencia: formulario.urgencia,
-      tipo_cliente: formulario.tipo_cliente,
-      accion_solicitante: formulario.accion_solicitante,
-      condicion_material: formulario.condicion_material,
-    })
+    // Crear: lista de materiales (los agregados + el que quede en el campo).
+    const itemsMateriales = [...materialesPedido]
+    if (formulario.material_id && esEnteroPositivo(formulario.cantidad)) {
+      itemsMateriales.push({ material_id: formulario.material_id, cantidad: formulario.cantidad })
+    }
 
-    if (error) {
-      setError(error.message)
+    const materialesResueltos = itemsMateriales
+      .map((item) => ({
+        material: materiales.find((m) => m.id === item.material_id),
+        cantidad: Number(item.cantidad),
+      }))
+      .filter((item) => item.material && item.cantidad > 0)
+
+    if (materialesResueltos.length === 0) {
+      setError('Agrega al menos un material al pedido.')
       setGuardando(false)
       return
     }
 
+    const codigoConsulta = generarCodigoPedido()
+    const grupoId = materialesResueltos.length > 1 ? crypto.randomUUID() : null
+
+    for (const [indice, item] of materialesResueltos.entries()) {
+      const mat = item.material
+      if (!mat) continue
+
+      const { error } = await crearPedido({
+        codigo: indice === 0 ? codigoConsulta : `${codigoConsulta}-${indice + 1}`,
+        codigo_consulta: codigoConsulta,
+        grupo_id: grupoId,
+        codigo_material: mat.codigo_material || null,
+        material_id: mat.id,
+        material: mat.nombre,
+        cantidad: item.cantidad,
+        cantidad_despacho: item.cantidad,
+        unidad_medida: mat.unidad_medida,
+        stock_disponible: mat.stock_actual,
+        origen: formulario.origen,
+        destino: formulario.destino,
+        solicitante: formulario.solicitante.trim(),
+        cedula_solicitante: cedulaSolicitante,
+        fecha_compromiso: formulario.fecha_compromiso,
+        urgencia: formulario.urgencia,
+        tipo_cliente: formulario.tipo_cliente,
+        accion_solicitante: formulario.accion_solicitante,
+        condicion_material: formulario.condicion_material,
+        tipo_caso: formulario.tipo_caso,
+      })
+
+      if (error) {
+        setError(error.message)
+        setGuardando(false)
+        return
+      }
+    }
+
     limpiarFormulario()
     cargarDatos()
+    setModalExito(
+      materialesResueltos.length > 1
+        ? `Tu pedido con ${materialesResueltos.length} materiales se creo correctamente.`
+        : 'Tu pedido se creo correctamente.',
+    )
   }
 
   function limpiarFormulario() {
     setFormulario(formularioInicial)
+    setMaterialesPedido([])
     setPedidoEditandoId('')
     setMostrarFormulario(false)
     setGuardando(false)
+  }
+
+  function agregarMaterialALista() {
+    if (!formulario.material_id || !esEnteroPositivo(formulario.cantidad)) {
+      setError('Elige un material y una cantidad valida para agregarlo a la lista.')
+      return
+    }
+    setMaterialesPedido((lista) => [
+      ...lista.filter((item) => item.material_id !== formulario.material_id),
+      { material_id: formulario.material_id, cantidad: formulario.cantidad },
+    ])
+    setFormulario({ ...formulario, material_id: '', cantidad: '' })
+    setError('')
+  }
+
+  function quitarMaterialDeLista(materialId: string) {
+    setMaterialesPedido((lista) => lista.filter((item) => item.material_id !== materialId))
   }
 
   function iniciarNuevoPedido() {
@@ -367,6 +428,7 @@ export default function Pedidos() {
       tipo_cliente: pedido.tipo_cliente,
       accion_solicitante: pedido.accion_solicitante || 'despachar',
       condicion_material: pedido.condicion_material || 'normal',
+      tipo_caso: pedido.tipo_caso || 'falta_stock',
     })
     setMostrarFormulario(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -374,6 +436,15 @@ export default function Pedidos() {
 
   async function cambiarEstado(pedido: Pedido, estado: EstadoPedido) {
     setError('')
+
+    if (estado === 'cancelado') {
+      const confirmado = await confirmar({
+        titulo: 'Cancelar pedido',
+        mensaje: `¿Seguro que quieres cancelar ${pedido.codigo}? El pedido se marcará como cancelado.`,
+        confirmarTexto: 'Sí, cancelar',
+      })
+      if (!confirmado) return
+    }
 
     const contexto = contextoOperativoPedido(pedido)
     const pedidoContextual = {
@@ -383,12 +454,14 @@ export default function Pedidos() {
     }
 
     if (estado === 'aprobado' && !stockSuficientePedido(pedido, contexto.stockDisponible)) {
+      setModalAlerta('La operación no es posible por falta de stock.')
       setError(
         `No hay disponibilidad suficiente para aprobar ${pedido.codigo}. Stock disponible: ${contexto.stockDisponible}; requerido: ${cantidadParaDespacho(pedido)}.`
       )
       return
     }
 
+    silenciarAlertasPedido(pedido.id, pedido.material_id)
     const { error } = await actualizarEstadoPedido(pedido.id, estado, {
       pedido: pedidoContextual,
       codigo_material: contexto.codigoMaterial,
@@ -410,6 +483,52 @@ export default function Pedidos() {
     cargarDatos()
   }
 
+  async function gestionarNotaCredito(
+    pedido: Pedido,
+    estadoNc: 'en_revision' | 'aprobada' | 'efectiva' | 'rechazada',
+  ) {
+    setError('')
+
+    if (estadoNc === 'efectiva' || estadoNc === 'rechazada') {
+      const ok = await confirmar({
+        titulo: estadoNc === 'efectiva' ? 'Hacer efectiva la nota de crédito' : 'Rechazar nota de crédito',
+        mensaje:
+          estadoNc === 'efectiva'
+            ? `¿Confirmas el reembolso de ${pedido.material}? El material quedará como reembolsado y saldrá de pendientes.`
+            : `¿Rechazar la nota de crédito de ${pedido.material}?`,
+        confirmarTexto: estadoNc === 'efectiva' ? 'Sí, reembolsar' : 'Sí, rechazar',
+        peligro: estadoNc === 'rechazada',
+      })
+      if (!ok) return
+    }
+
+    const { error } = await actualizarNotaCredito(pedido.id, estadoNc)
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    await registrarAuditoria({
+      entidad: 'pedidos',
+      entidad_id: pedido.id,
+      accion: 'nota_credito',
+      detalle: `${pedido.codigo}: nota de crédito -> ${estadoNc}.`,
+    })
+
+    const patch: Partial<Pedido> = { estado_nc: estadoNc }
+    if (estadoNc === 'efectiva') patch.estado = 'cancelado'
+    setPedidoDetalle((prev) => (prev && prev.id === pedido.id ? { ...prev, ...patch } : prev))
+
+    setModalExito(
+      estadoNc === 'efectiva'
+        ? 'Nota de crédito efectiva. Material reembolsado y fuera de pendientes.'
+        : estadoNc === 'rechazada'
+          ? 'Nota de crédito rechazada.'
+          : 'Nota de crédito actualizada.',
+    )
+    cargarDatos()
+  }
+
   async function despacharPedidoSeleccionado(pedido: Pedido) {
     setError('')
 
@@ -421,18 +540,23 @@ export default function Pedidos() {
     }
 
     if (!stockSuficientePedido(pedido, contexto.stockDisponible)) {
+      setModalAlerta('La operación no es posible por falta de stock.')
       setError(
         `No se puede despachar ${pedido.codigo}: el inventario no cubre la entrega propuesta. Stock disponible: ${contexto.stockDisponible}; requerido: ${cantidadParaDespacho(pedido)}.`
       )
       return
     }
 
-    const confirmado = window.confirm(
-      `Despachar ${pedido.codigo}? Esto descontara stock, registrara movimiento de inventario y dejara auditoria.`
-    )
+    const confirmado = await confirmar({
+      titulo: 'Confirmar despacho',
+      mensaje: `¿Despachar ${pedido.codigo}? Esto descontará stock, registrará movimiento de inventario y dejará auditoría.`,
+      confirmarTexto: 'Despachar',
+      peligro: false,
+    })
 
     if (!confirmado) return
 
+    silenciarAlertasPedido(pedido.id, contexto.material?.id || pedido.material_id)
     const { error } = await despacharPedido(pedidoContextual, {
       material_id: contexto.material?.id || pedido.material_id,
       codigo_material: contexto.codigoMaterial,
@@ -458,6 +582,16 @@ export default function Pedidos() {
   async function reponerPedidoReportado(pedido: Pedido) {
     setError('')
 
+    // Guard 1: ya hay una reposicion en curso (evita doble clic / doble descuento).
+    if (reponiendoId) return
+
+    // Guard 2: si el reporte ya paso a "en_revision", la reposicion ya se hizo y
+    // el sistema espera la validacion del franquiciado. No se vuelve a descontar.
+    if (tieneReporteActivo(pedido, pedidosConReposicionPendiente)) {
+      setError(`${pedido.codigo} ya fue repuesto y espera la validacion del franquiciado.`)
+      return
+    }
+
     const contexto = contextoOperativoPedido(pedido)
     const cantidadOriginal = Math.max(1, cantidadParaDespacho(pedido))
     const cantidadIngresada = window.prompt(
@@ -481,48 +615,66 @@ export default function Pedidos() {
       return
     }
 
-    const confirmado = window.confirm(
-      `Reponer y reenviar ${cantidadReposicion} de ${pedido.material}? Esto descontara stock disponible y dejara el pedido en despacho.`
-    )
+    const confirmado = await confirmar({
+      titulo: 'Reponer pedido',
+      mensaje: `¿Reponer y reenviar ${cantidadReposicion} de ${pedido.material}? Se descontará stock una sola vez y el pedido quedará a la espera de que el franquiciado valide la entrega.`,
+      confirmarTexto: 'Reponer',
+      peligro: false,
+    })
 
     if (!confirmado) return
 
-    const cantidadDespachoAnterior = pedido.cantidad_despacho ?? null
-    const cantidadResult = await actualizarCantidadDespachoPedido(pedido.id, cantidadReposicion)
+    setReponiendoId(pedido.id)
 
-    if (cantidadResult.error) {
-      setError(cantidadResult.error.message)
-      return
+    try {
+      const cantidadDespachoAnterior = pedido.cantidad_despacho ?? null
+      const cantidadResult = await actualizarCantidadDespachoPedido(pedido.id, cantidadReposicion)
+
+      if (cantidadResult.error) {
+        setError(cantidadResult.error.message)
+        return
+      }
+
+      const pedidoReposicion = {
+        ...pedido,
+        material_id: contexto.material?.id || pedido.material_id,
+        cantidad_despacho: cantidadReposicion,
+        stock_disponible: contexto.stockDisponible,
+      }
+
+      const { error } = await despacharPedido(pedidoReposicion, {
+        material_id: contexto.material?.id || pedido.material_id,
+        codigo_material: contexto.codigoMaterial,
+        stock_disponible_operativo: contexto.stockDisponible,
+        responsable: 'Bodega',
+      })
+
+      if (error) {
+        await actualizarCantidadDespachoPedido(pedido.id, cantidadDespachoAnterior)
+        setError(error.message)
+        return
+      }
+
+      // La reposicion ya desconto stock: se marca el reporte como "en_revision"
+      // para bloquear el boton Reponer y esperar la validacion del franquiciado.
+      const marcado = await marcarReposicionEnviada(pedido)
+      if (marcado.error) {
+        setError(
+          `Se repuso ${pedido.codigo}, pero no se pudo marcar la espera de validacion: ${marcado.error.message}`
+        )
+      }
+
+      await registrarAuditoria({
+        entidad: 'pedidos',
+        entidad_id: pedido.id,
+        accion: 'reponer_reporte_franquiciado',
+        detalle: `${pedido.codigo}: reposicion por reporte de ${cantidadReposicion} ${pedido.unidad_medida || 'UN'} de ${pedido.material}. Pendiente de validacion del franquiciado.`,
+      })
+
+      await cargarDatos()
+    } finally {
+      setReponiendoId(null)
     }
-
-    const pedidoReposicion = {
-      ...pedido,
-      material_id: contexto.material?.id || pedido.material_id,
-      cantidad_despacho: cantidadReposicion,
-      stock_disponible: contexto.stockDisponible,
-    }
-
-    const { error } = await despacharPedido(pedidoReposicion, {
-      material_id: contexto.material?.id || pedido.material_id,
-      codigo_material: contexto.codigoMaterial,
-      stock_disponible_operativo: contexto.stockDisponible,
-      responsable: 'Bodega',
-    })
-
-    if (error) {
-      await actualizarCantidadDespachoPedido(pedido.id, cantidadDespachoAnterior)
-      setError(error.message)
-      return
-    }
-
-    await registrarAuditoria({
-      entidad: 'pedidos',
-      entidad_id: pedido.id,
-      accion: 'reponer_reporte_franquiciado',
-      detalle: `${pedido.codigo}: reposicion por reporte de ${cantidadReposicion} ${pedido.unidad_medida || 'UN'} de ${pedido.material}.`,
-    })
-
-    await cargarDatos()
   }
 
   function contextoOperativoPedido(pedido: Pedido) {
@@ -580,6 +732,45 @@ export default function Pedidos() {
     }
   }, [])
 
+  // Mapa material -> responsable del catman (para mostrarlo al elegir el material).
+  useEffect(() => {
+    let activo = true
+    obtenerInventarioOperativo().then((resultado) => {
+      if (!activo || resultado.error) return
+      const mapa = new Map<string, string>()
+      ;(resultado.data || []).forEach((material) => {
+        if (material.catman_nombre) mapa.set(material.id, material.catman_nombre)
+      })
+      setCatmanResponsable(mapa)
+    })
+    return () => {
+      activo = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let activo = true
+    const cargarCriterios = () =>
+      obtenerPrioridadCriterios().then((resultado) => {
+        if (!activo || resultado.error) return
+        setCriteriosPrioridad(resultado.data || [])
+      })
+    cargarCriterios()
+    const desuscribir = suscribirseACriteriosPrioridad(cargarCriterios)
+    return () => {
+      activo = false
+      desuscribir()
+    }
+  }, [])
+
+  useEffect(() => {
+    obtenerClientesFranquiciado().then((resultado) => {
+      if (!resultado.error) setClientesMaestro(resultado.data || [])
+    })
+  }, [])
+
+  const confirmar = useConfirmar()
+
   function actualizarFiltros(filtro: Partial<FiltrosPedido>) {
     setFiltros((actuales) => ({ ...actuales, ...filtro }))
     setPagina(1)
@@ -630,26 +821,41 @@ export default function Pedidos() {
   const clientesDisponibles = useMemo<ClienteSolicitante[]>(() => {
     const porNombre = new Map<string, ClienteSolicitante>()
 
-    pedidos.forEach((pedido) => {
-      const detalle = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
-      const nombre = pedido.solicitante?.trim()
-      const documento = normalizarCedula(detalle?.codigo_cliente || pedido.cedula_solicitante || '')
-
+    const registrar = (nombreRaw: string | null | undefined, documentoRaw: string) => {
+      const nombre = nombreRaw?.trim()
       if (!nombre) return
-
+      const documento = normalizarCedula(documentoRaw || '')
       const llave = normalizarTexto(nombre)
       const actual = porNombre.get(llave)
-
       if (!actual || (!actual.documento && documento)) {
         porNombre.set(llave, { nombre, documento })
       }
+    }
+
+    // Lista maestra de clientes: su cedula/RUC esta en codigo_cliente.
+    clientesMaestro.forEach((cliente) =>
+      registrar(cliente.nombre_cliente, cliente.codigo_cliente || '')
+    )
+
+    // Clientes que ya aparecen en pedidos previos.
+    pedidos.forEach((pedido) => {
+      const detalle = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
+      registrar(pedido.solicitante, detalle?.codigo_cliente || pedido.cedula_solicitante || '')
     })
 
     return [...porNombre.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [detallesOperativosLookup, pedidos])
+  }, [clientesMaestro, detallesOperativosLookup, pedidos])
 
   const pedidosConStockReal = useMemo(() => {
-    return pedidos.map((pedido) => {
+    return pedidos
+      .filter(
+        (pedido) =>
+          flujoOperativoPedido(
+            pedido,
+            obtenerDetalleOperativo(pedido, detallesOperativosLookup),
+          ) === 'venta',
+      )
+      .map((pedido) => {
       const detalleOperativo = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
       const material = buscarMaterialPedido(pedido, detalleOperativo, materialesLookup)
 
@@ -761,15 +967,31 @@ export default function Pedidos() {
     return codigos
   }, [reportesFranquiciado])
 
+  // Pedidos cuyo reporte ya paso a "en_revision": la reposicion se envio y el
+  // sistema espera la validacion del franquiciado (el boton Reponer se bloquea).
+  const pedidosConReposicionPendiente = useMemo(() => {
+    const codigos = new Set<string>()
+
+    reportesFranquiciado
+      .filter((reporte) => reporte.estado === 'en_revision')
+      .forEach((reporte) => {
+        if (reporte.pedido_id) codigos.add(`id:${reporte.pedido_id}`)
+        if (reporte.codigo_consulta) codigos.add(`codigo:${normalizarTexto(reporte.codigo_consulta)}`)
+      })
+
+    return codigos
+  }, [reportesFranquiciado])
+
   const pedidosOperativos = useMemo(
     () =>
       ordenarPorPrioridad(
         pedidosFiltrados.filter(
           (pedido) => !pedidoCerrado(pedido.estado) || tieneReporteActivo(pedido, pedidosConReporteActivo)
         ),
-        reglas
+        criteriosPrioridad,
+        construirFrecuenciaClientes(pedidos)
       ),
-    [pedidosConReporteActivo, pedidosFiltrados, reglas]
+    [pedidosConReporteActivo, pedidosFiltrados, criteriosPrioridad, pedidos]
   )
 
   const pedidosHistorial = useMemo(
@@ -969,6 +1191,49 @@ export default function Pedidos() {
               />
             </Campo>
 
+            {!pedidoEditandoId && (
+              <div className="md:col-span-3">
+                <button
+                  type="button"
+                  onClick={agregarMaterialALista}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[#c8102e] px-4 py-2 text-sm font-semibold text-[#c8102e] transition hover:bg-[#fff1ec]"
+                >
+                  <Plus size={16} /> Agregar material a la lista
+                </button>
+
+                {materialesPedido.length > 0 && (
+                  <ul className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
+                    {materialesPedido.map((item, indice) => {
+                      const mat = materiales.find((m) => m.id === item.material_id)
+                      return (
+                        <li
+                          key={item.material_id}
+                          className="flex items-center justify-between gap-3 px-4 py-2 text-sm"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-slate-700">
+                            <span className="mr-2 font-semibold text-[#a33e00]">{indice + 1}.</span>
+                            {mat?.nombre || item.material_id} - {item.cantidad} {mat?.unidad_medida || ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => quitarMaterialDeLista(item.material_id)}
+                            className="text-slate-400 transition hover:text-[#c8102e]"
+                            aria-label="Quitar material"
+                          >
+                            <XCircle size={18} />
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+
+                <p className="mt-2 text-xs text-slate-500">
+                  Agrega uno o varios materiales; se guardan como un solo pedido.
+                </p>
+              </div>
+            )}
+
             <Campo label="Solicitante">
               <input
                 list="solicitantes-pedido"
@@ -997,36 +1262,13 @@ export default function Pedidos() {
               />
             </Campo>
 
-            <Campo label="Origen">
-              <select
-                value={formulario.origen}
-                onChange={(event) =>
-                  setFormulario({
-                    ...formulario,
-                    origen: event.target.value as PedidoForm['origen'],
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="suministrador">Suministrador</option>
-                <option value="bodega">Bodega</option>
-              </select>
-            </Campo>
-
-            <Campo label="Destino">
-              <select
-                value={formulario.destino}
-                onChange={(event) =>
-                  setFormulario({
-                    ...formulario,
-                    destino: event.target.value as PedidoForm['destino'],
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="bodega">Bodega</option>
-                <option value="franquiciado">Franquiciado</option>
-              </select>
+            <Campo label="Flujo del pedido">
+              <input
+                type="text"
+                value="Bodega a franquiciado"
+                readOnly
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-slate-600 outline-none"
+              />
             </Campo>
 
             <Campo label="Fecha requerida">
@@ -1061,60 +1303,25 @@ export default function Pedidos() {
               </select>
             </Campo>
 
-            <Campo label="Tipo de solicitante">
+            <Campo label="Tipo de caso">
               <select
-                value={formulario.tipo_cliente}
+                value={formulario.tipo_caso}
                 onChange={(event) =>
                   setFormulario({
                     ...formulario,
-                    tipo_cliente: event.target.value as PedidoForm['tipo_cliente'],
+                    tipo_caso: event.target.value as TipoCasoPedido,
                   })
                 }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
               >
-                <option value="bodega">Bodega</option>
-                <option value="franquiciado">Franquiciado</option>
-                <option value="obra_critica">Obra critica</option>
-              </select>
-            </Campo>
-
-            <Campo label="Impacto del solicitante">
-              <select
-                value={formulario.accion_solicitante}
-                onChange={(event) =>
-                  setFormulario({
-                    ...formulario,
-                    accion_solicitante: event.target.value as AccionSolicitante,
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                {accionesSolicitante.map((accion) => (
-                  <option key={accion} value={accion}>
-                    {formatearEtiqueta(accion)}
+                {Object.entries(ETIQUETAS_TIPO_CASO).map(([valor, etiqueta]) => (
+                  <option key={valor} value={valor}>
+                    {etiqueta}
                   </option>
                 ))}
               </select>
             </Campo>
 
-            <Campo label="Condicion operativa">
-              <select
-                value={formulario.condicion_material}
-                onChange={(event) =>
-                  setFormulario({
-                    ...formulario,
-                    condicion_material: event.target.value as CondicionMaterial,
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                {condicionesMaterial.map((condicion) => (
-                  <option key={condicion} value={condicion}>
-                    {formatearEtiqueta(condicion)}
-                  </option>
-                ))}
-              </select>
-            </Campo>
           </div>
 
           <div className="mt-6 flex justify-end">
@@ -1146,6 +1353,7 @@ export default function Pedidos() {
                 <th className="px-5 py-4 text-left">Pedido</th>
                 <th className="px-5 py-4 text-left">Flujo</th>
                 <th className="px-5 py-4 text-left">Material</th>
+                <th className="px-5 py-4 text-left">Catman responsable</th>
                 <th className="px-5 py-4 text-left">Cantidad</th>
                 <th className="px-5 py-4 text-left">Resolucion</th>
                 <th className="px-5 py-4 text-left">Stock disponible</th>
@@ -1159,21 +1367,28 @@ export default function Pedidos() {
                 const enHistorial =
                   pedidoCerrado(pedido.estado) && !tieneReporteActivo(pedido, pedidosConReporteActivo)
                 const reabiertoPorReporte = tieneReporteActivo(pedido, pedidosConReporteActivo)
+                const reposicionPendiente = tieneReporteActivo(pedido, pedidosConReposicionPendiente)
                 const cantidadPendiente = cantidadParaDespacho(pedido)
                 const detalleOperativo = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
                 const material = buscarMaterialPedido(pedido, detalleOperativo, materialesLookup)
                 const flujo = flujoOperativoPedido(pedido, detalleOperativo)
                 const puedeGestionar = puedeGestionarFlujo(flujo, rol)
                 const resolucion = resolucionPedido(pedido, detalleOperativo)
-                const semaforoRetraso = resolverSemaforoPedido(pedido)
+                const semaforoBaseRetraso = resolverSemaforoPedido(pedido)
+                const semaforoRetraso =
+                  reabiertoPorReporte &&
+                  (semaforoBaseRetraso === 'cerrado' || semaforoBaseRetraso === 'a_tiempo')
+                    ? 'riesgo'
+                    : semaforoBaseRetraso
                 const stockDisponible = stockDisponiblePedido(pedido, material, detalleOperativo)
-                const stockSuficiente = stockSuficientePedido(pedido, stockDisponible)
                 const reabastecimiento = reabastecimientoPedido(detalleOperativo)
                 const estadoVisible = enHistorial
                   ? 'Cerrado'
-                  : reabiertoPorReporte
-                    ? 'Reabierto por reporte'
-                    : resolucion
+                  : reposicionPendiente
+                    ? 'Esperando validacion del franquiciado'
+                    : reabiertoPorReporte
+                      ? 'Reabierto por reporte'
+                      : resolucion
                 const semaforoProducto = resolverSemaforoProducto(
                   stockDisponible,
                   cantidadPendiente,
@@ -1189,7 +1404,7 @@ export default function Pedidos() {
                       />
                       <p className="font-semibold text-black">{pedido.codigo}</p>
                       <p className="mt-1 text-xs font-medium text-[#7e5a4b]">
-                        {describirTiempoPedido(pedido)}
+                        {describirTiempoPedido(pedido, { reabiertoPorReporte })}
                       </p>
                       <p className="mt-1 text-xs font-medium text-[#7e5a4b]">
                         Zonas: {detalleOperativo?.zonas || 'Sin zona registrada'}
@@ -1221,7 +1436,25 @@ export default function Pedidos() {
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1">
                         <Badge texto={formatearEtiqueta(pedido.condicion_material || 'normal')} />
+                        {pedido.estado_nc && (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              pedido.estado_nc === 'efectiva'
+                                ? 'bg-green-100 text-green-700'
+                                : pedido.estado_nc === 'rechazada'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-violet-100 text-violet-800 ring-1 ring-violet-300'
+                            }`}
+                          >
+                            NC: {etiquetaEstadoNc(pedido.estado_nc)}
+                          </span>
+                        )}
                       </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="text-xs font-semibold text-[#7e5a4b]">
+                        {pedido.catman || catmanResponsable.get(pedido.material_id || '') || 'Sin responsable'}
+                      </p>
                     </td>
                     <td className="px-5 py-4">
                       <p className="font-semibold text-black">{pedido.cantidad}</p>
@@ -1264,7 +1497,7 @@ export default function Pedidos() {
                           </span>
                         </div>
                         <p className="text-xs font-medium text-[#7e5a4b]">
-                          {describirTiempoPedido(pedido)}
+                          {describirTiempoPedido(pedido, { reabiertoPorReporte })}
                         </p>
                         <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                           <div className={`h-full rounded-full ${claseSemaforoBarra(semaforoRetraso)}`} />
@@ -1283,12 +1516,23 @@ export default function Pedidos() {
                             onClick={() => setPedidoDetalle(pedido)}
                           />
                           {reabiertoPorReporte ? (
-                            <AccionEstado
-                              label="Reponer y reenviar"
-                              icono={<Truck size={14} />}
-                              disabled={!puedeGestionar || stockDisponible <= 0}
-                              onClick={() => reponerPedidoReportado(pedido)}
-                            />
+                            reposicionPendiente ? (
+                              <AccionEstado
+                                label="Esperando validacion"
+                                icono={<Clock3 size={14} />}
+                                disabled
+                                onClick={() => undefined}
+                              />
+                            ) : (
+                              <AccionEstado
+                                label="Reponer y reenviar"
+                                icono={<Truck size={14} />}
+                                disabled={
+                                  !puedeGestionar || stockDisponible <= 0 || reponiendoId === pedido.id
+                                }
+                                onClick={() => reponerPedidoReportado(pedido)}
+                              />
+                            )
                           ) : (
                             <>
                               <AccionEstado
@@ -1301,6 +1545,7 @@ export default function Pedidos() {
                                 <>
                                   <AccionEstado
                                     label="Revisar compra"
+                                    completado={etapaCumplida(pedido.estado, 'en_revision')}
                                     disabled={
                                       !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
                                     }
@@ -1308,6 +1553,7 @@ export default function Pedidos() {
                                   />
                                   <AccionEstado
                                     label="Planificar OC"
+                                    completado={etapaCumplida(pedido.estado, 'aprobado')}
                                     icono={<ClipboardCheck size={14} />}
                                     disabled={
                                       !puedeGestionar || !puedeCambiarA(pedido.estado, 'aprobado')
@@ -1316,6 +1562,7 @@ export default function Pedidos() {
                                   />
                                   <AccionEstado
                                     label="Recibido"
+                                    completado={etapaCumplida(pedido.estado, 'entregado')}
                                     icono={<CheckCircle2 size={14} />}
                                     disabled={
                                       !puedeGestionar || !puedeCambiarA(pedido.estado, 'entregado')
@@ -1327,6 +1574,7 @@ export default function Pedidos() {
                                 <>
                                   <AccionEstado
                                     label="Revision"
+                                    completado={etapaCumplida(pedido.estado, 'en_revision')}
                                     disabled={
                                       !puedeGestionar || !puedeCambiarA(pedido.estado, 'en_revision')
                                     }
@@ -1334,28 +1582,28 @@ export default function Pedidos() {
                                   />
                                   <AccionEstado
                                     label="Aprobar"
+                                    completado={etapaCumplida(pedido.estado, 'aprobado')}
                                     icono={<ClipboardCheck size={14} />}
                                     disabled={
                                       !puedeGestionar ||
-                                      !puedeCambiarA(pedido.estado, 'aprobado') ||
-                                      !stockSuficiente
+                                      !puedeCambiarA(pedido.estado, 'aprobado')
                                     }
                                     onClick={() => cambiarEstado(pedido, 'aprobado')}
                                   />
                                   <AccionEstado
                                     label="Despachar"
+                                    completado={etapaCumplida(pedido.estado, 'en_despacho')}
                                     icono={<Truck size={14} />}
                                     disabled={
                                       !puedeGestionar ||
-                                      !puedeCambiarA(pedido.estado, 'en_despacho') ||
-                                      !stockSuficiente
+                                      !puedeCambiarA(pedido.estado, 'en_despacho')
                                     }
                                     onClick={() => despacharPedidoSeleccionado(pedido)}
                                   />
                                 </>
                               )}
                               <AccionEstado
-                                label="Cancelar"
+                                label="Cancelar pedido"
                                 icono={<XCircle size={14} />}
                                 peligro
                                 disabled={!puedeGestionar || !puedeCambiarA(pedido.estado, 'cancelado')}
@@ -1380,7 +1628,7 @@ export default function Pedidos() {
 
               {cargando && (
                 <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
+                  <td colSpan={10} className="px-5 py-10 text-center text-slate-500">
                     Cargando pedidos...
                   </td>
                 </tr>
@@ -1388,7 +1636,7 @@ export default function Pedidos() {
 
               {!cargando && pedidosPriorizados.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
+                  <td colSpan={10} className="px-5 py-10 text-center text-slate-500">
                     {vistaPedidos === 'historial'
                       ? 'No hay pedidos cerrados que coincidan con los filtros.'
                       : 'No hay pedidos operativos que coincidan con los filtros.'}
@@ -1441,12 +1689,18 @@ export default function Pedidos() {
       </section>
       </div>
 
+      <ModalExito mensaje={modalExito} onClose={() => setModalExito('')} />
+      <ModalAlerta mensaje={modalAlerta} onClose={() => setModalAlerta('')} />
+
       {pedidoDetalle && (
         <DetallePedido
           alertas={alertas}
+          reabiertoPorReporte={tieneReporteActivo(pedidoDetalle, pedidosConReporteActivo)}
           detalleOperativo={obtenerDetalleOperativo(pedidoDetalle, detallesOperativosLookup)}
           materiales={materiales}
           onClose={() => setPedidoDetalle(null)}
+          onGestionNc={gestionarNotaCredito}
+          puedeGestionarNc={rol === 'bodega' || rol === 'administrador'}
           pedido={pedidoDetalle}
         />
       )}
@@ -1463,18 +1717,257 @@ function Campo({ children, label }: { children: ReactNode; label: string }) {
   )
 }
 
+const ETAPAS_PEDIDO: { estado: EstadoPedido; label: string }[] = [
+  { estado: 'pendiente', label: 'Pendiente' },
+  { estado: 'en_revision', label: 'En revisión' },
+  { estado: 'aprobado', label: 'Aprobado' },
+  { estado: 'en_despacho', label: 'En despacho' },
+  { estado: 'entregado', label: 'Entregado' },
+]
+
+// Una etapa esta cumplida si el pedido ya llego (o paso) ese estado.
+function etapaCumplida(estadoActual: EstadoPedido, destino: EstadoPedido) {
+  const indiceActual = ETAPAS_PEDIDO.findIndex((etapa) => etapa.estado === estadoActual)
+  const indiceDestino = ETAPAS_PEDIDO.findIndex((etapa) => etapa.estado === destino)
+  return indiceActual >= 0 && indiceDestino >= 0 && indiceActual >= indiceDestino
+}
+
+function ProcesoPedido({ estado }: { estado: EstadoPedido }) {
+  const cancelado = estado === 'cancelado' || estado === 'rechazado'
+  const indiceActual = ETAPAS_PEDIDO.findIndex((etapa) => etapa.estado === estado)
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Etapa del proceso
+      </p>
+      {cancelado ? (
+        <span className="inline-flex items-center gap-2 rounded-lg border-2 border-[#c8102e] bg-[#fdecea] px-4 py-2 text-sm font-bold text-[#c8102e]">
+          Pedido cancelado
+        </span>
+      ) : (
+        <ol className="flex flex-wrap items-center gap-y-2">
+          {ETAPAS_PEDIDO.map((etapa, indice) => {
+            const completada = indiceActual >= 0 && indice <= indiceActual
+            const actual = indice === indiceActual
+            return (
+              <li key={etapa.estado} className="flex items-center">
+                <span
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                    actual
+                      ? 'border-[#c8102e] bg-[#c8102e] text-white'
+                      : completada
+                        ? 'border-green-300 bg-green-50 text-green-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-400'
+                  }`}
+                >
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                      actual
+                        ? 'bg-white text-[#c8102e]'
+                        : completada
+                          ? 'bg-green-600 text-white'
+                          : 'bg-slate-200 text-slate-500'
+                    }`}
+                  >
+                    {indice + 1}
+                  </span>
+                  {etapa.label}
+                </span>
+                {indice < ETAPAS_PEDIDO.length - 1 && (
+                  <span
+                    className={`mx-1 h-0.5 w-5 ${indice < indiceActual ? 'bg-green-400' : 'bg-slate-200'}`}
+                  />
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+const ETAPAS_NC: { estado: string; label: string }[] = [
+  { estado: 'solicitada', label: 'Solicitada' },
+  { estado: 'en_revision', label: 'En revisión' },
+  { estado: 'aprobada', label: 'Aprobada' },
+  { estado: 'efectiva', label: 'Reembolsada' },
+]
+
+function etiquetaEstadoNc(estado?: string | null) {
+  if (estado === 'rechazada') return 'Rechazada'
+  const etapa = ETAPAS_NC.find((item) => item.estado === estado)
+  return etapa ? etapa.label : 'Solicitada'
+}
+
+function PanelNotaCredito({
+  onAccion,
+  pedido,
+  puedeGestionar,
+}: {
+  onAccion: (estado: 'en_revision' | 'aprobada' | 'efectiva' | 'rechazada') => void
+  pedido: Pedido
+  puedeGestionar: boolean
+}) {
+  const estado = pedido.estado_nc || 'solicitada'
+  const rechazada = estado === 'rechazada'
+  const indiceActual = ETAPAS_NC.findIndex((etapa) => etapa.estado === estado)
+
+  return (
+    <section className="rounded-lg border-2 border-violet-300 bg-violet-50 p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-bold text-violet-900">Nota de crédito (reembolso)</h3>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            rechazada
+              ? 'bg-red-100 text-red-700'
+              : estado === 'efectiva'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-violet-200 text-violet-900'
+          }`}
+        >
+          {rechazada ? 'Rechazada' : ETAPAS_NC[indiceActual >= 0 ? indiceActual : 0].label}
+        </span>
+      </div>
+
+      {pedido.motivo_nc && (
+        <p className="mt-2 text-sm text-violet-800">
+          <span className="font-semibold">Motivo del franquiciado:</span> {pedido.motivo_nc}
+        </p>
+      )}
+
+      {!rechazada && (
+        <div className="mt-4 flex items-center">
+          {ETAPAS_NC.map((etapa, indice) => {
+            const cumplido = indice <= indiceActual
+            return (
+              <div key={etapa.estado} className="flex flex-1 items-center">
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                      cumplido ? 'bg-violet-600 text-white' : 'bg-white text-violet-400 ring-1 ring-violet-300'
+                    }`}
+                  >
+                    {indice + 1}
+                  </div>
+                  <span
+                    className={`mt-1 text-center text-[11px] font-semibold ${
+                      cumplido ? 'text-violet-800' : 'text-violet-400'
+                    }`}
+                  >
+                    {etapa.label}
+                  </span>
+                </div>
+                {indice < ETAPAS_NC.length - 1 && (
+                  <div className={`mx-1 h-0.5 flex-1 ${indice < indiceActual ? 'bg-violet-500' : 'bg-violet-200'}`} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {puedeGestionar && estado !== 'efectiva' && !rechazada && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {estado === 'solicitada' && (
+            <button
+              type="button"
+              onClick={() => onAccion('en_revision')}
+              className="inline-flex items-center gap-1 rounded border border-violet-400 bg-white px-3 py-1.5 text-xs font-semibold text-violet-800 transition hover:bg-violet-100"
+            >
+              Poner en revisión
+            </button>
+          )}
+          {estado === 'en_revision' && (
+            <button
+              type="button"
+              onClick={() => onAccion('aprobada')}
+              className="inline-flex items-center gap-1 rounded border border-green-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-100"
+            >
+              Aprobar
+            </button>
+          )}
+          {estado === 'aprobada' && (
+            <button
+              type="button"
+              onClick={() => onAccion('efectiva')}
+              className="inline-flex items-center gap-1 rounded border border-green-600 bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700"
+            >
+              Hacer efectiva (reembolsar)
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onAccion('rechazada')}
+            className="inline-flex items-center gap-1 rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+          >
+            Rechazar
+          </button>
+        </div>
+      )}
+
+      {estado === 'efectiva' && (
+        <p className="mt-3 text-sm font-semibold text-green-700">
+          Reembolso realizado. El material quedó fuera de pendientes.
+        </p>
+      )}
+      {rechazada && (
+        <p className="mt-3 text-sm font-semibold text-red-700">Solicitud de nota de crédito rechazada.</p>
+      )}
+    </section>
+  )
+}
+
+function BarraReabastecimiento({
+  cantidad,
+  enCamino,
+  stock,
+  unidad,
+}: {
+  cantidad: number
+  enCamino: number
+  stock: number
+  unidad: string
+}) {
+  const cobertura = Math.max(0, stock) + Math.max(0, enCamino)
+  const porcentaje = Math.min(100, Math.round((cobertura / Math.max(1, cantidad)) * 100))
+  const color = porcentaje >= 100 ? 'bg-green-500' : porcentaje >= 50 ? 'bg-yellow-500' : 'bg-[#c8102e]'
+
+  return (
+    <div className="mt-5">
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <span className="font-semibold text-slate-700">Reabastecimiento (cobertura)</span>
+        <strong className="text-slate-900">{porcentaje}%</strong>
+      </div>
+      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${porcentaje}%` }} />
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        Stock {stock} + en camino {enCamino} de {cantidad} {unidad} requeridos.
+      </p>
+    </div>
+  )
+}
+
 function DetallePedido({
   alertas,
   detalleOperativo,
   materiales,
   onClose,
+  onGestionNc,
+  puedeGestionarNc,
   pedido,
+  reabiertoPorReporte,
 }: {
   alertas: Alerta[]
   detalleOperativo?: PedidoDetalleOperativo
   materiales: Material[]
   onClose: () => void
+  onGestionNc: (pedido: Pedido, estado: 'en_revision' | 'aprobada' | 'efectiva' | 'rechazada') => void
+  puedeGestionarNc: boolean
   pedido: Pedido
+  reabiertoPorReporte?: boolean
 }) {
   const material = materiales.find(
     (item) =>
@@ -1487,11 +1980,16 @@ function DetallePedido({
       alerta.pedido_codigo === pedido.codigo ||
       (pedido.material_id ? alerta.material_id === pedido.material_id : false)
   )
-  const semaforo = resolverSemaforoPedido(pedido)
+  const semaforoBase = resolverSemaforoPedido(pedido)
+  const semaforo =
+    reabiertoPorReporte && (semaforoBase === 'cerrado' || semaforoBase === 'a_tiempo')
+      ? 'riesgo'
+      : semaforoBase
   const stockActual = stockDisponiblePedido(pedido, material, detalleOperativo)
   const reabastecimiento = reabastecimientoPedido(detalleOperativo)
   const resolucion = resolucionPedido(pedido, detalleOperativo)
   const unidad = material?.unidad_medida || pedido.unidad_medida
+  const esCompra = flujoOperativoPedido(pedido, detalleOperativo) === 'compra'
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4">
@@ -1511,11 +2009,33 @@ function DetallePedido({
           </button>
         </div>
 
+        <div className="border-b border-slate-200 px-5 py-5">
+          <ProcesoPedido estado={pedido.estado} />
+          {esCompra && (
+            <BarraReabastecimiento
+              stock={stockActual}
+              enCamino={reabastecimiento}
+              cantidad={pedido.cantidad}
+              unidad={unidad}
+            />
+          )}
+        </div>
+
+        {pedido.estado_nc && (
+          <div className="border-b border-slate-200 px-5 py-5">
+            <PanelNotaCredito
+              pedido={pedido}
+              puedeGestionar={puedeGestionarNc}
+              onAccion={(estado) => onGestionNc(pedido, estado)}
+            />
+          </div>
+        )}
+
         <div className="grid gap-6 p-5 xl:grid-cols-[1fr_0.9fr]">
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <Dato label="Semaforo" valor={etiquetaSemaforo(semaforo)} destaque={claseSemaforoBadge(semaforo)} />
-              <Dato label="Tiempo" valor={describirTiempoPedido(pedido)} />
+              <Dato label="Tiempo" valor={describirTiempoPedido(pedido, { reabiertoPorReporte })} />
               <Dato label="Resolucion" valor={resolucion} />
               <Dato label="Zonas" valor={detalleOperativo?.zonas || 'Sin zona registrada'} />
               <Dato
@@ -1645,12 +2165,14 @@ function FiltroSelect({
 }
 
 function AccionEstado({
+  completado,
   disabled,
   icono,
   label,
   onClick,
   peligro,
 }: {
+  completado?: boolean
   disabled?: boolean
   icono?: ReactNode
   label: string
@@ -1660,15 +2182,17 @@ function AccionEstado({
   return (
     <button
       type="button"
-      disabled={disabled}
+      disabled={disabled || completado}
       onClick={onClick}
-      className={`inline-flex w-full items-center justify-start gap-2 border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-        peligro
-          ? 'border-red-200 text-red-700 hover:bg-red-50'
-          : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+      className={`inline-flex w-full items-center justify-start gap-2 border px-3 py-2 text-xs font-semibold transition ${
+        completado
+          ? 'cursor-default border-green-400 bg-green-100 text-green-800'
+          : peligro
+            ? 'border-red-200 text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50'
+            : 'border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
       }`}
     >
-      {icono}
+      {completado ? <CheckCircle2 size={14} /> : icono}
       {label}
     </button>
   )
@@ -1818,6 +2342,7 @@ function resolverSemaforoProducto(
 
 function clasePuntoSemaforo(semaforo: ReturnType<typeof resolverSemaforoPedido>) {
   if (semaforo === 'critico') return 'bg-red-600 ring-2 ring-red-100'
+  if (semaforo === 'alto') return 'bg-orange-500 ring-2 ring-orange-100'
   if (semaforo === 'riesgo') return 'bg-yellow-500 ring-2 ring-yellow-100'
   if (semaforo === 'a_tiempo') return 'bg-green-500 ring-2 ring-green-100'
   return 'bg-slate-400 ring-2 ring-slate-100'
@@ -1934,6 +2459,7 @@ function generarCodigoPedido() {
 
 function claseBarraSemaforo(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 'bg-red-600'
+  if (semaforo === 'alto') return 'bg-orange-500'
   if (semaforo === 'riesgo') return 'bg-yellow-500'
   if (semaforo === 'a_tiempo') return 'bg-green-500'
   return 'bg-slate-400'

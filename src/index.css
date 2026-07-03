@@ -108,6 +108,8 @@ main input.login-clean-input:focus {
 main .field-shell {
   border-radius: 0.25rem !important;
   box-shadow: none !important;
+  border-width: 2px !important;
+  border-color: var(--disensa-red) !important;
 }
 
 main .field-shell:focus-within {
@@ -511,6 +513,24 @@ html[data-theme='dark'] main [class~='bg-white'] {
   box-shadow: 0 18px 40px rgb(0 0 0 / 0.18) !important;
 }
 
+/* La alerta en tiempo real (toast) conserva su color de semaforo en modo oscuro,
+   igual que en modo claro (no se pinta oscura como las tarjetas del panel). */
+html[data-theme='dark'] main div.alert-toast.rounded-lg.border[class~='bg-red-600'] {
+  background-color: #dc2626 !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+html[data-theme='dark'] main div.alert-toast.rounded-lg.border[class~='bg-yellow-400'] {
+  background-color: #facc15 !important;
+  border-color: #fde047 !important;
+  color: #020617 !important;
+}
+html[data-theme='dark'] main div.alert-toast.rounded-lg.border[class~='bg-green-600'] {
+  background-color: #16a34a !important;
+  border-color: #bbf7d0 !important;
+  color: #ffffff !important;
+}
+
 html[data-theme='dark'] main [class~='bg-white\/85'],
 html[data-theme='dark'] main [class~='bg-white\/90'] {
   background-color: rgb(21 21 22 / 0.92) !important;
@@ -623,7 +643,7 @@ html[data-theme='dark'] main textarea:focus {
 }
 
 html[data-theme='dark'] main .field-shell {
-  border-color: #4a4a4f !important;
+  border-color: #ed1c24 !important;
   background-color: #151516 !important;
   box-shadow: none !important;
 }
@@ -827,6 +847,20 @@ html[data-theme='dark'] .alertas-modal {
   background-color: #151516 !important;
   color: #f7f7f8 !important;
   box-shadow: 0 18px 42px rgb(0 0 0 / 0.24) !important;
+}
+
+/* Semaforo: conservar el color del borde de la tarjeta de alerta en modo oscuro. */
+html[data-theme='dark'] .alerta-card[class~='border-red-300'] {
+  border-color: #f2555a !important;
+}
+html[data-theme='dark'] .alerta-card[class~='border-orange-300'] {
+  border-color: #fb923c !important;
+}
+html[data-theme='dark'] .alerta-card[class~='border-yellow-300'] {
+  border-color: #eab308 !important;
+}
+html[data-theme='dark'] .alerta-card[class~='border-green-200'] {
+  border-color: #34d399 !important;
 }
 
 html[data-theme='dark'] .alertas-choice {
@@ -1087,7 +1121,7 @@ html[data-theme='dark'] .pedidos-module [class~='bg-slate-200'] {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 

@@ -1,4 +1,4 @@
-export type MotivoReporteFranquiciado = 'retraso' | 'material_defectuoso' | 'otro'
+export type MotivoReporteFranquiciado = 'retraso' | 'material_defectuoso' | 'nota_credito' | 'otro'
 
 export type EstadoReporteFranquiciado = 'recibido' | 'en_revision' | 'cerrado'
 

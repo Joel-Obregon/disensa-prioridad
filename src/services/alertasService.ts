@@ -132,6 +132,23 @@ async function sincronizarAlertasResueltasPorStock() {
 async function sincronizarAlertasOperativas() {
   await sincronizarAlertasResueltasPorStock()
   await sincronizarAlertasStockInventarioActual()
+  await evaluarReglasNegocio()
+}
+
+// Evalua las reglas de negocio avanzadas (inventario por agotarse, multifranquiciado,
+// material no planificable, franquiciado alta frecuencia) y genera/cierra sus alertas.
+// Si la funcion aun no existe en la BD, se ignora silenciosamente.
+async function evaluarReglasNegocio() {
+  const result = await supabase.rpc('evaluar_reglas_negocio_avanzadas')
+  if (
+    result.error &&
+    (result.error.code === '42883' ||
+      result.error.code === 'PGRST202' ||
+      result.error.message?.toLowerCase().includes('could not find the function'))
+  ) {
+    return { data: null, error: null }
+  }
+  return result
 }
 
 async function sincronizarAlertasStockInventarioActual() {

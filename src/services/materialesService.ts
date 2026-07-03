@@ -10,6 +10,26 @@ import {
 } from './cacheService'
 import type { Material } from '../types/material'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Resuelve el material real a partir de un id (UUID) o de un codigo de material.
+// El inventario operativo puede entregar el codigo como "id" cuando la fila aun
+// no esta enlazada a la tabla materiales; asi evitamos el error de UUID invalido
+// al editar o eliminar.
+async function resolverMaterial(
+  idOrCodigo: string,
+): Promise<{ id: string; codigo_material: string | null } | null> {
+  const columna = UUID_RE.test(idOrCodigo) ? 'id' : 'codigo_material'
+  const { data } = await supabase
+    .from('materiales')
+    .select('id,codigo_material')
+    .eq(columna, idOrCodigo)
+    .limit(1)
+    .maybeSingle<{ id: string; codigo_material: string | null }>()
+
+  return data ?? null
+}
+
 export type MaterialInput = {
   codigo_material?: string | null
   nombre: string
@@ -113,6 +133,11 @@ export async function crearMaterial(material: MaterialInput) {
     return fusionarMaterialConExistente(duplicado.data, material)
   }
 
+  // La FK materiales.codigo_material -> material_catalogo exige que el catalogo
+  // maestro tenga el material antes de insertarlo en la tabla operativa.
+  const catalogoPrevio = await sincronizarMaterialCatalogo(material)
+  if (catalogoPrevio.error) return catalogoPrevio
+
   const result = await supabase.from('materiales').insert(material).select().single<Material>()
 
   if (result.error) return result
@@ -130,10 +155,16 @@ export async function actualizarMaterial(
   material: MaterialInput,
   contextoAlertas: MaterialAlertasContexto = {}
 ) {
+  const referencia = await resolverMaterial(id)
+  if (!referencia) {
+    return errorAplicacion('No se encontro el material que intentas editar. Recarga la pagina e intentalo nuevamente.')
+  }
+  const idReal = referencia.id
+
   const anterior = await supabase
     .from('materiales')
     .select('*')
-    .eq('id', id)
+    .eq('id', idReal)
     .maybeSingle<Material>()
 
   if (anterior.error) return anterior
@@ -149,7 +180,7 @@ export async function actualizarMaterial(
     normalizarCodigoMaterial(material.codigo_material)
 
   if (cambioIdentidad || cambioCodigo) {
-    const duplicado = await buscarMaterialDuplicado(material, id)
+    const duplicado = await buscarMaterialDuplicado(material, idReal)
 
     if (duplicado.error) return duplicado
     if (duplicado.data) {
@@ -162,7 +193,7 @@ export async function actualizarMaterial(
   const result = await supabase
     .from('materiales')
     .update(material)
-    .eq('id', id)
+    .eq('id', idReal)
     .select()
     .maybeSingle<Material>()
 
@@ -193,34 +224,35 @@ export async function actualizarMaterial(
 }
 
 export async function eliminarMaterial(id: string) {
-  const alertasResult = await supabase
-    .from('alertas')
-    .update({ material_id: null, estado: 'cerrada' })
-    .eq('material_id', id)
+  const referencia = await resolverMaterial(id)
 
-  if (alertasResult.error) {
-    return alertasResult
+  // Fila sin material en la tabla materiales: material huerfano (catalogo/bodega
+  // sin materiales) o entrada del catalogo base. Se limpia de forma segura por
+  // codigo; el RPC protege el catalogo ERP y devuelve cuantas filas elimino.
+  if (!referencia) {
+    const codigo = UUID_RE.test(id) ? null : id
+    if (!codigo) {
+      return errorAplicacion('No se encontro el material en el inventario. Recarga la pagina e intenta de nuevo.')
+    }
+
+    const limpieza = await supabase.rpc('limpiar_catalogo_material_manual', { p_codigo: codigo })
+    if (limpieza.error) return limpieza
+    if (!limpieza.data) {
+      return errorAplicacion('Este material proviene del catalogo base y no puede eliminarse manualmente.')
+    }
+
+    invalidarDatosMateriales()
+    return { data: null, error: null }
   }
 
-  const pedidosResult = await supabase
-    .from('pedidos')
-    .update({ material_id: null, stock_disponible: 0 })
-    .eq('material_id', id)
+  // Purga total server-side: borra el material y TODO lo asociado (pedidos,
+  // alertas, reportes, movimientos, notificaciones) y limpia catalogo/bodega.
+  // No queda rastro en Pedidos, Alertas ni Dashboard.
+  const purga = await supabase.rpc('eliminar_material_completo', { p_id: referencia.id })
+  if (purga.error) return purga
 
-  if (pedidosResult.error) {
-    return pedidosResult
-  }
-
-  const reportesResult = await limpiarMaterialEnReportes(id)
-
-  if (reportesResult.error) {
-    return reportesResult
-  }
-
-  const result = await supabase.from('materiales').delete().eq('id', id)
-
-  if (!result.error) invalidarDatosMateriales()
-  return result
+  invalidarDatosMateriales()
+  return { data: null, error: null }
 }
 
 export function escucharMateriales(onChange: () => void) {
@@ -380,7 +412,9 @@ async function sincronizarMaterialEnModulos(
   return sincronizarAlertaStock(material, forzarNotificacionStock, contextoAlertas)
 }
 
-async function sincronizarMaterialCatalogo(material: Material) {
+async function sincronizarMaterialCatalogo(
+  material: { codigo_material?: string | null; nombre: string },
+) {
   if (!material.codigo_material) return { data: null, error: null }
 
   const catalogoResult = await supabase
@@ -394,20 +428,9 @@ async function sincronizarMaterialCatalogo(material: Material) {
       { onConflict: 'codigo_material' }
     )
 
-  if (esErrorTablaOColumnaOpcional(catalogoResult.error)) {
-    return { data: null, error: null }
-  }
-
-  if (catalogoResult.error) return catalogoResult
-
-  const lineasResult = await supabase
-    .from('pedido_lineas')
-    .update({ nombre_material_snapshot: material.nombre })
-    .eq('codigo_material', material.codigo_material)
-
-  return esErrorTablaOColumnaOpcional(lineasResult.error)
+  return esErrorTablaOColumnaOpcional(catalogoResult.error)
     ? { data: null, error: null }
-    : lineasResult
+    : catalogoResult
 }
 
 async function sincronizarInventarioBodega(material: Material) {
@@ -686,15 +709,6 @@ async function moverMaterialEnReportes(origenId: string, destinoId: string) {
     .from('reportes_operativos')
     .update({ material_id: destinoId })
     .eq('material_id', origenId)
-
-  return esErrorTablaOColumnaOpcional(result.error) ? { data: null, error: null } : result
-}
-
-async function limpiarMaterialEnReportes(id: string) {
-  const result = await supabase
-    .from('reportes_operativos')
-    .update({ material_id: null })
-    .eq('material_id', id)
 
   return esErrorTablaOColumnaOpcional(result.error) ? { data: null, error: null } : result
 }

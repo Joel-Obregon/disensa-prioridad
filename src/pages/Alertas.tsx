@@ -14,19 +14,24 @@ import {
   claseSemaforoBarra,
   claseSemaforoBorde,
   describirTiempoPedido,
+  resolverSemaforoPedido,
 } from '../lib/semaforoOperativo'
 import { registrarAuditoria } from '../services/auditoriaService'
+import { useAuth } from '../auth/authState'
 import { limpiarAlertasNoRevisadas } from '../lib/alertNotifications'
 import {
   actualizarEstadoAlerta,
   escucharCambiosAlertas,
   obtenerAlertas,
 } from '../services/alertasService'
+import { obtenerPedidos } from '../services/pedidosService'
 import type { Alerta } from '../types/alerta'
 import type { SemaforoOperativo } from '../lib/semaforoOperativo'
-import type { EstadoPedido } from '../types/pedido'
+import type { EstadoPedido, Pedido } from '../types/pedido'
 
-type CategoriaAlertas = 'todas' | 'materiales' | 'priorizacion'
+type AlertaVista = Alerta & { fusionadas?: string[] }
+
+type CategoriaAlertas = 'materiales' | 'priorizacion'
 type VistaAlertas = 'operativas' | 'historial'
 type FiltrosAlertas = {
   busqueda: string
@@ -37,12 +42,6 @@ type FiltrosAlertas = {
 }
 
 const categoriasAlertas = [
-  {
-    id: 'todas',
-    label: 'Todas las alertas',
-    descripcion: 'Vista general de alertas operativas e historial',
-    icono: BellRing,
-  },
   {
     id: 'materiales',
     label: 'Falta de materiales',
@@ -76,8 +75,11 @@ const vistas: Array<{ id: VistaAlertas; label: string }> = [
 ]
 
 export default function Alertas() {
+  const { perfil } = useAuth()
+  const rolUsuario = perfil?.rol
   const [alertas, setAlertas] = useState<Alerta[]>([])
-  const [categoria, setCategoria] = useState<CategoriaAlertas>('todas')
+  const [reposiciones, setReposiciones] = useState<Pedido[]>([])
+  const [categoria, setCategoria] = useState<CategoriaAlertas>('priorizacion')
   const [vista, setVista] = useState<VistaAlertas>('operativas')
   const [filtros, setFiltros] = useState<FiltrosAlertas>(filtrosIniciales)
   const [alertaDetalle, setAlertaDetalle] = useState<Alerta | null>(null)
@@ -88,7 +90,7 @@ export default function Alertas() {
     if (!silencioso) setCargando(true)
     setError('')
 
-    const { data, error } = await obtenerAlertas()
+    const { data, error } = await obtenerAlertas({ sincronizarStock: !silencioso })
 
     if (error) {
       setError(
@@ -100,17 +102,37 @@ export default function Alertas() {
     }
 
     setAlertas(data || [])
+
+    const pedidosRes = await obtenerPedidos()
+    if (!pedidosRes.error) {
+      setReposiciones(
+        (pedidosRes.data || []).filter(
+          (pedido) =>
+            pedido.tipo_cliente === 'bodega' ||
+            pedido.origen === 'suministrador' ||
+            pedido.destino === 'bodega',
+        ),
+      )
+    }
+
     setCargando(false)
   }
 
   async function cambiarEstado(alerta: Alerta, estado: Alerta['estado']) {
     setError('')
 
-    const { error } = await actualizarEstadoAlerta(alerta.id, estado)
+    // Una tarjeta puede agrupar varias alertas del mismo pedido (retraso +
+    // reporte): al cerrarla se cierran todas las alertas fusionadas.
+    const ids = (alerta as AlertaVista).fusionadas?.length
+      ? ((alerta as AlertaVista).fusionadas as string[])
+      : [alerta.id]
 
-    if (error) {
-      setError(error.message)
-      return
+    for (const id of ids) {
+      const { error } = await actualizarEstadoAlerta(id, estado)
+      if (error) {
+        setError(error.message)
+        return
+      }
     }
 
     await registrarAuditoria({
@@ -142,43 +164,60 @@ export default function Alertas() {
     }
   }, [])
 
-  const conteoCategorias = useMemo(
-    () => ({
-      todas: alertas.filter(alertaOperativa).length,
-      materiales: alertas.filter(
-        (alerta) => alertaOperativa(alerta) && esAlertaFaltaMaterial(alerta)
-      ).length,
-      priorizacion: alertas.filter(
-        (alerta) =>
-          alertaOperativa(alerta) &&
-          !esAlertaFaltaMaterial(alerta) &&
-          esAlertaPriorizacionPedido(alerta)
-      ).length,
-    }),
-    [alertas]
+  // Falta de materiales = reposiciones pedidas al suministrador.
+  const reposActivas = useMemo(
+    () =>
+      reposiciones.filter((pedido) =>
+        ['pendiente', 'en_revision', 'aprobado', 'en_despacho'].includes(pedido.estado),
+      ),
+    [reposiciones],
+  )
+  const reposExito = useMemo(
+    () => reposiciones.filter((pedido) => pedido.estado === 'entregado'),
+    [reposiciones],
+  )
+  const reposNegado = useMemo(
+    () => reposiciones.filter((pedido) => pedido.estado === 'rechazado'),
+    [reposiciones],
   )
 
+  const conteoCategorias = useMemo(() => {
+    const operativas = alertas.filter(alertaOperativa)
+    return {
+      // Un material esperando reposición cuenta como alerta activa de falta.
+      materiales: reposActivas.length,
+      priorizacion: fusionarAlertasPorPedido(
+        operativas.filter(
+          (alerta) => !esAlertaFaltaMaterial(alerta) && esAlertaPriorizacionPedido(alerta)
+        )
+      ).length,
+    }
+  }, [alertas, reposActivas])
+
+  // El suministrador solo ve alertas ligadas a pedidos (no de materiales/stock).
+  const alertasRol = useMemo(() => {
+    if (rolUsuario !== 'suministrador') return alertas
+    return alertas.filter(esAlertaDePedido)
+  }, [alertas, rolUsuario])
+
   const alertasPorCategoria = useMemo(() => {
-    if (categoria === 'todas') {
-      return alertas
-    }
-
     if (categoria === 'materiales') {
-      return alertas.filter(esAlertaFaltaMaterial)
+      // La pestaña Falta de materiales se dibuja con reposiciones, no con alertas.
+      return [] as Alerta[]
     }
 
-    return alertas.filter(
+    return alertasRol.filter(
       (alerta) => !esAlertaFaltaMaterial(alerta) && esAlertaPriorizacionPedido(alerta)
     )
-  }, [alertas, categoria])
+  }, [alertasRol, categoria])
 
   const materialesFiltro = useMemo(() => {
-    const materiales = alertas
+    const materiales = alertasRol
       .map(materialAlerta)
       .filter((material): material is string => Boolean(material))
 
     return [...new Set(materiales)].sort((a, b) => a.localeCompare(b))
-  }, [alertas])
+  }, [alertasRol])
 
   const alertasFiltradas = useMemo(() => {
     const texto = normalizarTexto(filtros.busqueda)
@@ -220,17 +259,40 @@ export default function Alertas() {
   )
 
   const alertasVisibles = useMemo(() => {
-    if (vista === 'operativas') return alertasOperativas
-    return alertasFiltradas
-      .filter((alerta) => !alertaOperativa(alerta))
-      .sort(ordenarPorFechaReciente)
+    const base =
+      vista === 'operativas'
+        ? alertasOperativas
+        : alertasFiltradas
+            .filter((alerta) => !alertaOperativa(alerta))
+            .sort(ordenarPorFechaReciente)
+    return fusionarAlertasPorPedido(base)
   }, [alertasFiltradas, alertasOperativas, vista])
 
-  const resumen = useMemo(() => {
-    const operativas = alertasPorCategoria.filter(
-      alertaOperativa
-    ).length
+  const reposFiltradas = useMemo(() => {
+    const texto = normalizarTexto(filtros.busqueda)
+    const aplica = (pedido: Pedido) =>
+      !texto ||
+      normalizarTexto([pedido.material, pedido.codigo, pedido.solicitante].join(' ')).includes(texto)
+    return {
+      activas: reposActivas.filter(aplica),
+      exito: reposExito.filter(aplica),
+      negado: reposNegado.filter(aplica),
+    }
+  }, [reposActivas, reposExito, reposNegado, filtros.busqueda])
 
+  const resumen = useMemo(() => {
+    if (categoria === 'materiales') {
+      return [
+        {
+          titulo: 'Materiales pedidos al suministrador',
+          valor: reposActivas.length,
+          detalle: 'Enviados, esperando respuesta',
+          icono: PackageX,
+          clase: 'border-orange-200 bg-orange-50 text-orange-700',
+        },
+      ]
+    }
+    const operativas = alertasPorCategoria.filter(alertaOperativa).length
     return [
       {
         titulo: 'Operativas',
@@ -240,7 +302,7 @@ export default function Alertas() {
         clase: 'border-orange-200 bg-orange-50 text-orange-700',
       },
     ]
-  }, [alertasPorCategoria])
+  }, [alertasPorCategoria, categoria, reposActivas])
 
   const seccionesAlertas = useMemo(() => {
     if (vista === 'historial') {
@@ -256,7 +318,7 @@ export default function Alertas() {
       ]
     }
 
-    const criticas = alertasVisibles.filter((alerta) => semaforoAlerta(alerta) === 'critico')
+    const criticas = alertasVisibles.filter((alerta) => ['critico', 'alto'].includes(semaforoAlerta(alerta)))
     const riesgo = alertasVisibles.filter((alerta) => semaforoAlerta(alerta) === 'riesgo')
     const seguimiento = alertasVisibles.filter((alerta) => semaforoAlerta(alerta) === 'a_tiempo')
 
@@ -352,7 +414,7 @@ export default function Alertas() {
           <ShieldAlert size={18} className="text-orange-600" />
           Tipo de alerta
         </div>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {categoriasAlertas.map((item) => {
             const Icono = item.icono
             const activo = categoria === item.id
@@ -431,7 +493,7 @@ export default function Alertas() {
               value={filtros.busqueda}
               onChange={(event) => setFiltros({ ...filtros, busqueda: event.target.value })}
               placeholder="Pedido, material o mensaje"
-              className="mt-1 w-full border border-[#dfad9c] px-3 py-2 outline-none focus:ring-1 focus:ring-[#a33e00]"
+              className="mt-1 w-full border-2 border-[#ed1c24] px-3 py-2 outline-none focus:ring-1 focus:ring-[#a33e00]"
             />
           </label>
 
@@ -498,7 +560,17 @@ export default function Alertas() {
           </p>
         )}
 
+        {!cargando && categoria === 'materiales' && (
+          <PanelFaltaMateriales
+            vista={vista}
+            activas={reposFiltradas.activas}
+            exito={reposFiltradas.exito}
+            negado={reposFiltradas.negado}
+          />
+        )}
+
         {!cargando &&
+          categoria !== 'materiales' &&
           alertasVisibles.length > 0 &&
           seccionesAlertas.map((seccion) => (
             <section
@@ -539,7 +611,7 @@ export default function Alertas() {
             </section>
           ))}
 
-        {!cargando && alertasVisibles.length === 0 && (
+        {!cargando && categoria !== 'materiales' && alertasVisibles.length === 0 && (
           <p className="border border-dashed border-[#d8d2df] bg-white p-8 text-center text-[#5f5964]">
             No hay alertas en esta vista.
           </p>
@@ -550,6 +622,143 @@ export default function Alertas() {
         <DetalleAlerta alerta={alertaDetalle} onClose={() => setAlertaDetalle(null)} />
       )}
     </div>
+  )
+}
+
+function PanelFaltaMateriales({
+  activas,
+  exito,
+  negado,
+  vista,
+}: {
+  activas: Pedido[]
+  exito: Pedido[]
+  negado: Pedido[]
+  vista: VistaAlertas
+}) {
+  if (vista === 'operativas') {
+    return (
+      <SeccionReposicion
+        titulo="Pedidos al suministrador sin respuesta"
+        detalle="Materiales enviados al suministrador que aun no reponen ni niegan."
+        icono={PackageX}
+        pedidos={activas}
+        tono="activa"
+        vacio="No hay materiales esperando reposicion."
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <SeccionReposicion
+        titulo="Repuestos con exito"
+        detalle="El suministrador envio el material y se sumo al inventario de bodega."
+        icono={CheckCircle2}
+        pedidos={exito}
+        tono="exito"
+        vacio="Todavia no hay reposiciones completadas."
+      />
+      <SeccionReposicion
+        titulo="Negados por el suministrador"
+        detalle="El suministrador no contaba con stock para el envio."
+        icono={PackageX}
+        pedidos={negado}
+        tono="negado"
+        vacio="No hay reposiciones negadas."
+      />
+    </div>
+  )
+}
+
+function SeccionReposicion({
+  detalle,
+  icono: Icono,
+  pedidos,
+  titulo,
+  tono,
+  vacio,
+}: {
+  detalle: string
+  icono: typeof BellRing
+  pedidos: Pedido[]
+  titulo: string
+  tono: 'activa' | 'exito' | 'negado'
+  vacio: string
+}) {
+  return (
+    <section className="alertas-panel overflow-hidden border border-[#d8d2df] bg-white">
+      <div className="flex flex-col gap-3 border-b border-[#eadbd6] bg-[#fffaf7] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="alertas-section-icon inline-flex h-10 w-10 items-center justify-center text-[#a33e00]">
+            <Icono size={20} />
+          </span>
+          <div>
+            <h2 className="font-semibold text-[#0f0f11]">{titulo}</h2>
+            <p className="mt-1 text-sm text-[#5f5964]">{detalle}</p>
+          </div>
+        </div>
+        <span className="w-fit bg-[#261812] px-3 py-1 text-xs font-semibold text-white">
+          {pedidos.length} materiales
+        </span>
+      </div>
+
+      {pedidos.length === 0 ? (
+        <p className="p-6 text-sm text-slate-500">{vacio}</p>
+      ) : (
+        <div className="space-y-3 p-4">
+          {pedidos.map((pedido) => (
+            <TarjetaReposicion key={pedido.id} pedido={pedido} tono={tono} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function TarjetaReposicion({
+  pedido,
+  tono,
+}: {
+  pedido: Pedido
+  tono: 'activa' | 'exito' | 'negado'
+}) {
+  const estilos = {
+    activa: {
+      borde: 'border-l-4 border-amber-400',
+      badge: 'bg-amber-100 text-amber-800',
+      texto: 'Esperando al suministrador',
+    },
+    exito: {
+      borde: 'border-l-4 border-green-500',
+      badge: 'bg-green-100 text-green-700',
+      texto: 'Repuesto',
+    },
+    negado: {
+      borde: 'border-l-4 border-red-500',
+      badge: 'bg-red-100 text-red-700',
+      texto: 'Negado',
+    },
+  }[tono]
+
+  return (
+    <article className={`border bg-white p-4 ${estilos.borde}`}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-[#111111]">{pedido.material}</h3>
+          <p className="mt-1 text-sm text-[#5f5964]">
+            Pedido {pedido.codigo} - {pedido.cantidad} {pedido.unidad_medida} - {pedido.solicitante}
+          </p>
+          {tono === 'negado' && pedido.mensaje_suministrador && (
+            <p className="mt-2 text-sm font-medium text-red-600">{pedido.mensaje_suministrador}</p>
+          )}
+        </div>
+        <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${estilos.badge}`}>
+          {estilos.texto}
+        </span>
+      </div>
+      <p className="mt-2 text-xs font-medium text-[#69636d]">{describirTiempoPedido(pedido)}</p>
+    </article>
   )
 }
 
@@ -711,7 +920,7 @@ function DetalleAlerta({ alerta, onClose }: { alerta: Alerta; onClose: () => voi
                 <InfoDato label="Estado pedido" valor={formatearEtiqueta(alerta.pedido_estado || 'Sin estado')} />
                 <InfoDato label="Tiempo pedido" valor={tiempoPedidoAlerta(alerta) || 'Sin fecha requerida'} />
                 <InfoDato label="Fecha solicitud" valor={formatearFechaHora(alerta.pedido_fecha_solicitud)} />
-                <InfoDato label="Fecha requerida" valor={formatearFechaHora(alerta.pedido_fecha_compromiso)} />
+                <InfoDato label="Fecha estimada de entrega" valor={formatearFechaHora(alerta.pedido_fecha_compromiso)} />
                 <InfoDato label="Solicitante" valor={alerta.pedido_solicitante || 'Sin registrar'} />
                 <InfoDato label="Cedula/RUC" valor={alerta.pedido_cedula_solicitante || 'Sin registrar'} />
                 <InfoDato label="Flujo" valor={describirFlujoAlerta(alerta)} />
@@ -832,6 +1041,7 @@ function fondoIcono(alerta: Alerta) {
   if (!alertaOperativa(alerta)) return 'bg-green-50 text-green-700 ring-1 ring-green-100'
   const semaforo = semaforoAlerta(alerta)
   if (semaforo === 'critico') return 'bg-red-50 text-red-700 ring-1 ring-red-100'
+  if (semaforo === 'alto') return 'bg-orange-50 text-orange-700 ring-1 ring-orange-100'
   if (semaforo === 'riesgo') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
   return 'bg-green-50 text-green-700 ring-1 ring-green-100'
 }
@@ -840,6 +1050,7 @@ function colorRailAlerta(alerta: Alerta) {
   if (!alertaOperativa(alerta)) return 'bg-green-500'
   const semaforo = semaforoAlerta(alerta)
   if (semaforo === 'critico') return 'bg-red-600'
+  if (semaforo === 'alto') return 'bg-orange-500'
   if (semaforo === 'riesgo') return 'bg-yellow-500'
   if (semaforo === 'a_tiempo') return 'bg-green-500'
   return 'bg-slate-400'
@@ -882,30 +1093,58 @@ function describirAlerta(alerta: Alerta) {
 function esAlertaFaltaMaterial(alerta: Alerta) {
   const tipo = normalizarTexto(alerta.tipo_alerta || '')
   const texto = normalizarTexto(`${alerta.tipo_alerta || ''} ${alerta.mensaje || ''}`)
-  const cantidadOperativa = cantidadOperativaAlerta(alerta)
-  const estadoPedido = alerta.pedido_estado || ''
-  const stockPendienteDeValidar = !['en_despacho', 'entregado', 'cancelado', 'rechazado'].includes(
-    estadoPedido
-  )
-  const pedidoSinStock =
-    alerta.pedido_estado === 'sin_stock' ||
-    (stockPendienteDeValidar &&
-      typeof alerta.pedido_stock_disponible === 'number' &&
-      typeof cantidadOperativa === 'number' &&
-      alerta.pedido_stock_disponible < cantidadOperativa)
 
-  return (
-    pedidoSinStock ||
+  // 1) Alertas cuyo tipo/mensaje son de inventario (stock, existencia, etc.).
+  const esAlertaDeStock =
     tipo.includes('stock') ||
     tipo.includes('material') ||
+    tipo.includes('existencia') ||
     tipo.includes('reabastecimiento') ||
+    tipo.includes('inventario') ||
     texto.includes('sin stock') ||
     texto.includes('stock bajo') ||
     texto.includes('bajo el minimo') ||
     texto.includes('bajo minimo') ||
     texto.includes('material no planificable') ||
     texto.includes('transito pendiente') ||
-    texto.includes('reabastecimiento')
+    texto.includes('reabastecimiento') ||
+    texto.includes('agotars')
+
+  if (esAlertaDeStock) return true
+
+  // 2) Una alerta de priorizacion/retraso de pedido NO es de falta de material,
+  //    aunque el pedido tenga poco stock (se clasifica como priorizacion).
+  const esPriorizacionPedido =
+    tipo.includes('priorizacion') ||
+    tipo.includes('retras') ||
+    tipo.includes('sin_gestion') ||
+    tipo.includes('despacho') ||
+    tipo.includes('urgencia') ||
+    tipo.includes('nota_credito')
+
+  if (esPriorizacionPedido) return false
+
+  // 3) Fallback: un pedido explicitamente sin stock se muestra como falta de material.
+  const cantidadOperativa = cantidadOperativaAlerta(alerta)
+  const estadoPedido = alerta.pedido_estado || ''
+  const stockPendienteDeValidar = !['en_despacho', 'entregado', 'cancelado', 'rechazado'].includes(
+    estadoPedido
+  )
+
+  return (
+    alerta.pedido_estado === 'sin_stock' ||
+    (stockPendienteDeValidar &&
+      typeof alerta.pedido_stock_disponible === 'number' &&
+      typeof cantidadOperativa === 'number' &&
+      alerta.pedido_stock_disponible < cantidadOperativa)
+  )
+}
+
+function esAlertaDePedido(alerta: Alerta): boolean {
+  return (
+    Boolean(alerta.pedido_id) ||
+    Boolean(alerta.pedido_codigo) ||
+    esAlertaPriorizacionPedido(alerta)
   )
 }
 
@@ -931,7 +1170,8 @@ function esAlertaPriorizacionPedido(alerta: Alerta) {
     texto.includes('vencido') ||
     texto.includes('fecha compromiso') ||
     texto.includes('nota de credito') ||
-    texto.includes('urgencia')
+    texto.includes('urgencia') ||
+    tipo.includes('franquiciado')
   )
 }
 
@@ -952,7 +1192,96 @@ function esAlertaReporteFranquiciado(alerta: Alerta) {
   return tipo.includes('reporte_franquiciado') || texto.includes('reporte del franquiciado')
 }
 
+// Agrupa en una sola tarjeta las alertas de un mismo pedido (p. ej. retraso y
+// reabierto por reporte) para no mostrar la misma incidencia dos veces.
+function clavePedidoFusion(alerta: Alerta): string | null {
+  if (esAlertaFaltaMaterial(alerta)) return null
+  if (!esAlertaPriorizacionPedido(alerta)) return null
+  if (alerta.pedido_id) return `id:${alerta.pedido_id}`
+  if (alerta.pedido_codigo) return `cod:${normalizarTexto(alerta.pedido_codigo)}`
+  return null
+}
+
+function fusionarAlertasPorPedido(alertas: Alerta[]): AlertaVista[] {
+  const grupos = new Map<string, Alerta[]>()
+  const orden: Array<string | Alerta> = []
+
+  alertas.forEach((alerta) => {
+    const clave = clavePedidoFusion(alerta)
+    if (!clave) {
+      orden.push(alerta)
+      return
+    }
+    if (!grupos.has(clave)) {
+      grupos.set(clave, [])
+      orden.push(clave)
+    }
+    grupos.get(clave)!.push(alerta)
+  })
+
+  return orden.map((item) => {
+    if (typeof item !== 'string') return item
+    const grupo = grupos.get(item) as Alerta[]
+    return grupo.length === 1 ? grupo[0] : sintetizarAlertaPedido(grupo)
+  })
+}
+
+function sintetizarAlertaPedido(grupo: Alerta[]): AlertaVista {
+  const base = [...grupo].sort(ordenarPorCriticidad)[0]
+  const retraso = grupo.find((alerta) => !esAlertaReporteFranquiciado(alerta))
+  const reporte = grupo.find((alerta) => esAlertaReporteFranquiciado(alerta))
+  const codigo = base.pedido_codigo || grupo.map((alerta) => alerta.pedido_codigo).find(Boolean) || ''
+
+  const partes: string[] = []
+  if (retraso) partes.push(`atrasado (${detalleRetrasoDesde(retraso.mensaje)})`)
+  if (reporte) {
+    const motivo = motivoReporteDesde(reporte.mensaje)
+    partes.push(`reabierto por reporte del franquiciado${motivo ? ` (motivo: ${motivo})` : ''}`)
+  }
+
+  const nivel: Alerta['nivel'] = grupo.some((alerta) => alerta.nivel === 'critica')
+    ? 'critica'
+    : grupo.some((alerta) => alerta.nivel === 'alta')
+      ? 'alta'
+      : base.nivel
+
+  return {
+    ...base,
+    nivel,
+    tipo_alerta:
+      retraso && reporte ? 'pedido_retrasado_reabierto_por_reporte' : base.tipo_alerta,
+    mensaje: partes.length ? `Pedido ${codigo}: ${partes.join(' y ')}.` : base.mensaje,
+    fusionadas: grupo.map((alerta) => alerta.id),
+  }
+}
+
+function detalleRetrasoDesde(mensaje?: string | null): string {
+  const coincidencia = (mensaje || '').match(/(\d+)\s*d(?:ias)?\s*de\s*retraso/i)
+  return coincidencia ? `${coincidencia[1]} d de retraso` : 'con retraso'
+}
+
+function motivoReporteDesde(mensaje?: string | null): string {
+  const coincidencia = (mensaje || '').match(/motivo:\s*(.+?)\.?\s*$/i)
+  return coincidencia ? coincidencia[1].trim() : ''
+}
+
 function semaforoAlerta(alerta: Alerta): SemaforoOperativo {
+  // Una alerta de un pedido ya cerrado deja de ser operativa.
+  if (pedidoAlertaCerrado(alerta)) return 'cerrado'
+
+  // Alerta ligada a un pedido: su color es EXACTAMENTE el del semaforo del pedido
+  // (verde/amarillo/naranja/rojo) para que coincida en todo el sistema.
+  if (alerta.pedido_fecha_compromiso) {
+    const semaforo = resolverSemaforoPedido({
+      estado: estadoPedidoAlerta(alerta.pedido_estado),
+      fecha_compromiso: alerta.pedido_fecha_compromiso,
+      prioridad_calculada: alerta.pedido_prioridad_calculada ?? undefined,
+    })
+    // La alerta se vuelve ROJA desde la reprogramacion (naranja) en adelante.
+    return semaforo === 'alto' ? 'critico' : semaforo
+  }
+
+  // Alertas sin pedido (inventario/stock): color segun su nivel.
   if (alerta.nivel === 'critica') return 'critico'
   if (alerta.nivel === 'alta' || alerta.nivel === 'media') return 'riesgo'
   return 'a_tiempo'
@@ -961,9 +1290,10 @@ function semaforoAlerta(alerta: Alerta): SemaforoOperativo {
 function ordenarPorCriticidad(a: Alerta, b: Alerta) {
   const pesos: Record<SemaforoOperativo, number> = {
     critico: 0,
-    riesgo: 1,
-    a_tiempo: 2,
-    cerrado: 3,
+    alto: 1,
+    riesgo: 2,
+    a_tiempo: 3,
+    cerrado: 4,
   }
 
   const diferencia = pesos[semaforoAlerta(a)] - pesos[semaforoAlerta(b)]

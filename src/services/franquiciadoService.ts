@@ -46,6 +46,67 @@ export async function consultarPedidoInvitado(codigo: string, cedula: string) {
     .maybeSingle<Pedido>()
 }
 
+// Devuelve TODOS los materiales (filas) de un mismo pedido para ese codigo y
+// cedula. Multi-material: el franquiciado elige por cual material reclama.
+export async function consultarPedidosInvitado(codigo: string, cedula: string) {
+  const codigoLimpio = codigo.trim()
+  const cedulaLimpia = normalizarCedula(cedula)
+  const codigosConsulta = generarCodigosConsulta(codigoLimpio)
+
+  // 1) Los materiales de un pedido comparten codigo_consulta.
+  let base = await supabase
+    .from('pedidos')
+    .select('*')
+    .in('codigo_consulta', codigosConsulta)
+    .eq('cedula_solicitante', cedulaLimpia)
+    .order('created_at', { ascending: true })
+    .returns<Pedido[]>()
+
+  // 2) Respaldo: por codigo exacto de alguna fila del grupo.
+  if (!base.error && (base.data?.length ?? 0) === 0) {
+    base = await supabase
+      .from('pedidos')
+      .select('*')
+      .in('codigo', codigosConsulta)
+      .eq('cedula_solicitante', cedulaLimpia)
+      .order('created_at', { ascending: true })
+      .returns<Pedido[]>()
+  }
+
+  if (base.error || (base.data?.length ?? 0) === 0) return base
+
+  // 3) Si la fila pertenece a un grupo, trae TODOS los materiales del grupo.
+  const grupoId = base.data?.find((pedido) => pedido.grupo_id)?.grupo_id
+  if (grupoId) {
+    const grupo = await supabase
+      .from('pedidos')
+      .select('*')
+      .eq('grupo_id', grupoId)
+      .eq('cedula_solicitante', cedulaLimpia)
+      .order('created_at', { ascending: true })
+      .returns<Pedido[]>()
+    if (!grupo.error && (grupo.data?.length ?? 0) > 0) return grupo
+  }
+
+  return base
+}
+
+// Indica si un pedido todavia tiene un reporte del franquiciado sin cerrar.
+// Permite al franquiciado ver que su pedido sigue en gestion por un reporte.
+export async function tieneReporteActivoPedido(
+  pedido: Pick<Pedido, 'id' | 'codigo' | 'codigo_consulta'>,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('reportes_franquiciado')
+    .select('id')
+    .or(filtroReportesPedido(pedido))
+    .neq('estado', 'cerrado')
+    .limit(1)
+
+  if (error) return false
+  return (data?.length ?? 0) > 0
+}
+
 export async function crearReporteFranquiciado(reporte: ReporteFranquiciadoInput) {
   const result = await supabase
     .from('reportes_franquiciado')
@@ -81,10 +142,58 @@ export async function confirmarEntregaFranquiciado(pedido: Pedido, cedula: strin
     }
   }
 
+  // El franquiciado valida que recibio el material: se cierra el reporte para que
+  // el pedido salga de la cola operativa y pase a historial. Se cierra primero el
+  // reporte para que, al marcar el pedido como entregado, las alertas se resuelvan.
+  await cerrarReportesDePedido(pedido)
+
   return actualizarEstadoPedido(pedido.id, 'entregado', {
     pedido,
     responsable: 'Franquiciado',
   })
+}
+
+// Marca el reporte como "en_revision": la reposicion ya se envio y el sistema
+// espera la validacion del franquiciado. Evita volver a descontar stock.
+export async function marcarReposicionEnviada(
+  pedido: Pick<Pedido, 'id' | 'codigo' | 'codigo_consulta'>,
+) {
+  const result = await supabase
+    .from('reportes_franquiciado')
+    .update({ estado: 'en_revision' })
+    .or(filtroReportesPedido(pedido))
+    .eq('estado', 'recibido')
+    .select()
+
+  if (!result.error) invalidarDatosReportesFranquiciado()
+  return result
+}
+
+// Cierra los reportes activos de un pedido (al validar la entrega el franquiciado).
+async function cerrarReportesDePedido(
+  pedido: Pick<Pedido, 'id' | 'codigo' | 'codigo_consulta'>,
+) {
+  const result = await supabase
+    .from('reportes_franquiciado')
+    .update({ estado: 'cerrado' })
+    .or(filtroReportesPedido(pedido))
+    .neq('estado', 'cerrado')
+
+  if (!result.error) invalidarDatosReportesFranquiciado()
+  return result
+}
+
+// Filtro PostgREST que ubica los reportes de un pedido por id o por codigo.
+function filtroReportesPedido(
+  pedido: Pick<Pedido, 'id' | 'codigo' | 'codigo_consulta'>,
+) {
+  const condiciones: string[] = []
+  if (pedido.id) condiciones.push(`pedido_id.eq.${pedido.id}`)
+  ;[pedido.codigo, pedido.codigo_consulta]
+    .map((codigo) => (codigo || '').trim())
+    .filter((codigo) => codigo.length > 0)
+    .forEach((codigo) => condiciones.push(`codigo_consulta.eq.${codigo}`))
+  return condiciones.join(',')
 }
 
 export async function obtenerReportesFranquiciado() {

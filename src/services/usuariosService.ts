@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { consultarConCache, invalidarCache } from './cacheService'
-import { supabase, supabaseAnonKey, supabaseUrl } from './supabaseClient'
+import { supabase } from './supabaseClient'
 import type { RolUsuario, UsuarioApp } from '../types/usuario'
 
 export type UsuarioInput = {
@@ -47,44 +46,25 @@ export async function crearUsuarioApp(usuario: UsuarioInput) {
   return result
 }
 
+// Crea el usuario en Supabase Auth YA CONFIRMADO (via Edge Function admin) para
+// que pueda iniciar sesion de inmediato, y registra su rol en usuarios_app.
 export async function registrarUsuarioConAuth(usuario: UsuarioRegistroInput) {
-  const authAdminSeguro = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
+  const { data, error } = await supabase.functions.invoke('crear-usuario-app', {
+    body: {
+      nombre: usuario.nombre,
+      correo: usuario.correo,
+      password: usuario.password,
+      rol: usuario.rol,
     },
   })
 
-  const authResult = await authAdminSeguro.auth.signUp({
-    email: usuario.correo,
-    password: usuario.password,
-    options: {
-      data: {
-        nombre: usuario.nombre,
-        rol: usuario.rol,
-      },
-    },
-  })
-
-  if (authResult.error) {
-    const mensaje = authResult.error.message.toLowerCase()
-
-    if (mensaje.includes('user already registered') || mensaje.includes('already registered')) {
-      return crearUsuarioApp({
-        nombre: usuario.nombre,
-        correo: usuario.correo,
-        rol: usuario.rol,
-      })
-    }
-
-    return authResult
+  if (error) return { error }
+  if (data && data.ok === false) {
+    return { error: new Error(data.error || 'No se pudo crear el usuario.') }
   }
 
-  return crearUsuarioApp({
-    nombre: usuario.nombre,
-    correo: usuario.correo,
-    rol: usuario.rol,
-  })
+  invalidarCache('usuarios')
+  return { error: null, data }
 }
 
 export async function actualizarEstadoUsuario(id: string, estado: UsuarioApp['estado']) {
@@ -92,4 +72,20 @@ export async function actualizarEstadoUsuario(id: string, estado: UsuarioApp['es
 
   if (!result.error) invalidarCache('usuarios')
   return result
+}
+
+// Elimina al usuario de TODOS lados en Supabase (rol interno usuarios_app + Auth)
+// mediante una Edge Function con service_role. Solo un administrador puede.
+export async function eliminarUsuarioApp(correo: string) {
+  const { data, error } = await supabase.functions.invoke('eliminar-usuario-app', {
+    body: { correo },
+  })
+
+  if (error) return { error }
+  if (data && data.ok === false) {
+    return { error: new Error(data.error || 'No se pudo eliminar el usuario.') }
+  }
+
+  invalidarCache('usuarios')
+  return { error: null, data }
 }

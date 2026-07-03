@@ -1,19 +1,13 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Boxes,
   Download,
   Eye,
   FileWarning,
   Filter,
-  PlusCircle,
   Search,
-  Send,
   X,
 } from 'lucide-react'
-import { useAuth } from '../auth/authState'
-import MaterialSearchSelect from '../components/MaterialSearchSelect'
-import { claseSemaforoBadge } from '../lib/semaforoOperativo'
-import { textoDescripcion, textoMixtoOperativo } from '../lib/validacionesFormulario'
 import {
   escucharReportesFranquiciado,
   obtenerReportesFranquiciado,
@@ -25,7 +19,6 @@ import {
 import { escucharMateriales } from '../services/materialesService'
 import { escucharPedidos, obtenerPedidos } from '../services/pedidosService'
 import {
-  crearReporteOperativo,
   escucharReportesOperativos,
   obtenerReportesOperativos,
 } from '../services/reportesService'
@@ -37,11 +30,7 @@ import type {
   Pedido,
 } from '../types/pedido'
 import type { ReporteFranquiciado } from '../types/reporteFranquiciado'
-import type {
-  PrioridadReporteOperativo,
-  ReporteOperativo,
-  TipoReporteOperativo,
-} from '../types/reporteOperativo'
+import type { ReporteOperativo } from '../types/reporteOperativo'
 
 type FiltrosReporte = {
   busqueda: string
@@ -50,14 +39,6 @@ type FiltrosReporte = {
   condicion: 'todos' | CondicionMaterial
 }
 
-type ReporteOperativoForm = {
-  titulo: string
-  tipo: TipoReporteOperativo
-  prioridad: PrioridadReporteOperativo
-  pedido_codigo: string
-  material_id: string
-  descripcion: string
-}
 
 const filtrosIniciales: FiltrosReporte = {
   busqueda: '',
@@ -66,14 +47,6 @@ const filtrosIniciales: FiltrosReporte = {
   condicion: 'todos',
 }
 
-const reporteOperativoInicial: ReporteOperativoForm = {
-  titulo: '',
-  tipo: 'operativo',
-  prioridad: 'media',
-  pedido_codigo: '',
-  material_id: '',
-  descripcion: '',
-}
 
 const estadosPedido: Array<FiltrosReporte['estado']> = [
   'todos',
@@ -104,37 +77,17 @@ const condicionesMaterial: Array<FiltrosReporte['condicion']> = [
   'caducidad',
 ]
 
-const tiposReporteOperativo: TipoReporteOperativo[] = [
-  'operativo',
-  'inventario',
-  'pedido',
-  'incidente',
-  'suministro',
-]
 
-const prioridadesReporteOperativo: PrioridadReporteOperativo[] = [
-  'baja',
-  'media',
-  'alta',
-  'critica',
-]
 
 export default function Reportes() {
-  const { perfil } = useAuth()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [reportesFranquiciado, setReportesFranquiciado] = useState<ReporteFranquiciado[]>([])
   const [reportesOperativos, setReportesOperativos] = useState<ReporteOperativo[]>([])
-  const [formularioReporte, setFormularioReporte] = useState<ReporteOperativoForm>(
-    reporteOperativoInicial
-  )
   const [filtros, setFiltros] = useState<FiltrosReporte>(filtrosIniciales)
   const [cargando, setCargando] = useState(true)
-  const [guardandoReporte, setGuardandoReporte] = useState(false)
-  const [mostrarFormularioReporte, setMostrarFormularioReporte] = useState(false)
   const [reporteDetalle, setReporteDetalle] = useState<ReporteFranquiciado | null>(null)
-  const [errorReporte, setErrorReporte] = useState('')
-  const [mensajeReporte, setMensajeReporte] = useState('')
+  const [verHistorialReportes, setVerHistorialReportes] = useState(false)
 
   async function cargarReportes() {
     const [
@@ -156,48 +109,6 @@ export default function Reportes() {
     setCargando(false)
   }
 
-  async function registrarReporteOperativo(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setGuardandoReporte(true)
-    setErrorReporte('')
-    setMensajeReporte('')
-
-    if (
-      formularioReporte.titulo.trim().length < 4 ||
-      formularioReporte.descripcion.trim().length < 12
-    ) {
-      setErrorReporte('Completa un titulo y una descripcion mas detallada.')
-      setGuardandoReporte(false)
-      return
-    }
-
-    const { error } = await crearReporteOperativo({
-      titulo: formularioReporte.titulo.trim(),
-      tipo: formularioReporte.tipo,
-      prioridad: formularioReporte.prioridad,
-      descripcion: formularioReporte.descripcion.trim(),
-      pedido_codigo: formularioReporte.pedido_codigo.trim(),
-      material_id: formularioReporte.material_id,
-      rol_origen: perfil?.rol || 'administrador',
-      creado_por: perfil?.nombre || perfil?.correo || 'Usuario interno',
-    })
-
-    if (error) {
-      setErrorReporte(
-        error.message.includes('reportes_operativos')
-          ? 'No se pudo guardar. Ejecuta el SQL supabase/reportes_operativos.sql en Supabase.'
-          : error.message
-      )
-      setGuardandoReporte(false)
-      return
-    }
-
-    setFormularioReporte(reporteOperativoInicial)
-    setMostrarFormularioReporte(false)
-    setMensajeReporte('Reporte registrado correctamente.')
-    setGuardandoReporte(false)
-    cargarReportes()
-  }
 
   useEffect(() => {
     const timer = window.setTimeout(cargarReportes, 0)
@@ -329,10 +240,10 @@ export default function Reportes() {
       },
       {
         nombre: 'Reportes invitado',
-        valor: reportesFranquiciado.length,
+        valor: reportesFranquiciado.filter((reporte) => reporte.estado !== 'cerrado').length,
       },
     ]
-  }, [materialesPorDespachar, pedidosFiltrados, reportesFranquiciado.length, reportesOperativos])
+  }, [materialesPorDespachar, pedidosFiltrados, reportesFranquiciado, reportesOperativos])
 
   const reportesFranquiciadoFiltrados = useMemo(() => {
     const texto = normalizarTexto(filtros.busqueda)
@@ -363,6 +274,16 @@ export default function Reportes() {
     })
   }, [filtros.busqueda, pedidos, reportesFranquiciado])
 
+  const reportesFranquiciadoActivos = useMemo(
+    () => reportesFranquiciadoFiltrados.filter((reporte) => reporte.estado !== 'cerrado'),
+    [reportesFranquiciadoFiltrados],
+  )
+
+  const reportesFranquiciadoHistorial = useMemo(
+    () => reportesFranquiciadoFiltrados.filter((reporte) => reporte.estado === 'cerrado'),
+    [reportesFranquiciadoFiltrados],
+  )
+
   const pedidoDetalleReporte = useMemo(() => {
     if (!reporteDetalle) return null
 
@@ -385,18 +306,6 @@ export default function Reportes() {
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
-            onClick={() => {
-              setMostrarFormularioReporte((actual) => !actual)
-              setErrorReporte('')
-              setMensajeReporte('')
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            <PlusCircle size={16} />
-            {mostrarFormularioReporte ? 'Ocultar formulario' : 'Nuevo reporte'}
-          </button>
-          <button
-            type="button"
             onClick={() => exportarPedidosCsv(pedidosFiltrados)}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
@@ -414,127 +323,6 @@ export default function Reportes() {
         </div>
       </div>
 
-      {mostrarFormularioReporte && (
-      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2 font-semibold text-slate-800">
-              <PlusCircle size={18} className="text-orange-600" />
-              Nuevo reporte operativo
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              Registra una novedad operativa para seguimiento interno.
-            </p>
-          </div>
-        </div>
-
-        <form onSubmit={registrarReporteOperativo} className="mt-5 space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-            <CampoTexto
-              label="Titulo"
-              value={formularioReporte.titulo}
-              placeholder="Ej. Retraso por falta de despacho"
-              onChange={(titulo) =>
-                setFormularioReporte({
-                  ...formularioReporte,
-                  titulo: textoMixtoOperativo(titulo, 100),
-                })
-              }
-            />
-            <CampoSelect
-              label="Tipo"
-              value={formularioReporte.tipo}
-              opciones={tiposReporteOperativo}
-              onChange={(tipo) =>
-                setFormularioReporte({
-                  ...formularioReporte,
-                  tipo: tipo as TipoReporteOperativo,
-                })
-              }
-            />
-            <CampoSelect
-              label="Prioridad"
-              value={formularioReporte.prioridad}
-              opciones={prioridadesReporteOperativo}
-              onChange={(prioridad) =>
-                setFormularioReporte({
-                  ...formularioReporte,
-                  prioridad: prioridad as PrioridadReporteOperativo,
-                })
-              }
-            />
-            <CampoTexto
-              label="Pedido relacionado"
-              value={formularioReporte.pedido_codigo}
-              placeholder="Opcional, ej. PED-0004"
-              list="pedidos-reporte"
-              onChange={(pedido_codigo) =>
-                setFormularioReporte({
-                  ...formularioReporte,
-                  pedido_codigo: textoMixtoOperativo(pedido_codigo, 60),
-                })
-              }
-            />
-          </div>
-
-          <datalist id="pedidos-reporte">
-            {pedidos.map((pedido) => (
-              <option key={pedido.id} value={pedido.codigo} />
-            ))}
-          </datalist>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr]">
-            <MaterialSearchSelect
-              label="Material relacionado"
-              materiales={materiales}
-              value={formularioReporte.material_id}
-              onChange={(material_id) =>
-                setFormularioReporte({ ...formularioReporte, material_id })
-              }
-              placeholder="Escribe nombre, codigo o categoria"
-              emptyLabel="Sin material especifico"
-            />
-
-            <label className="block text-sm font-medium text-slate-700">
-              Descripcion
-              <textarea
-                value={formularioReporte.descripcion}
-                onChange={(event) =>
-                  setFormularioReporte({
-                    ...formularioReporte,
-                    descripcion: textoDescripcion(event.target.value, 800),
-                  })
-                }
-                rows={3}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Describe la novedad, causa, impacto o accion requerida."
-              />
-            </label>
-          </div>
-
-          {errorReporte && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorReporte}
-            </div>
-          )}
-
-          {mensajeReporte && (
-            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              {mensajeReporte}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={guardandoReporte}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
-          >
-            <Send size={17} />
-            {guardandoReporte ? 'Guardando...' : 'Guardar reporte'}
-          </button>
-        </form>
-      </section>
-      )}
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center gap-2 font-semibold text-slate-800">
@@ -544,7 +332,7 @@ export default function Reportes() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(3,minmax(160px,1fr))]">
           <label className="block text-sm font-medium text-slate-700">
             Busqueda
-            <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 focus-within:ring-2 focus-within:ring-orange-500">
+            <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border-2 border-[#ed1c24] bg-white px-4 focus-within:ring-2 focus-within:ring-orange-500">
               <Search size={17} className="text-slate-400" />
               <input
                 value={filtros.busqueda}
@@ -610,13 +398,10 @@ export default function Reportes() {
                   <th className="px-5 py-3 text-left">Material</th>
                   <th className="px-5 py-3 text-left">Solicitado</th>
                   <th className="px-5 py-3 text-left">Stock</th>
-                  <th className="px-5 py-3 text-left">Faltante</th>
                 </tr>
               </thead>
               <tbody>
                 {materialesPorDespachar.map((item) => {
-                  const faltante = Math.max(0, item.solicitado - item.stock)
-
                   return (
                     <tr key={item.material} className="border-t border-slate-100">
                       <td className="px-5 py-4">
@@ -627,18 +412,13 @@ export default function Reportes() {
                         {item.solicitado} {item.unidad}
                       </td>
                       <td className="px-5 py-4 text-slate-600">{item.stock}</td>
-                      <td className="px-5 py-4">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${faltante > 0 ? claseSemaforoBadge('critico') : claseSemaforoBadge('a_tiempo')}`}>
-                          {faltante}
-                        </span>
-                      </td>
                     </tr>
                   )
                 })}
 
                 {!cargando && materialesPorDespachar.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-5 py-8 text-center text-slate-500">
+                    <td colSpan={3} className="px-5 py-8 text-center text-slate-500">
                       Sin materiales pendientes de despacho.
                     </td>
                   </tr>
@@ -653,7 +433,7 @@ export default function Reportes() {
       <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-slate-200 p-5 font-semibold text-slate-800">
           <FileWarning size={18} className="text-orange-600" />
-          Reportes de franquiciados invitados
+          Reportes activos de franquiciados invitados
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -669,7 +449,7 @@ export default function Reportes() {
               </tr>
             </thead>
             <tbody>
-              {reportesFranquiciadoFiltrados.map((reporte) => (
+              {reportesFranquiciadoActivos.map((reporte) => (
                 <tr key={reporte.id} className="border-t border-slate-100 align-top">
                   <td className="px-5 py-4">
                     <p className="font-semibold text-slate-800">{reporte.codigo_consulta}</p>
@@ -705,12 +485,12 @@ export default function Reportes() {
                 </tr>
               ))}
 
-              {!cargando && reportesFranquiciadoFiltrados.length === 0 && (
+              {!cargando && reportesFranquiciadoActivos.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
                     {filtros.busqueda.trim()
-                      ? 'No hay reportes que coincidan con la busqueda.'
-                      : 'Sin reportes enviados por franquiciados.'}
+                      ? 'No hay reportes activos que coincidan con la busqueda.'
+                      : 'No hay reportes activos de franquiciados.'}
                   </td>
                 </tr>
               )}
@@ -718,6 +498,78 @@ export default function Reportes() {
           </table>
         </div>
       </section>
+
+      {reportesFranquiciadoHistorial.length > 0 && (
+        <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setVerHistorialReportes((valor) => !valor)}
+            className="flex w-full items-center justify-between gap-2 border-b border-slate-200 p-5 text-left font-semibold text-slate-800"
+          >
+            <span className="flex items-center gap-2">
+              <FileWarning size={18} className="text-slate-400" />
+              Historial de reportes cerrados ({reportesFranquiciadoHistorial.length})
+            </span>
+            <span className="text-xs font-medium text-slate-500">
+              {verHistorialReportes ? 'Ocultar' : 'Ver'}
+            </span>
+          </button>
+          {verHistorialReportes && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="px-5 py-3 text-left">Pedido</th>
+                    <th className="px-5 py-3 text-left">Solicitante</th>
+                    <th className="px-5 py-3 text-left">Motivo</th>
+                    <th className="px-5 py-3 text-left">Detalle</th>
+                    <th className="px-5 py-3 text-left">Estado</th>
+                    <th className="px-5 py-3 text-left">Fecha</th>
+                    <th className="px-5 py-3 text-left">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportesFranquiciadoHistorial.map((reporte) => (
+                    <tr key={reporte.id} className="border-t border-slate-100 align-top">
+                      <td className="px-5 py-4">
+                        <p className="font-semibold text-slate-800">{reporte.codigo_consulta}</p>
+                        <p className="text-xs text-slate-500">
+                          Cliente/RUC {reporte.cedula_solicitante}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">{reporte.solicitante || '-'}</td>
+                      <td className="px-5 py-4 text-slate-600">
+                        {formatearEtiqueta(reporte.motivo)}
+                      </td>
+                      <td className="max-w-md px-5 py-4 text-slate-600">
+                        {recortarTexto(reporte.descripcion, 78)}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                          {formatearEtiqueta(reporte.estado)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">
+                        {reporte.created_at ? new Date(reporte.created_at).toLocaleString() : '-'}
+                      </td>
+                      <td className="px-5 py-4">
+                        <button
+                          type="button"
+                          onClick={() => setReporteDetalle(reporte)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <Eye size={15} />
+                          Ver detalle
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {reporteDetalle && (
         <ReporteDetalleModal
@@ -816,61 +668,7 @@ function DatoReporte({ label, valor }: { label: string; valor: string }) {
   )
 }
 
-function CampoTexto({
-  label,
-  list,
-  onChange,
-  placeholder,
-  value,
-}: {
-  label: string
-  list?: string
-  onChange: (value: string) => void
-  placeholder: string
-  value: string
-}) {
-  return (
-    <label className="block text-sm font-medium text-slate-700">
-      {label}
-      <input
-        value={value}
-        list={list}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-      />
-    </label>
-  )
-}
 
-function CampoSelect({
-  label,
-  onChange,
-  opciones,
-  value,
-}: {
-  label: string
-  onChange: (value: string) => void
-  opciones: string[]
-  value: string
-}) {
-  return (
-    <label className="block text-sm font-medium text-slate-700">
-      {label}
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-      >
-        {opciones.map((opcion) => (
-          <option key={opcion} value={opcion}>
-            {formatearEtiqueta(opcion)}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}
 
 function FiltroSelect({
   label,
@@ -889,7 +687,7 @@ function FiltroSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+        className="mt-1 w-full rounded-lg border-2 border-slate-400 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
       >
         {opciones.map((opcion) => (
           <option key={opcion} value={opcion}>

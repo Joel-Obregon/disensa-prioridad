@@ -2,11 +2,12 @@ import { type FormEvent, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { ArrowRight, Lock, Mail, Search } from 'lucide-react'
 import { esRolInterno, rutaInicialPorRol } from '../auth/permisos'
-import disensaLogo from '../assets/disensa-logo.svg'
 import ThemeToggle from '../components/ThemeToggle'
 import { esCorreoValido } from '../lib/validacionesFormulario'
 import { obtenerUsuarioPorCorreo } from '../services/usuariosService'
 import { supabase } from '../services/supabaseClient'
+
+const disensaLogo = '/disensa-holcim-logo-source.png'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -94,7 +95,7 @@ export default function Login() {
         <div className="w-full max-w-sm">
         <div className="mb-10 text-center lg:text-left">
           <div className="flex items-center justify-center gap-3 lg:justify-start">
-            <img src={disensaLogo} alt="Disensa" className="h-12 w-12 object-contain" />
+            <img src={disensaLogo} alt="Disensa" className="h-11 w-auto rounded object-contain" />
             <h1 className="login-title text-3xl font-black tracking-tight text-[#c8102e]">Disensa Prioridad</h1>
           </div>
           <div className="lg:pl-[60px]">
@@ -164,11 +165,14 @@ export default function Login() {
           </button>
 
           <div className="mt-7 border-t border-[#e5e1df] pt-6">
+          <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wide text-[#8e7164]">
+            Eres franquiciado?
+          </p>
           <Link
             to="/consulta-pedido"
-            className="inline-flex w-full items-center justify-center gap-2 border border-[#d7d3d0] px-4 py-2.5 text-sm font-semibold text-[#565e74] transition hover:bg-[#f7f4f2]"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-[#e0b400] bg-[#ffd400] px-4 py-3 text-sm font-bold text-[#0f0f11] shadow-sm transition hover:bg-[#f5c800] hover:shadow-md"
           >
-            <Search size={17} />
+            <Search size={18} />
             Consultar como invitado
           </Link>
           </div>

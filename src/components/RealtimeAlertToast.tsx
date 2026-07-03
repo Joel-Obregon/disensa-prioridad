@@ -18,6 +18,7 @@ import {
   escucharAlertasVisualesLocales,
 } from '../lib/alertRuntimeEvents'
 import type { Alerta } from '../types/alerta'
+import { alertaSilenciada } from '../lib/alertSilencio'
 
 const DURACION_TOAST_MS = 6000
 const INTERVALO_RESPALDO_MS = 30000
@@ -73,6 +74,7 @@ export default function RealtimeAlertToast() {
     )
 
     if (
+      alertaSilenciada(nuevaAlerta) ||
       (!opciones.forzarNotificacion && (yaConocidaPorId || yaConocidaPorFirma)) ||
       (!opciones.forzarNotificacion && opciones.notificar === false) ||
       enPaginaAlertasRef.current

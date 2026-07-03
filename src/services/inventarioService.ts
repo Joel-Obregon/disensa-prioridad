@@ -66,15 +66,15 @@ type MaterialOperativoRow = {
 const TAMANO_BLOQUE_INVENTARIO_OPERATIVO = 1000
 const CACHE_INVENTARIO_OPERATIVO_MS = 15_000
 
-export async function obtenerInventarioOperativo() {
+export async function obtenerInventarioOperativo(incluirTodos = false) {
   return consultarConCache(
-    'inventario:operativo',
+    incluirTodos ? 'inventario:operativo:todos' : 'inventario:operativo',
     CACHE_INVENTARIO_OPERATIVO_MS,
-    cargarInventarioOperativo
+    () => cargarInventarioOperativo(incluirTodos)
   )
 }
 
-async function cargarInventarioOperativo() {
+async function cargarInventarioOperativo(incluirTodos = false) {
   const materialesResult = await obtenerMateriales()
 
   if (materialesResult.error) {
@@ -173,9 +173,21 @@ async function cargarInventarioOperativo() {
     }
   })
 
-  inventario.sort((a, b) => a.nombre.localeCompare(b.nombre))
+  // Oculta los materiales sin catman Y sin stock (residuos del catalogo viejo);
+  // deja los que tengan stock o un catman asignado. En Reposición se piden todos
+  // (incluirTodos=true) porque un material nuevo aún no tiene stock ni catman.
+  const inventarioVisible = incluirTodos
+    ? inventario
+    : inventario.filter((material) => {
+        const tieneStock = numeroNoNegativo(material.stock_disponible_operativo) > 0
+        const catman = (material.catman_nombre || '').trim().toLowerCase()
+        const tieneCatman = catman !== '' && !catman.startsWith('sin catman')
+        return tieneStock || tieneCatman
+      })
 
-  return { ...materialesResult, data: inventario }
+  inventarioVisible.sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+  return { ...materialesResult, data: inventarioVisible }
 }
 
 async function obtenerPedidoMaximoPorMaterial() {

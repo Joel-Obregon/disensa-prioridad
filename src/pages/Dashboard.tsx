@@ -1,21 +1,31 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   BarChart3,
   Bell,
   Boxes,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
+  History,
   Package,
   PackageX,
   Timer,
+  TrendingDown,
+  TrendingUp,
   Truck,
   Warehouse,
 } from 'lucide-react'
 import { useAuth } from '../auth/authState'
-import { calcularPrioridad, ordenarPorPrioridad, resolverNivelPrioridad } from '../lib/prioridad'
+import {
+  calcularPrioridad,
+  construirFrecuenciaClientes,
+  ordenarPorPrioridad,
+  resolverNivelPrioridad,
+} from '../lib/prioridad'
 import {
   clasePrioridadBadge,
   clasePrioridadBarra,
@@ -34,6 +44,11 @@ import { escucharMateriales } from '../services/materialesService'
 import { obtenerOtifOperativo, type OtifOperativo } from '../services/operacionService'
 import { escucharPedidos, obtenerPedidos } from '../services/pedidosService'
 import { obtenerReglas } from '../services/reglasService'
+import {
+  obtenerPrioridadCriterios,
+  suscribirseACriteriosPrioridad,
+  type PrioridadCriterio,
+} from '../services/prioridadCriteriosService'
 import type { Alerta } from '../types/alerta'
 import type { InventarioOperativo } from '../types/material'
 import type { Pedido } from '../types/pedido'
@@ -66,23 +81,27 @@ export default function Dashboard() {
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [reglas, setReglas] = useState<ReglaNegocio[]>([])
+  const [criteriosPrioridad, setCriteriosPrioridad] = useState<PrioridadCriterio[]>([])
   const [otif, setOtif] = useState<OtifOperativo>(otifInicial())
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
     async function cargarResumen() {
-      const [materialesResult, alertasResult, pedidosResult, reglasResult, otifResult] = await Promise.all([
-        obtenerInventarioOperativo(),
-        obtenerAlertas(),
-        obtenerPedidos(),
-        obtenerReglas(),
-        obtenerOtifOperativo(),
-      ])
+      const [materialesResult, alertasResult, pedidosResult, reglasResult, otifResult, criteriosResult] =
+        await Promise.all([
+          obtenerInventarioOperativo(),
+          obtenerAlertas(),
+          obtenerPedidos(),
+          obtenerReglas(),
+          obtenerOtifOperativo(),
+          obtenerPrioridadCriterios(),
+        ])
 
       setMateriales(materialesResult.data || [])
       setAlertas(alertasResult.data || [])
       setPedidos(pedidosResult.error ? [] : pedidosResult.data || [])
       setReglas(reglasResult.error ? [] : reglasResult.data || [])
+      setCriteriosPrioridad(criteriosResult.error ? [] : criteriosResult.data || [])
       setOtif(otifResult.data || otifInicial())
       setCargando(false)
     }
@@ -151,9 +170,18 @@ export default function Dashboard() {
   const alertasVisibles = alertas
 
   const colaPriorizada = useMemo(
-    () => ordenarPorPrioridad(pedidosVisibles, reglas),
-    [pedidosVisibles, reglas]
+    () => ordenarPorPrioridad(pedidosVisibles, criteriosPrioridad, construirFrecuenciaClientes(pedidos)),
+    [pedidosVisibles, criteriosPrioridad, pedidos]
   )
+
+  useEffect(() => {
+    const desuscribir = suscribirseACriteriosPrioridad(() => {
+      obtenerPrioridadCriterios().then((resultado) => {
+        if (!resultado.error) setCriteriosPrioridad(resultado.data || [])
+      })
+    })
+    return desuscribir
+  }, [])
 
   const materialesEnRiesgo = useMemo(() => {
     return [...materialesFiltrados]
@@ -210,7 +238,7 @@ export default function Dashboard() {
       porDespachar,
       retrasados,
       sinStock,
-      totalPedidos: pedidosVisibles.length,
+      totalPedidos: pedidosVisibles.filter((pedido) => !pedidoCerrado(pedido)).length,
     }
   }, [pedidosVisibles, reglas])
 
@@ -267,39 +295,68 @@ export default function Dashboard() {
     () => construirPedidosPorEstado(pedidosVisibles),
     [pedidosVisibles]
   )
+  const serieDiaria = useMemo(() => construirSerieDiaria(pedidosVisibles, 7), [pedidosVisibles])
+  const tendenciaSemana = useMemo(() => calcularTendenciaSemana(pedidosVisibles), [pedidosVisibles])
+  const proximosVencimientos = useMemo(
+    () => construirProximosVencimientos(pedidosVisibles),
+    [pedidosVisibles]
+  )
+  const antiguedadPedidos = useMemo(() => construirAntiguedad(pedidosVisibles), [pedidosVisibles])
+  const vencenHoyOAntes = useMemo(() => contarVencenHoy(pedidosVisibles), [pedidosVisibles])
+  const otifPromedio = Math.round(
+    (otif.suministradorBodega.valor + otif.bodegaFranquiciado.valor) / 2
+  )
 
   return (
     <div className="dashboard-executive space-y-4">
-      <section className="rounded-lg border border-[#d8d2df] bg-white p-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+      <section className="animate-surface-in overflow-hidden rounded-xl border border-[#e7d9da] bg-gradient-to-br from-white via-white to-[#fff3f4] p-5 shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#c8102e]">
-              <Warehouse size={16} />
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#fdecec] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#c8102e]">
+              <Warehouse size={14} />
               {configuracionRol.etiqueta}
             </div>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-[#0f0f11]">
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-[#0f0f11]">
               Resumen ejecutivo
             </h1>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-[#5f5964]">
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5f5964]">
               {configuracionRol.descripcion}
             </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                to={configuracionRol.accionPrincipal.ruta}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#c8102e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9f0d25]"
+              >
+                {configuracionRol.accionPrincipal.texto}
+                <ArrowRight size={16} />
+              </Link>
+              <Link
+                to={configuracionRol.accionSecundaria.ruta}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#cfc4c5] bg-white px-4 py-2 text-sm font-semibold text-[#1a1a1a] transition hover:bg-[#fff0f0]"
+              >
+                {configuracionRol.accionSecundaria.texto}
+              </Link>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-[#efe5e3] pt-3">
-          <Link
-            to={configuracionRol.accionPrincipal.ruta}
-            className="inline-flex items-center justify-center gap-2 bg-[#c8102e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9f0d25]"
-          >
-            {configuracionRol.accionPrincipal.texto}
-            <ArrowRight size={16} />
-          </Link>
-          <Link
-            to={configuracionRol.accionSecundaria.ruta}
-            className="inline-flex items-center justify-center gap-2 border border-[#cfc4c5] bg-white px-4 py-2 text-sm font-semibold text-[#1a1a1a] hover:bg-[#fff0f0]"
-          >
-            {configuracionRol.accionSecundaria.texto}
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <ChipResumen
+              icono={CalendarClock}
+              valor={cargando ? 0 : vencenHoyOAntes}
+              etiqueta="Vencen hoy / vencidos"
+              tono={vencenHoyOAntes > 0 ? 'red' : 'green'}
+            />
+            <ChipResumen
+              icono={AlertTriangle}
+              valor={cargando ? 0 : metricas.pedidosCriticos}
+              etiqueta="Pedidos criticos"
+              tono={metricas.pedidosCriticos > 0 ? 'red' : 'green'}
+            />
+            <div className="rounded-xl border border-[#e7d9da] bg-white px-4 py-2 text-center shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#5f5964]">OTIF promedio</p>
+              <GaugeOtif valor={cargando ? 0 : otifPromedio} />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -320,10 +377,10 @@ export default function Dashboard() {
           return (
             <article
               key={item.titulo}
-              className={`rounded-lg border border-[#d8d2df] bg-white p-3 ${bordeKpi(item.tono)}`}
+              className={`animate-surface-in rounded-xl border border-[#d8d2df] bg-white p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${bordeKpi(item.tono)}`}
             >
               <div className="flex items-start gap-3">
-                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded ${colorIcono(item.tono)}`}>
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${colorIcono(item.tono)}`}>
                   <Icono size={20} />
                 </span>
                 <div className="min-w-0">
@@ -334,6 +391,11 @@ export default function Dashboard() {
                     {cargando ? '-' : formatearNumero(item.valor)}
                   </strong>
                   <p className="mt-1 text-xs leading-5 text-[#5f5964]">{item.detalle}</p>
+                  {rol === 'administrador' && item.titulo === 'Pedidos pendientes' && (
+                    <div className="mt-2">
+                      <BadgeTendencia tendencia={tendenciaSemana} />
+                    </div>
+                  )}
                 </div>
               </div>
             </article>
@@ -343,10 +405,45 @@ export default function Dashboard() {
 
       {rol === 'administrador' && (
         <>
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1fr_0.9fr]">
+            <PanelEjecutivo
+              titulo="Tendencia de pedidos"
+              descripcion="Creados vs entregados (ultimos 7 dias)."
+              icono={Activity}
+            >
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <BadgeTendencia tendencia={tendenciaSemana} />
+                  <div className="flex gap-3 text-[11px] font-semibold">
+                    <span className="inline-flex items-center gap-1 text-[#c8102e]">
+                      <span className="h-1.5 w-3 rounded-full bg-[#c8102e]" />
+                      Creados
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#118744]">
+                      <span className="h-1.5 w-3 rounded-full bg-[#118744]" />
+                      Entregados
+                    </span>
+                  </div>
+                </div>
+                <Sparkline serie={serieDiaria} />
+              </div>
+            </PanelEjecutivo>
+
+            <PanelVencimientos vencimientos={proximosVencimientos} />
+
+            <PanelEjecutivo
+              titulo="Retraso de pedidos"
+              descripcion="Pedidos abiertos por dias de retraso (vs la fecha del SLA)."
+              icono={History}
+            >
+              <GraficoAntiguedad datos={antiguedadPedidos} />
+            </PanelEjecutivo>
+          </section>
+
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelEjecutivo
               titulo="Prioridad de pedidos"
-              descripcion="Distribucion por nivel calculado."
+              descripcion="Cuantos pedidos hay en cada nivel. El nivel sigue el retraso vs el SLA del cliente."
               icono={AlertTriangle}
             >
               <GraficoDonutPrioridad datos={distribucionPrioridad} />
@@ -597,11 +694,19 @@ function GraficoDonutPrioridad({
       </div>
       <div className="mt-5 space-y-2">
         {datos.map((item) => (
-          <div key={item.nombre} className="grid grid-cols-[1rem_1fr_auto] items-center gap-2 text-xs">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorHexPrioridad(item.nombre) }} />
-            <span className="font-semibold text-[#5f5964]">{item.nombre}</span>
-            <span className="font-tabular font-bold text-[#0f0f11]">
-              {total === 0 ? '0%' : `${Math.round((item.valor / total) * 100)}%`}
+          <div key={item.nombre} className="grid grid-cols-[1rem_1fr_auto] items-start gap-2 text-xs">
+            <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ background: colorHexPrioridad(item.nombre) }} />
+            <span>
+              <span className="font-semibold text-[#0f0f11]">{item.nombre}</span>
+              <span className="block text-[11px] leading-4 text-[#7c7780]">
+                {descripcionNivelPrioridad(item.nombre)}
+              </span>
+            </span>
+            <span className="font-tabular text-right font-bold text-[#0f0f11]">
+              {item.valor}
+              <span className="block text-[11px] font-medium text-[#7c7780]">
+                {total === 0 ? '0%' : `${Math.round((item.valor / total) * 100)}%`}
+              </span>
             </span>
           </div>
         ))}
@@ -1037,7 +1142,7 @@ function obtenerConfiguracionRol(rol: RolUsuario) {
       accionPrincipal: { ruta: '/reportes', texto: 'Ver reportes' },
       accionSecundaria: { ruta: '/estado-sistema', texto: 'Revisar sistema' },
       descripcion:
-        'Vista general de la operacion: pedidos, inventario, alertas, cumplimiento OTIF y espera operativa.',
+        'Pedidos, inventario, alertas y cumplimiento OTIF.',
       etiqueta: 'Vista administrador',
       indicador: 'OTIF operativo',
       indicadorDetalle:
@@ -1051,7 +1156,7 @@ function obtenerConfiguracionRol(rol: RolUsuario) {
       accionPrincipal: { ruta: '/pedidos', texto: 'Gestionar despacho' },
       accionSecundaria: { ruta: '/inventario', texto: 'Revisar inventario' },
       descripcion:
-        'Vista operativa para preparar despachos, detectar quiebres de stock y atender alertas de bodega.',
+        'Despachos, quiebres de stock y alertas de bodega.',
       etiqueta: 'Vista bodega',
       indicador: 'OTIF de despacho',
       indicadorDetalle:
@@ -1064,7 +1169,7 @@ function obtenerConfiguracionRol(rol: RolUsuario) {
     accionPrincipal: { ruta: '/materiales', texto: 'Revisar materiales' },
     accionSecundaria: { ruta: '/pedidos', texto: 'Ver pedidos' },
     descripcion:
-      'Vista enfocada en abastecimiento: materiales sensibles, pedidos con falta de stock y alertas de suministro.',
+      'Materiales sensibles, faltas de stock y alertas de suministro.',
     etiqueta: 'Vista suministrador',
     indicador: 'OTIF de suministro',
     indicadorDetalle:
@@ -1292,6 +1397,13 @@ function construirGradienteDonut(datos: Array<{ color: string; valor: number }>)
   return `conic-gradient(${segmentos.join(', ')})`
 }
 
+function descripcionNivelPrioridad(nombre: string) {
+  if (nombre === 'Critica') return 'Rojo: +30 d de retraso o quiebre de stock.'
+  if (nombre === 'Alta') return 'Naranja: reprogramado, 7-30 d de retraso.'
+  if (nombre === 'Media') return 'Amarillo: 1-6 d de retraso.'
+  return 'Verde: dentro del plazo del SLA.'
+}
+
 function colorHexPrioridad(nombre: string) {
   if (nombre === 'Critica') return '#c8102e'
   if (nombre === 'Alta') return '#ffd200'
@@ -1351,7 +1463,8 @@ function fechaLocal(fecha: string) {
 }
 
 function etiquetaSemaforoCola(semaforo: SemaforoOperativo) {
-  if (semaforo === 'critico') return 'Retraso critico'
+  if (semaforo === 'critico') return 'Prioridad critica'
+  if (semaforo === 'alto') return 'Prioridad alta'
   if (semaforo === 'riesgo') return 'Con retraso'
   if (semaforo === 'a_tiempo') return 'En tiempo'
   return 'Cerrado'
@@ -1359,6 +1472,7 @@ function etiquetaSemaforoCola(semaforo: SemaforoOperativo) {
 
 function porcentajeSemaforo(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 100
+  if (semaforo === 'alto') return 85
   if (semaforo === 'riesgo') return 65
   if (semaforo === 'a_tiempo') return 35
   return 100
@@ -1399,4 +1513,262 @@ function otifInicial(): OtifOperativo {
       detalle: 'Casos Bodega-FQ dentro del SLA',
     },
   }
+}
+
+type Tendencia = { actual: number; previo: number; delta: number; dir: 'up' | 'down' | 'flat' }
+type PuntoSerie = { dia: number; creados: number; entregados: number }
+type Vencimiento = { pedido: Pedido; dias: number }
+
+function ChipResumen({
+  etiqueta,
+  icono: Icono,
+  tono,
+  valor,
+}: {
+  etiqueta: string
+  icono: typeof CalendarClock
+  tono: 'red' | 'green'
+  valor: number
+}) {
+  const clase =
+    tono === 'red'
+      ? 'border-[#f3c9ce] bg-[#fff5f5] text-[#c8102e]'
+      : 'border-green-200 bg-green-50 text-green-700'
+
+  return (
+    <div className={`flex items-center gap-3 rounded-xl border px-4 py-2 shadow-sm ${clase}`}>
+      <Icono size={22} />
+      <div className="leading-tight">
+        <strong className="font-tabular block text-2xl font-black">{formatearNumero(valor)}</strong>
+        <span className="text-[10px] font-semibold uppercase tracking-wider">{etiqueta}</span>
+      </div>
+    </div>
+  )
+}
+
+function BadgeTendencia({ tendencia }: { tendencia: Tendencia }) {
+  const Icono =
+    tendencia.dir === 'up' ? TrendingUp : tendencia.dir === 'down' ? TrendingDown : Activity
+  const clase =
+    tendencia.dir === 'up'
+      ? 'bg-[#fdecec] text-[#c8102e]'
+      : tendencia.dir === 'down'
+        ? 'bg-green-50 text-green-700'
+        : 'bg-slate-100 text-slate-600'
+  const texto =
+    tendencia.dir === 'flat' ? 'Estable' : `${tendencia.delta > 0 ? '+' : ''}${tendencia.delta}%`
+
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${clase}`}>
+      <Icono size={13} />
+      {texto}
+      <span className="font-medium opacity-70">vs sem. previa</span>
+    </span>
+  )
+}
+
+function Sparkline({ serie }: { serie: PuntoSerie[] }) {
+  const ancho = 280
+  const alto = 76
+  const margen = 6
+  const maximo = Math.max(1, ...serie.flatMap((s) => [s.creados, s.entregados]))
+  const px = (i: number) => margen + (i * (ancho - 2 * margen)) / Math.max(1, serie.length - 1)
+  const py = (v: number) => alto - margen - (v / maximo) * (alto - 2 * margen)
+  const linea = (clave: 'creados' | 'entregados') =>
+    serie.map((s, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(s[clave]).toFixed(1)}`).join(' ')
+  const area =
+    serie.length > 0
+      ? `${linea('creados')} L${px(serie.length - 1).toFixed(1)},${alto - margen} L${px(0).toFixed(1)},${alto - margen} Z`
+      : ''
+
+  return (
+    <svg viewBox={`0 0 ${ancho} ${alto}`} className="mt-3 h-20 w-full" preserveAspectRatio="none">
+      <path d={area} fill="#c8102e" opacity="0.10" />
+      <path d={linea('creados')} fill="none" stroke="#c8102e" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={linea('entregados')} fill="none" stroke="#118744" strokeWidth="2" strokeDasharray="4 3" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function GaugeOtif({ valor }: { valor: number }) {
+  const v = Math.max(0, Math.min(100, Math.round(valor)))
+  const radio = 46
+  const cx = 56
+  const cy = 56
+  const ang = Math.PI * (1 - v / 100)
+  const x = cx + radio * Math.cos(ang)
+  const y = cy - radio * Math.sin(ang)
+  const color = v >= 75 ? '#118744' : v >= 45 ? '#f5b000' : '#c8102e'
+
+  return (
+    <svg viewBox="0 0 112 64" className="mx-auto mt-1 h-14 w-28">
+      <path d="M10,56 A46,46 0 0 1 102,56" fill="none" stroke="#eee9e7" strokeWidth="9" strokeLinecap="round" />
+      <path
+        d={`M10,56 A46,46 0 0 1 ${x.toFixed(1)},${y.toFixed(1)}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+      <text x="56" y="52" textAnchor="middle" fontSize="22" fontWeight="800" fill="#0f0f11">
+        {`${v}%`}
+      </text>
+    </svg>
+  )
+}
+
+function PanelVencimientos({ vencimientos }: { vencimientos: Vencimiento[] }) {
+  return (
+    <PanelEjecutivo
+      titulo="Proximos vencimientos"
+      descripcion="Pedidos abiertos mas cercanos a su fecha de entrega."
+      icono={CalendarClock}
+    >
+      <div className="divide-y divide-[#f1eae9]">
+        {vencimientos.map(({ dias, pedido }) => {
+          const vencido = dias < 0
+          const hoy = dias === 0
+          const clase = vencido
+            ? 'bg-red-600 text-white'
+            : hoy
+              ? 'bg-[#fdecec] text-[#c8102e]'
+              : dias <= 2
+                ? 'bg-yellow-100 text-yellow-900'
+                : 'bg-green-100 text-green-700'
+          const texto = vencido ? `Vencido ${Math.abs(dias)} d` : hoy ? 'Vence hoy' : `Vence en ${dias} d`
+
+          return (
+            <div key={pedido.id} className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-[#0f0f11]">{pedido.codigo}</p>
+                <p className="truncate text-xs text-[#5f5964]">{pedido.material}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${clase}`}>{texto}</span>
+            </div>
+          )
+        })}
+
+        {vencimientos.length === 0 && (
+          <p className="p-6 text-center text-sm text-[#5f5964]">Sin pedidos abiertos por vencer.</p>
+        )}
+      </div>
+    </PanelEjecutivo>
+  )
+}
+
+function GraficoAntiguedad({ datos }: { datos: Array<{ nombre: string; valor: number; clase: string }> }) {
+  const maximo = Math.max(...datos.map((d) => d.valor), 1)
+
+  return (
+    <div className="space-y-4 p-5">
+      {datos.map((item) => (
+        <div key={item.nombre} className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-3 text-xs">
+          <span className="font-semibold text-[#5f5964]">{item.nombre}</span>
+          <div className="h-3 overflow-hidden rounded-full bg-[#eee9e7]">
+            <div
+              className={`h-3 rounded-full ${item.clase} transition-all duration-500`}
+              style={{ width: `${Math.max(item.valor === 0 ? 0 : 6, (item.valor / maximo) * 100)}%` }}
+            />
+          </div>
+          <span className="font-tabular font-bold text-[#0f0f11]">{item.valor}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function inicioDiaMs(fecha: Date) {
+  return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()).getTime()
+}
+
+function diaDeFecha(valor?: string | null): number | null {
+  const fecha = fechaLocal(valor || '')
+  return fecha ? inicioDiaMs(fecha) : null
+}
+
+function construirSerieDiaria(pedidos: Pedido[], dias: number): PuntoSerie[] {
+  const hoy = inicioDiaMs(new Date())
+  const serie: PuntoSerie[] = []
+  for (let i = dias - 1; i >= 0; i--) {
+    serie.push({ dia: hoy - i * 86_400_000, creados: 0, entregados: 0 })
+  }
+  const indice = new Map(serie.map((punto, i) => [punto.dia, i]))
+
+  pedidos.forEach((pedido) => {
+    const creado = diaDeFecha(pedido.fecha_solicitud) ?? diaDeFecha(pedido.created_at)
+    if (creado != null && indice.has(creado)) serie[indice.get(creado) as number].creados += 1
+
+    if (pedido.estado === 'entregado') {
+      const entregado = diaDeFecha(pedido.fecha_entrega) ?? diaDeFecha(pedido.updated_at)
+      if (entregado != null && indice.has(entregado)) serie[indice.get(entregado) as number].entregados += 1
+    }
+  })
+
+  return serie
+}
+
+function calcularTendenciaSemana(pedidos: Pedido[]): Tendencia {
+  const hoy = inicioDiaMs(new Date())
+  const semana = 7 * 86_400_000
+  let actual = 0
+  let previo = 0
+
+  pedidos.forEach((pedido) => {
+    const creado = diaDeFecha(pedido.fecha_solicitud) ?? diaDeFecha(pedido.created_at)
+    if (creado == null) return
+    if (creado > hoy - semana) actual += 1
+    else if (creado > hoy - 2 * semana) previo += 1
+  })
+
+  const delta = previo === 0 ? (actual > 0 ? 100 : 0) : Math.round(((actual - previo) / previo) * 100)
+  const dir: Tendencia['dir'] = actual > previo ? 'up' : actual < previo ? 'down' : 'flat'
+
+  return { actual, previo, delta, dir }
+}
+
+function construirProximosVencimientos(pedidos: Pedido[]): Vencimiento[] {
+  const hoy = inicioDiaMs(new Date())
+
+  return pedidos
+    .filter((pedido) => !pedidoCerrado(pedido))
+    .map((pedido) => {
+      const dia = diaDeFecha(pedido.fecha_compromiso)
+      return { pedido, dias: dia == null ? null : Math.round((dia - hoy) / 86_400_000) }
+    })
+    .filter((item): item is Vencimiento => item.dias != null)
+    .sort((a, b) => a.dias - b.dias)
+    .slice(0, 5)
+}
+
+function construirAntiguedad(pedidos: Pedido[]) {
+  const hoy = inicioDiaMs(new Date())
+  // Dias de retraso vs la fecha de entrega del SLA (mismos tramos del semaforo).
+  const buckets = [
+    { nombre: 'Sin retraso', min: 0, max: 0, valor: 0, clase: 'bg-green-500' },
+    { nombre: '1-6 d (amarillo)', min: 1, max: 6, valor: 0, clase: 'bg-yellow-500' },
+    { nombre: '7-30 d (naranja)', min: 7, max: 30, valor: 0, clase: 'bg-orange-500' },
+    { nombre: '+30 d (rojo)', min: 31, max: Number.POSITIVE_INFINITY, valor: 0, clase: 'bg-red-600' },
+  ]
+
+  pedidos
+    .filter((pedido) => !pedidoCerrado(pedido))
+    .forEach((pedido) => {
+      const compromiso = diaDeFecha(pedido.fecha_compromiso)
+      if (compromiso == null) return
+      const retraso = Math.max(0, Math.round((hoy - compromiso) / 86_400_000))
+      const bucket = buckets.find((item) => retraso >= item.min && retraso <= item.max)
+      if (bucket) bucket.valor += 1
+    })
+
+  return buckets.map(({ clase, nombre, valor }) => ({ clase, nombre, valor }))
+}
+
+function contarVencenHoy(pedidos: Pedido[]) {
+  const hoy = inicioDiaMs(new Date())
+
+  return pedidos.filter((pedido) => {
+    if (pedidoCerrado(pedido)) return false
+    const dia = diaDeFecha(pedido.fecha_compromiso)
+    return dia != null && dia <= hoy
+  }).length
 }

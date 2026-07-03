@@ -1,0 +1,22 @@
+-- Migracion 33: dejar solo las 10 reglas parametrizables
+-- El modulo Reglas mostraba ~26 reglas (10 activas parametrizables + 16 legacy
+-- inactivas con condicion de texto). Se eliminan las legacy para dejar las 10
+-- reglas mas importantes y demostrables, todas con parametros JSON y cableadas
+-- al motor de prioridad y a las alertas.
+--
+-- Las 10 que se conservan (peso):
+--   Material critico multifranquiciado (40)  -> evaluar_reglas_negocio_avanzadas
+--   Material sin existencia (40)             -> motor prioridad
+--   Pedido con entrega proxima (40)          -> motor prioridad
+--   Stock critico (40)                       -> motor prioridad
+--   Franquiciado solicita NC (30)            -> motor prioridad
+--   Material no planificable NC (30)         -> alertas avanzadas
+--   Pedido sin movimiento (30)               -> motor prioridad
+--   Franquiciado alta frecuencia (20)        -> alertas avanzadas
+--   Inventario por agotarse (20)             -> alertas de stock
+--   Pedido pendiente prolongado (20)         -> motor prioridad
+--
+-- Verificado: ninguna funcion hace lookup por nombre de las reglas eliminadas
+-- (solo aparecian como texto de mensaje), y prioridad_pedido_erp sigue operando.
+delete from public.reglas_negocio
+where not (estado = 'activa' and activo is true);

@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useConfirmar } from '../components/ConfirmacionProvider'
 import { Link } from 'react-router'
 import {
   AlertTriangle,
@@ -11,14 +12,14 @@ import {
   Send,
   Truck,
 } from 'lucide-react'
-import disensaLogo from '../assets/disensa-logo.svg'
 import {
   confirmarEntregaFranquiciado,
-  consultarPedidoInvitado,
+  consultarPedidosInvitado,
   crearReporteFranquiciado,
   normalizarCedula,
+  tieneReporteActivoPedido,
 } from '../services/franquiciadoService'
-import { escucharPedidos } from '../services/pedidosService'
+import { escucharPedidos, solicitarNotaCredito } from '../services/pedidosService'
 import { registrarAuditoria } from '../services/auditoriaService'
 import {
   claseSemaforoBadge,
@@ -67,16 +68,38 @@ const estadosFlujo: EstadoPedido[] = [
 const motivosReporte: Array<{ valor: MotivoReporteFranquiciado; etiqueta: string }> = [
   { valor: 'retraso', etiqueta: 'Retraso del pedido' },
   { valor: 'material_defectuoso', etiqueta: 'Material defectuoso' },
+  { valor: 'nota_credito', etiqueta: 'Solicitar nota de credito' },
   { valor: 'otro', etiqueta: 'Otro motivo' },
 ]
 
+function etiquetaNc(estado: string) {
+  if (estado === 'en_revision') return 'En revisión'
+  if (estado === 'aprobada') return 'Aprobada'
+  if (estado === 'efectiva') return 'Reembolsada'
+  if (estado === 'rechazada') return 'Rechazada'
+  return 'Solicitada'
+}
+
+function textoNc(estado: string) {
+  if (estado === 'en_revision') return 'Bodega está revisando tu solicitud de nota de crédito.'
+  if (estado === 'aprobada') return 'Tu nota de crédito fue aprobada. Se hará efectiva en breve.'
+  if (estado === 'efectiva') return 'Reembolso realizado. Este material queda como nota de crédito efectiva.'
+  if (estado === 'rechazada') return 'Tu solicitud de nota de crédito fue rechazada por bodega.'
+  return 'Solicitud enviada. Bodega la revisará y te confirmará el reembolso.'
+}
+
+const disensaLogo = '/disensa-holcim-logo-source.png'
+
 export default function ConsultaPedido() {
+  const confirmar = useConfirmar()
   const [consulta, setConsulta] = useState<ConsultaForm>(consultaInicial)
   const [reporte, setReporte] = useState<ReporteForm>(reporteInicial)
   const [pedido, setPedido] = useState<Pedido | null>(null)
+  const [pedidosGrupo, setPedidosGrupo] = useState<Pedido[]>([])
   const [cargando, setCargando] = useState(false)
   const [enviandoReporte, setEnviandoReporte] = useState(false)
   const [confirmandoEntrega, setConfirmandoEntrega] = useState(false)
+  const [reporteActivo, setReporteActivo] = useState(false)
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
 
@@ -86,6 +109,7 @@ export default function ConsultaPedido() {
     setError('')
     setMensaje('')
     setPedido(null)
+    setPedidosGrupo([])
 
     const codigo = consulta.codigo.trim()
     const cedula = normalizarCedula(consulta.cedula)
@@ -96,7 +120,7 @@ export default function ConsultaPedido() {
       return
     }
 
-    const { data, error } = await consultarPedidoInvitado(codigo, cedula)
+    const { data, error } = await consultarPedidosInvitado(codigo, cedula)
 
     if (error) {
       setError(
@@ -106,14 +130,17 @@ export default function ConsultaPedido() {
       return
     }
 
-    if (!data) {
+    if (!data || data.length === 0) {
       setError('No encontramos un pedido con ese codigo y cedula.')
       setCargando(false)
       return
     }
 
-    setPedido(data)
-    setConsulta({ codigo: codigo, cedula })
+    const principal = data[0]
+    setPedidosGrupo(data)
+    setPedido(principal)
+    setConsulta({ codigo, cedula })
+    setReporteActivo(await tieneReporteActivoPedido(principal))
     setCargando(false)
   }
 
@@ -146,17 +173,36 @@ export default function ConsultaPedido() {
       return
     }
 
+    const esNotaCredito = reporte.motivo === 'nota_credito'
+    if (esNotaCredito) {
+      const { error: errorNc } = await solicitarNotaCredito(pedido.id, reporte.descripcion.trim())
+      if (!errorNc) {
+        setPedido({ ...pedido, estado_nc: 'solicitada', motivo_nc: reporte.descripcion.trim() })
+        setPedidosGrupo((prev) =>
+          prev.map((p) => (p.id === pedido.id ? { ...p, estado_nc: 'solicitada' } : p)),
+        )
+      }
+    }
+
     setReporte(reporteInicial)
-    setMensaje('Reporte recibido. El equipo operativo lo revisara en el modulo de reportes.')
+    setReporteActivo(true)
+    setMensaje(
+      esNotaCredito
+        ? 'Solicitud de nota de crédito enviada. Bodega la revisará y confirmará el reembolso del material.'
+        : 'Reporte recibido. El equipo operativo lo revisara en el modulo de reportes.',
+    )
     setEnviandoReporte(false)
   }
 
   async function confirmarEntrega() {
     if (!pedido) return
 
-    const confirmado = window.confirm(
-      `Confirmas que recibiste el pedido ${pedido.codigo_consulta || pedido.codigo}? Esta accion actualizara el estado para el equipo operativo.`
-    )
+    const confirmado = await confirmar({
+      titulo: 'Confirmar entrega',
+      mensaje: `¿Confirmas que recibiste el pedido ${pedido.codigo_consulta || pedido.codigo}? Esta acción actualizará el estado para el equipo operativo.`,
+      confirmarTexto: 'Sí, recibí el pedido',
+      peligro: false,
+    })
 
     if (!confirmado) return
 
@@ -185,6 +231,14 @@ export default function ConsultaPedido() {
     setConfirmandoEntrega(false)
   }
 
+  async function seleccionarMaterial(seleccionado: Pedido) {
+    setPedido(seleccionado)
+    setReporte(reporteInicial)
+    setError('')
+    setMensaje('')
+    setReporteActivo(await tieneReporteActivoPedido(seleccionado))
+  }
+
   const pedidoConsultadoId = pedido?.id
 
   useEffect(() => {
@@ -193,8 +247,12 @@ export default function ConsultaPedido() {
     let cancelado = false
 
     async function refrescarPedidoConsultado() {
-      const { data } = await consultarPedidoInvitado(consulta.codigo, consulta.cedula)
-      if (!cancelado && data) setPedido(data)
+      const { data } = await consultarPedidosInvitado(consulta.codigo, consulta.cedula)
+      if (cancelado || !data || data.length === 0) return
+      setPedidosGrupo(data)
+      const actual = data.find((item) => item.id === pedidoConsultadoId) || data[0]
+      setPedido(actual)
+      setReporteActivo(await tieneReporteActivoPedido(actual))
     }
 
     const dejarDeEscucharPedidos = escucharPedidos(refrescarPedidoConsultado)
@@ -205,8 +263,11 @@ export default function ConsultaPedido() {
     }
   }, [consulta.cedula, consulta.codigo, pedidoConsultadoId])
 
-  const progreso = useMemo(() => calcularProgreso(pedido?.estado), [pedido?.estado])
-  const semaforo = pedido ? resolverSemaforoPedido(pedido) : null
+  const progreso = useMemo(
+    () => (reporteActivo ? 80 : calcularProgreso(pedido?.estado)),
+    [pedido?.estado, reporteActivo],
+  )
+  const semaforo = reporteActivo ? 'riesgo' : pedido ? resolverSemaforoPedido(pedido) : null
 
   return (
     <div className="min-h-screen bg-[#fbf8ff] px-3 py-4 sm:px-5 lg:px-8 lg:py-6 xl:px-10">
@@ -214,7 +275,7 @@ export default function ConsultaPedido() {
         <aside className="relative hidden overflow-hidden border-r border-[#cfc4c5] bg-[#f4f2fd] p-8 lg:flex lg:flex-col xl:p-10">
           <div className="absolute inset-0 opacity-70 [background-image:radial-gradient(#cfc4c5_1px,transparent_1px)] [background-size:24px_24px]" />
           <div className="relative z-10">
-            <img src={disensaLogo} alt="Disensa" className="mb-8 h-14 w-14 rounded bg-white p-1 ring-1 ring-[#cfc4c5]" />
+            <img src={disensaLogo} alt="Disensa" className="mb-8 h-12 w-auto rounded object-contain" />
             <h1 className="text-3xl font-bold tracking-tight text-[#0f0f11]">Disensa Prioridad</h1>
             <p className="mt-5 max-w-xs text-lg leading-7 text-[#4c4546]">
               Consulta rapida de estado logistico para franquiciados.
@@ -236,10 +297,10 @@ export default function ConsultaPedido() {
             </div>
             <Link
               to="/login"
-              className="inline-flex items-center justify-center gap-2 border border-[#cfc4c5] px-4 py-2 text-sm font-semibold text-[#1a1a1a] transition hover:bg-[#f4f2fd]"
+              className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-[#ed1c24] px-4 py-2.5 text-sm font-bold text-[#c8102e] transition hover:bg-[#fff0f0]"
             >
               <ArrowLeft size={16} />
-              Panel interno
+              Regresar
             </Link>
           </div>
 
@@ -325,6 +386,30 @@ export default function ConsultaPedido() {
 
           {pedido && (
             <>
+              {pedidosGrupo.length > 1 && (
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-700">
+                    Este pedido tiene {pedidosGrupo.length} materiales. Elige por cual quieres consultar o reclamar:
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {pedidosGrupo.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => seleccionarMaterial(item)}
+                        className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                          item.id === pedido.id
+                            ? 'border-[#c8102e] bg-[#fff1ec] text-[#c8102e]'
+                            : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {item.material}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
@@ -352,15 +437,32 @@ export default function ConsultaPedido() {
                   />
                   <Dato
                     icono={<AlertTriangle size={18} />}
-                    label="Fecha requerida"
+                    label="Fecha estimada de entrega"
                     valor={formatearFecha(pedido.fecha_compromiso)}
                   />
                   <Dato
                     icono={<AlertTriangle size={18} />}
                     label="Tiempo"
-                    valor={describirTiempoPedido(pedido)}
+                    valor={describirTiempoPedido(pedido, { reabiertoPorReporte: reporteActivo })}
                   />
                 </div>
+
+                {reporteActivo && (
+                  <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+                    <p className="font-semibold">Pedido reabierto por tu reporte</p>
+                    <p className="mt-1">
+                      El equipo operativo esta gestionando tu reporte. El avance se mantiene en 80%
+                      hasta resolverlo.
+                    </p>
+                  </div>
+                )}
+
+                {pedido.estado_nc && (
+                  <div className="mt-4 rounded-lg border border-violet-300 bg-violet-50 p-4 text-sm text-violet-900">
+                    <p className="font-semibold">Nota de crédito — {etiquetaNc(pedido.estado_nc)}</p>
+                    <p className="mt-1">{textoNc(pedido.estado_nc)}</p>
+                  </div>
+                )}
 
                 <div className="mt-6">
                   <div className="mb-3 flex items-center justify-between text-sm">

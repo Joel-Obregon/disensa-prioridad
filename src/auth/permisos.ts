@@ -4,6 +4,7 @@ export type RutaProtegida =
   | '/dashboard'
   | '/inventario'
   | '/pedidos'
+  | '/reposicion'
   | '/calendario'
   | '/reglas'
   | '/alertas'
@@ -15,6 +16,7 @@ export const permisosPorRol: Record<RolUsuario, RutaProtegida[]> = {
   administrador: [
     '/dashboard',
     '/pedidos',
+    '/reposicion',
     '/inventario',
     '/reglas',
     '/alertas',
@@ -24,20 +26,15 @@ export const permisosPorRol: Record<RolUsuario, RutaProtegida[]> = {
     '/usuarios',
   ],
   suministrador: [
-    '/dashboard',
-    '/pedidos',
-    '/reglas',
-    '/alertas',
-    '/reportes',
-    '/estado-sistema',
+    '/reposicion',
   ],
   bodega: [
     '/dashboard',
     '/pedidos',
     '/inventario',
     '/alertas',
+    '/reportes',
     '/calendario',
-    '/estado-sistema',
   ],
 }
 
@@ -61,6 +58,6 @@ export function rutaInicialPorRol(rol: string | undefined) {
 
 export function describirRol(rol: RolUsuario) {
   if (rol === 'administrador') return 'Acceso completo al sistema y usuarios'
-  if (rol === 'suministrador') return 'Pedidos de abastecimiento, materiales y alertas'
+  if (rol === 'suministrador') return 'Reposición de materiales hacia bodega'
   return 'Inventario, despacho, pedidos y reportes operativos'
 }

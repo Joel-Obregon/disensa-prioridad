@@ -4,6 +4,7 @@ import {
   Boxes,
   ChevronDown,
   Clock3,
+  GripVertical,
   History,
   Pencil,
   RotateCcw,
@@ -23,6 +24,11 @@ import {
   actualizarReglaNegocio,
   obtenerReglas,
 } from '../services/reglasService'
+import {
+  guardarOrdenPrioridad,
+  obtenerPrioridadCriterios,
+  type PrioridadCriterio,
+} from '../services/prioridadCriteriosService'
 import type { Auditoria } from '../types/auditoria'
 import type { ReglaNegocio } from '../types/regla'
 
@@ -73,16 +79,23 @@ const configuracionNivel: Record<
 }
 
 const niveles: NivelAtencion[] = ['critica', 'alta', 'media', 'seguimiento']
-const reglasPriorizacion = new Set([
-  'Cantidad pendiente ERP',
-  'Nota de credito pendiente',
-  'Antiguedad del pedido',
-  'Valor pendiente',
-])
+// Una regla es configurable (editable) si guarda sus parametros como JSON en
+// la columna `condicion`. Asi el editor se adapta a cualquier regla.
+function esReglaConfigurable(regla: ReglaNegocio): boolean {
+  return (regla.condicion ?? '').trim().startsWith('{')
+}
+
+const REGLAS_PRIORIDAD_OCULTAS = [
+  'Retraso del pedido (amarillo)',
+  'Reprogramado por retraso (naranja)',
+  'Retraso critico (rojo)',
+]
 
 export default function Reglas() {
   const { perfil } = useAuth()
   const [reglas, setReglas] = useState<ReglaNegocio[]>([])
+  const [criterios, setCriterios] = useState<PrioridadCriterio[]>([])
+  const [arrastrando, setArrastrando] = useState<number | null>(null)
   const [historial, setHistorial] = useState<Auditoria[]>([])
   const [reglaEditando, setReglaEditando] = useState<ReglaNegocio | null>(null)
   const [formulario, setFormulario] = useState<FormularioRegla | null>(null)
@@ -98,8 +111,11 @@ export default function Reglas() {
     Promise.all([
       obtenerReglas(),
       obtenerAuditoriaPorEntidad('reglas_negocio'),
-    ]).then(([reglasResult, historialResult]) => {
+      obtenerPrioridadCriterios(),
+    ]).then(([reglasResult, historialResult, criteriosResult]) => {
       if (!activo) return
+
+      if (!criteriosResult.error) setCriterios(criteriosResult.data || [])
 
       if (reglasResult.error) {
         setError('No se pudieron cargar las reglas desde Supabase.')
@@ -147,42 +163,7 @@ export default function Reglas() {
       return
     }
 
-    const parametros = parametrosNormalizados(reglaEditando, formulario.parametros)
-
-    if (
-      reglaEditando.nombre === 'Cantidad pendiente ERP' &&
-      (parametros.cantidadAlta <= parametros.cantidadMinima ||
-        parametros.cantidadCritica <= parametros.cantidadAlta)
-    ) {
-      setError('La cantidad alta debe ser mayor que la mínima y la crítica debe ser mayor que la alta.')
-      return
-    }
-
-    if (
-      reglaEditando.nombre === 'Nota de credito pendiente' &&
-      parametros.notasCriticas <= parametros.notasMinimas
-    ) {
-      setError('Las notas críticas deben ser mayores que las notas mínimas.')
-      return
-    }
-
-    if (
-      reglaEditando.nombre === 'Antiguedad del pedido' &&
-      (parametros.diasCriticos <= parametros.diasSeguimiento ||
-        parametros.diasRetrasoCritico <= 0)
-    ) {
-      setError('Los días críticos deben ser mayores al seguimiento y el retraso crítico debe ser mayor a cero.')
-      return
-    }
-
-    if (
-      reglaEditando.nombre === 'Valor pendiente' &&
-      (parametros.valorAlto <= parametros.valorRelevante ||
-        parametros.valorCritico <= parametros.valorAlto)
-    ) {
-      setError('El valor alto debe ser mayor al relevante y el crítico debe ser mayor al alto.')
-      return
-    }
+    const parametros = parametrosNormalizados(formulario.parametros)
 
     setGuardando(true)
     setError('')
@@ -229,6 +210,20 @@ export default function Reglas() {
     cerrarConfiguracion()
   }
 
+  async function soltarCriterioEn(destino: number) {
+    if (!puedeEditar || arrastrando === null || arrastrando === destino) {
+      setArrastrando(null)
+      return
+    }
+
+    const nuevo = [...criterios]
+    const [movido] = nuevo.splice(arrastrando, 1)
+    nuevo.splice(destino, 0, movido)
+    setArrastrando(null)
+    setCriterios(nuevo.map((criterio, i) => ({ ...criterio, orden: i + 1 })))
+    await guardarOrdenPrioridad(nuevo.map((criterio) => criterio.clave))
+  }
+
   return (
     <div className="reglas-module space-y-6">
       <section className="border border-[#d8d2df] bg-white p-6 lg:p-8">
@@ -241,9 +236,7 @@ export default function Reglas() {
             Reglas operativas configurables
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-            Configura las condiciones que debe evaluar el sistema, el nivel de atención
-            y la respuesta automática. El cálculo técnico permanece oculto: el usuario
-            trabaja únicamente con decisiones operativas comprensibles.
+            Ajusta cada regla: su condición, prioridad y la acción del sistema.
           </p>
         </div>
 
@@ -286,6 +279,44 @@ export default function Reglas() {
 
       <section className="border border-[#d8d2df] bg-white">
         <div className="border-b border-[#d8d2df] p-5 lg:p-6">
+          <h2 className="text-xl font-bold text-[#0f0f11]">Orden de prioridad de la cola</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Arrastra el orden: manda el criterio 1; si dos pedidos empatan, decide el 2 y luego el 3. Los cambios se aplican en el acto.
+          </p>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {criterios.map((criterio, indice) => (
+            <div
+              key={criterio.clave}
+              draggable={puedeEditar}
+              onDragStart={() => setArrastrando(indice)}
+              onDragOver={(evento) => evento.preventDefault()}
+              onDrop={() => soltarCriterioEn(indice)}
+              onDragEnd={() => setArrastrando(null)}
+              className={`flex items-center gap-4 p-4 transition lg:px-6 ${
+                puedeEditar ? 'cursor-grab active:cursor-grabbing' : ''
+              } ${arrastrando === indice ? 'opacity-40' : 'hover:bg-slate-50'}`}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#fff1ec] text-sm font-bold text-[#a33e00]">
+                {indice + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-900">{criterio.etiqueta}</p>
+                {criterio.descripcion && (
+                  <p className="text-xs text-slate-500">{criterio.descripcion}</p>
+                )}
+              </div>
+              {puedeEditar && <GripVertical size={18} className="shrink-0 text-slate-300" />}
+            </div>
+          ))}
+          {criterios.length === 0 && (
+            <p className="p-5 text-sm text-slate-500">Sin criterios de prioridad configurados.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="border border-[#d8d2df] bg-white">
+        <div className="border-b border-[#d8d2df] p-5 lg:p-6">
           <div className="flex items-start gap-3">
             <span className="bg-[#fff1ec] p-2.5 text-[#a33e00]">
               <ShieldAlert size={20} />
@@ -293,8 +324,7 @@ export default function Reglas() {
             <div>
               <h2 className="text-xl font-bold text-[#0f0f11]">Configuración del motor</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                Cada regla activa participa en la priorización. Abre una regla para
-                cambiar su condición, respuesta o nivel de atención.
+                Estas reglas definen las alertas del sistema. El orden de la cola se ajusta arriba.
               </p>
             </div>
           </div>
@@ -313,10 +343,12 @@ export default function Reglas() {
             </p>
           )}
 
-          {reglas.map((regla) => (
+          {reglas
+            .filter((regla) => !REGLAS_PRIORIDAD_OCULTAS.includes(regla.nombre))
+            .map((regla) => (
             <TarjetaRegla
               key={regla.id}
-              puedeEditar={puedeEditar && reglasPriorizacion.has(regla.nombre)}
+              puedeEditar={puedeEditar && esReglaConfigurable(regla)}
               regla={regla}
               onConfigurar={() => abrirConfiguracion(regla)}
             />
@@ -445,7 +477,7 @@ function TarjetaRegla({
           </button>
         )}
 
-        {!reglasPriorizacion.has(regla.nombre) && (
+        {!esReglaConfigurable(regla) && (
           <p className="mt-4 border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
             Regla automática vinculada al centro de alertas. Su condición se ejecuta
             desde inventario, pedidos o reportes.
@@ -551,6 +583,8 @@ function EditorRegla({
             regla={regla}
           />
 
+          <VistaPreviaRegla formulario={formulario} />
+
           <Campo label="Descripción de la condición">
             <textarea
               value={formulario.criterio}
@@ -618,12 +652,13 @@ function EditorRegla({
 function ParametrosRegla({
   formulario,
   onChange,
-  regla,
 }: {
   formulario: FormularioRegla
   onChange: (formulario: FormularioRegla) => void
   regla: ReglaNegocio
 }) {
+  const llaves = Object.keys(formulario.parametros)
+
   function actualizarParametro(llave: string, valor: string) {
     onChange({
       ...formulario,
@@ -634,107 +669,67 @@ function ParametrosRegla({
     })
   }
 
-  if (regla.nombre === 'Cantidad pendiente ERP') {
+  if (llaves.length === 0) {
     return (
-      <GrupoParametros descripcion="Define desde qué volumen pendiente el pedido entra, sube o se vuelve crítico en la cola.">
-        <ParametroNumerico
-          etiqueta="Activar desde"
-          unidad="unidades"
-          valor={formulario.parametros.cantidadMinima}
-          onChange={(valor) => actualizarParametro('cantidadMinima', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Volumen alto"
-          unidad="unidades"
-          valor={formulario.parametros.cantidadAlta}
-          onChange={(valor) => actualizarParametro('cantidadAlta', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Volumen crítico"
-          unidad="unidades"
-          valor={formulario.parametros.cantidadCritica}
-          onChange={(valor) => actualizarParametro('cantidadCritica', valor)}
-        />
-      </GrupoParametros>
+      <section className="border border-[#e3bfb1] bg-[#fff7f2] p-4">
+        <p className="text-sm font-semibold text-[#261812]">Parametros</p>
+        <p className="mt-1 text-sm leading-5 text-slate-600">
+          Esta regla no usa umbrales numericos: solo se activa/desactiva y se le
+          define el nivel de atencion.
+        </p>
+      </section>
     )
   }
 
-  if (regla.nombre === 'Nota de credito pendiente') {
-    return (
-      <GrupoParametros descripcion="Define cuándo una nota de crédito abierta requiere seguimiento comercial y cuándo escala.">
+  return (
+    <GrupoParametros descripcion="Ajusta los umbrales que usa esta regla para evaluar pedidos e inventario.">
+      {llaves.map((llave) => (
         <ParametroNumerico
-          etiqueta="Activar desde"
-          unidad="notas"
-          valor={formulario.parametros.notasMinimas}
-          onChange={(valor) => actualizarParametro('notasMinimas', valor)}
+          key={llave}
+          etiqueta={etiquetaParametro(llave)}
+          unidad={unidadParametro(llave)}
+          valor={formulario.parametros[llave]}
+          onChange={(valor) => actualizarParametro(llave, valor)}
         />
-        <ParametroNumerico
-          etiqueta="Escalar desde"
-          unidad="notas"
-          valor={formulario.parametros.notasCriticas}
-          onChange={(valor) => actualizarParametro('notasCriticas', valor)}
-        />
-      </GrupoParametros>
-    )
-  }
+      ))}
+    </GrupoParametros>
+  )
+}
 
-  if (regla.nombre === 'Antiguedad del pedido') {
-    return (
-      <GrupoParametros descripcion="Configura seguimiento por edad del pedido, cercanía de entrega y retraso crítico.">
-        <ParametroNumerico
-          etiqueta="Iniciar seguimiento"
-          unidad="días"
-          valor={formulario.parametros.diasSeguimiento}
-          onChange={(valor) => actualizarParametro('diasSeguimiento', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Considerar crítico"
-          unidad="días"
-          valor={formulario.parametros.diasCriticos}
-          onChange={(valor) => actualizarParametro('diasCriticos', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Fecha próxima"
-          unidad="días antes"
-          valor={formulario.parametros.diasProximos}
-          onChange={(valor) => actualizarParametro('diasProximos', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Retraso crítico"
-          unidad="días vencido"
-          valor={formulario.parametros.diasRetrasoCritico}
-          onChange={(valor) => actualizarParametro('diasRetrasoCritico', valor)}
-        />
-      </GrupoParametros>
-    )
+function etiquetaParametro(llave: string): string {
+  const mapa: Record<string, string> = {
+    factorMinimo: 'Factor sobre la cantidad requerida',
+    diasDesde: 'Retraso desde (dias)',
+    diasHasta: 'Retraso hasta (dias)',
+    coberturaMinima: 'Cobertura minima de stock',
+    pedidosPorMes: 'Pedidos por mes',
+    diasEntrega: 'Dias para la entrega (SLA)',
+    diasPendiente: 'Dias pendiente permitidos',
+    porcentajeAlerta: 'Porcentaje del objetivo para alertar',
+    horasSinMovimiento: 'Horas sin movimiento',
+    montoUmbral: 'Monto umbral',
+    factorPromedio: 'Factor sobre el promedio historico',
+    minFranquiciados: 'Minimo de franquiciados',
   }
+  return mapa[llave] || llave
+}
 
-  if (regla.nombre === 'Valor pendiente') {
-    return (
-      <GrupoParametros descripcion="Configura los montos que representan impacto comercial relevante, alto o crítico.">
-        <ParametroNumerico
-          etiqueta="Valor relevante"
-          unidad="USD"
-          valor={formulario.parametros.valorRelevante}
-          onChange={(valor) => actualizarParametro('valorRelevante', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Valor alto"
-          unidad="USD"
-          valor={formulario.parametros.valorAlto}
-          onChange={(valor) => actualizarParametro('valorAlto', valor)}
-        />
-        <ParametroNumerico
-          etiqueta="Valor crítico"
-          unidad="USD"
-          valor={formulario.parametros.valorCritico}
-          onChange={(valor) => actualizarParametro('valorCritico', valor)}
-        />
-      </GrupoParametros>
-    )
+function unidadParametro(llave: string): string {
+  const mapa: Record<string, string> = {
+    factorMinimo: 'x',
+    diasDesde: 'dias',
+    diasHasta: 'dias',
+    coberturaMinima: '%',
+    pedidosPorMes: 'ped/mes',
+    diasEntrega: 'dias',
+    diasPendiente: 'dias',
+    porcentajeAlerta: '%',
+    horasSinMovimiento: 'horas',
+    montoUmbral: 'USD',
+    factorPromedio: 'x',
+    minFranquiciados: 'FQ',
   }
-
-  return null
+  return mapa[llave] || ''
 }
 
 function GrupoParametros({
@@ -781,6 +776,40 @@ function ParametroNumerico({
         </span>
       </div>
     </label>
+  )
+}
+
+function VistaPreviaRegla({ formulario }: { formulario: FormularioRegla }) {
+  const nivel = configuracionNivel[formulario.nivel]
+  const parametros = Object.entries(formulario.parametros)
+
+  return (
+    <section className="border border-slate-200 bg-slate-50 p-4">
+      <p className="text-sm font-semibold text-slate-900">Vista previa</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className={`px-2.5 py-1 font-semibold ${claseBadgeNivel(formulario.nivel)}`}>
+          {nivel.etiqueta} · peso {nivel.pesoInterno}
+        </span>
+        <span
+          className={`px-2.5 py-1 font-semibold ${
+            formulario.activa
+              ? 'bg-green-50 text-green-700 ring-1 ring-green-200'
+              : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200'
+          }`}
+        >
+          {formulario.activa ? 'Activa' : 'Inactiva'}
+        </span>
+        {parametros.map(([llave, valor]) => (
+          <span
+            key={llave}
+            className="bg-white px-2.5 py-1 font-medium text-slate-600 ring-1 ring-slate-200"
+          >
+            {etiquetaParametro(llave)}: {valor || '0'} {unidadParametro(llave)}
+          </span>
+        ))}
+      </div>
+      <p className="mt-2 text-sm leading-5 text-slate-600">{nivel.descripcion}</p>
+    </section>
   )
 }
 
@@ -940,66 +969,28 @@ function formatearFecha(fecha: string) {
 }
 
 function parametrosIniciales(regla: ReglaNegocio): Record<string, string> {
-  const valores = parametrosPorDefecto(regla.nombre)
+  if (!regla.condicion?.trim().startsWith('{')) return {}
 
-  if (regla.condicion?.trim().startsWith('{')) {
-    try {
-      const guardados = JSON.parse(regla.condicion) as Record<string, unknown>
-
-      Object.keys(valores).forEach((llave) => {
-        const valor = Number(guardados[llave])
-        if (Number.isFinite(valor) && valor >= 0) valores[llave] = String(valor)
-      })
-    } catch {
-      return valores
-    }
+  try {
+    const guardados = JSON.parse(regla.condicion) as Record<string, unknown>
+    const valores: Record<string, string> = {}
+    Object.entries(guardados).forEach(([llave, valor]) => {
+      const numero = Number(valor)
+      if (Number.isFinite(numero)) valores[llave] = String(numero)
+    })
+    return valores
+  } catch {
+    return {}
   }
-
-  return valores
-}
-
-function parametrosPorDefecto(nombre: string): Record<string, string> {
-  if (nombre === 'Cantidad pendiente ERP') {
-    return {
-      cantidadMinima: '1',
-      cantidadAlta: '100',
-      cantidadCritica: '500',
-    }
-  }
-  if (nombre === 'Nota de credito pendiente') {
-    return {
-      notasMinimas: '1',
-      notasCriticas: '2',
-    }
-  }
-  if (nombre === 'Antiguedad del pedido') {
-    return {
-      diasSeguimiento: '14',
-      diasCriticos: '30',
-      diasProximos: '2',
-      diasRetrasoCritico: '60',
-    }
-  }
-  if (nombre === 'Valor pendiente') {
-    return {
-      valorRelevante: '1000',
-      valorAlto: '3000',
-      valorCritico: '5000',
-    }
-  }
-  return {}
 }
 
 function parametrosNormalizados(
-  regla: ReglaNegocio,
   parametros: Record<string, string>,
-) {
-  const defecto = parametrosPorDefecto(regla.nombre)
-
+): Record<string, number> {
   return Object.fromEntries(
-    Object.keys(defecto).map((llave) => {
-      const valor = Number(parametros[llave])
-      return [llave, Number.isFinite(valor) && valor >= 0 ? valor : Number(defecto[llave])]
-    })
+    Object.entries(parametros).map(([llave, valor]) => {
+      const numero = Number(valor)
+      return [llave, Number.isFinite(numero) && numero >= 0 ? numero : 0]
+    }),
   )
 }
