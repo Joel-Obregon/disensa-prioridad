@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useConfirmar } from '../components/ConfirmacionProvider'
+import ThemeToggle from '../components/ThemeToggle'
 import { Link } from 'react-router'
 import {
   AlertTriangle,
@@ -17,6 +18,7 @@ import {
   consultarPedidosInvitado,
   crearReporteFranquiciado,
   normalizarCedula,
+  solicitarReposicionDefectuoso,
   tieneReporteActivoPedido,
 } from '../services/franquiciadoService'
 import { escucharPedidos, solicitarNotaCredito } from '../services/pedidosService'
@@ -35,7 +37,7 @@ import {
   textoMixtoOperativo,
 } from '../lib/validacionesFormulario'
 import type { EstadoPedido, Pedido } from '../types/pedido'
-import type { MotivoReporteFranquiciado } from '../types/reporteFranquiciado'
+import type { MotivoReporteFranquiciado, RemedioDefectuoso } from '../types/reporteFranquiciado'
 
 type ConsultaForm = {
   codigo: string
@@ -45,6 +47,8 @@ type ConsultaForm = {
 type ReporteForm = {
   motivo: MotivoReporteFranquiciado
   descripcion: string
+  cantidadDefectuosa: string
+  remedio: RemedioDefectuoso
 }
 
 const consultaInicial: ConsultaForm = {
@@ -55,6 +59,8 @@ const consultaInicial: ConsultaForm = {
 const reporteInicial: ReporteForm = {
   motivo: 'retraso',
   descripcion: '',
+  cantidadDefectuosa: '',
+  remedio: 'reposicion',
 }
 
 const estadosFlujo: EstadoPedido[] = [
@@ -158,13 +164,46 @@ export default function ConsultaPedido() {
       return
     }
 
+    const esDefectuoso = reporte.motivo === 'material_defectuoso'
+
+    if (esDefectuoso && !materialEnManos(pedido.estado)) {
+      setError('Solo puedes reportar material defectuoso cuando bodega ya despacho el pedido y lo tienes contigo.')
+      setEnviandoReporte(false)
+      return
+    }
+
+    const cantidadPedida = cantidadParaDespacho(pedido)
+    const defectuosas = Number(reporte.cantidadDefectuosa)
+
+    if (
+      esDefectuoso &&
+      (!Number.isInteger(defectuosas) || defectuosas < 1 || defectuosas > cantidadPedida)
+    ) {
+      setError(`Indica cuantas unidades salieron defectuosas (entre 1 y ${cantidadPedida}).`)
+      setEnviandoReporte(false)
+      return
+    }
+
+    const buenas = cantidadPedida - defectuosas
+    const remedioTexto =
+      reporte.remedio === 'nota_credito'
+        ? 'Nota de credito por lo defectuoso'
+        : 'Reposicion del material defectuoso'
+    const descripcionFinal = esDefectuoso
+      ? `Material: ${pedido.material}\nPidio: ${cantidadPedida} ${pedido.unidad_medida}\nDefectuoso: ${defectuosas} ${pedido.unidad_medida}\nLe queda bueno: ${buenas} ${pedido.unidad_medida}\nRemedio solicitado: ${remedioTexto}\n\n${reporte.descripcion.trim()}`
+      : `Material reportado: ${pedido.material}\n\n${reporte.descripcion}`
+
     const { error } = await crearReporteFranquiciado({
       pedido_id: pedido.id,
       codigo_consulta: pedido.codigo,
       cedula_solicitante: pedido.cedula_solicitante || consulta.cedula,
       solicitante: pedido.solicitante,
       motivo: reporte.motivo,
-      descripcion: `Material reportado: ${pedido.material}\n\n${reporte.descripcion}`,
+      descripcion: descripcionFinal,
+      material_reportado: esDefectuoso ? pedido.material : null,
+      cantidad_pedida: esDefectuoso ? cantidadPedida : null,
+      cantidad_defectuosa: esDefectuoso ? defectuosas : null,
+      remedio: esDefectuoso ? reporte.remedio : null,
     })
 
     if (error) {
@@ -173,23 +212,33 @@ export default function ConsultaPedido() {
       return
     }
 
-    const esNotaCredito = reporte.motivo === 'nota_credito'
-    if (esNotaCredito) {
-      const { error: errorNc } = await solicitarNotaCredito(pedido.id, reporte.descripcion.trim())
+    const pideNotaCredito =
+      reporte.motivo === 'nota_credito' || (esDefectuoso && reporte.remedio === 'nota_credito')
+    const pideReposicion = esDefectuoso && reporte.remedio === 'reposicion'
+    const notaNc = esDefectuoso
+      ? `Nota de credito por ${defectuosas} ${pedido.unidad_medida} defectuosas de ${pedido.material}. ${reporte.descripcion.trim()}`
+      : reporte.descripcion.trim()
+
+    if (pideNotaCredito) {
+      const { error: errorNc } = await solicitarNotaCredito(pedido.id, notaNc)
       if (!errorNc) {
-        setPedido({ ...pedido, estado_nc: 'solicitada', motivo_nc: reporte.descripcion.trim() })
+        setPedido({ ...pedido, estado_nc: 'solicitada', motivo_nc: notaNc })
         setPedidosGrupo((prev) =>
           prev.map((p) => (p.id === pedido.id ? { ...p, estado_nc: 'solicitada' } : p)),
         )
       }
+    } else if (pideReposicion) {
+      await solicitarReposicionDefectuoso(pedido.id)
     }
 
     setReporte(reporteInicial)
     setReporteActivo(true)
     setMensaje(
-      esNotaCredito
-        ? 'Solicitud de nota de crédito enviada. Bodega la revisará y confirmará el reembolso del material.'
-        : 'Reporte recibido. El equipo operativo lo revisara en el modulo de reportes.',
+      pideNotaCredito
+        ? 'Solicitud de nota de credito enviada. Bodega la revisara y confirmara el reembolso del material.'
+        : pideReposicion
+          ? 'Reporte enviado. Pediste la reposicion del material defectuoso; bodega la gestionara.'
+          : 'Reporte recibido. El equipo operativo lo revisara en el modulo de reportes.',
     )
     setEnviandoReporte(false)
   }
@@ -268,10 +317,16 @@ export default function ConsultaPedido() {
     [pedido?.estado, reporteActivo],
   )
   const semaforo = reporteActivo ? 'riesgo' : pedido ? resolverSemaforoPedido(pedido) : null
+  const cantidadPedidaReporte = pedido ? cantidadParaDespacho(pedido) : 0
+  const defectuosasReporte = Math.min(
+    cantidadPedidaReporte,
+    Math.max(0, Number(reporte.cantidadDefectuosa) || 0),
+  )
+  const buenasReporte = Math.max(0, cantidadPedidaReporte - defectuosasReporte)
 
   return (
-    <div className="min-h-screen bg-[#fbf8ff] px-3 py-4 sm:px-5 lg:px-8 lg:py-6 xl:px-10">
-      <main className="mx-auto grid w-full max-w-[1800px] overflow-hidden border border-[#cfc4c5] bg-white lg:min-h-[calc(100vh-3rem)] lg:grid-cols-[minmax(280px,0.26fr)_minmax(0,1fr)]">
+    <div className="min-h-screen bg-[#fbf8ff]">
+      <main className="grid min-h-screen w-full overflow-hidden bg-white lg:grid-cols-[minmax(300px,0.28fr)_minmax(0,1fr)]">
         <aside className="relative hidden overflow-hidden border-r border-[#cfc4c5] bg-[#f4f2fd] p-8 lg:flex lg:flex-col xl:p-10">
           <div className="absolute inset-0 opacity-70 [background-image:radial-gradient(#cfc4c5_1px,transparent_1px)] [background-size:24px_24px]" />
           <div className="relative z-10">
@@ -295,13 +350,16 @@ export default function ConsultaPedido() {
                 Ingresa los datos para verificar el estado de tu orden.
               </p>
             </div>
-            <Link
-              to="/login"
-              className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-[#ed1c24] px-4 py-2.5 text-sm font-bold text-[#c8102e] transition hover:bg-[#fff0f0]"
-            >
-              <ArrowLeft size={16} />
-              Regresar
-            </Link>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-[#ed1c24] px-4 py-2.5 text-sm font-bold text-[#c8102e] transition hover:bg-[#fff0f0]"
+              >
+                <ArrowLeft size={16} />
+                Regresar
+              </Link>
+            </div>
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
@@ -551,7 +609,7 @@ export default function ConsultaPedido() {
                       }
                       className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
                     >
-                      {motivosReporte.map((motivo) => (
+                      {motivosDisponiblesReporte(pedido.estado).map((motivo) => (
                         <option key={motivo.valor} value={motivo.valor}>
                           {motivo.etiqueta}
                         </option>
@@ -575,6 +633,79 @@ export default function ConsultaPedido() {
                     />
                   </label>
                 </div>
+
+                {reporte.motivo === 'material_defectuoso' && (
+                  <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    {!materialEnManos(pedido.estado) ? (
+                      <p className="text-sm font-medium text-amber-800">
+                        Podras reportar material defectuoso cuando bodega despache el pedido y lo tengas contigo.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold text-slate-800">Material: {pedido.material}</p>
+                        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <label className="block text-sm font-medium text-slate-700">
+                            Unidades defectuosas
+                            <input
+                              type="number"
+                              min={1}
+                              max={cantidadPedidaReporte}
+                              value={reporte.cantidadDefectuosa}
+                              onChange={(event) =>
+                                setReporte({
+                                  ...reporte,
+                                  cantidadDefectuosa: soloDigitos(event.target.value, 6),
+                                })
+                              }
+                              className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
+                              placeholder={`Max. ${cantidadPedidaReporte}`}
+                            />
+                          </label>
+                          <fieldset className="block text-sm font-medium text-slate-700">
+                            Que prefieres para lo defectuoso
+                            <div className="mt-2 space-y-2">
+                              <label className="flex items-center gap-2 text-sm font-normal text-slate-700">
+                                <input
+                                  type="radio"
+                                  name="remedio-defectuoso"
+                                  checked={reporte.remedio === 'reposicion'}
+                                  onChange={() => setReporte({ ...reporte, remedio: 'reposicion' })}
+                                />
+                                Reposicion del material
+                              </label>
+                              <label className="flex items-center gap-2 text-sm font-normal text-slate-700">
+                                <input
+                                  type="radio"
+                                  name="remedio-defectuoso"
+                                  checked={reporte.remedio === 'nota_credito'}
+                                  onChange={() => setReporte({ ...reporte, remedio: 'nota_credito' })}
+                                />
+                                Nota de credito
+                              </label>
+                            </div>
+                          </fieldset>
+                        </div>
+                        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                          <ResumenDefectuoso
+                            etiqueta="Pediste"
+                            valor={`${cantidadPedidaReporte} ${pedido.unidad_medida}`}
+                            tono="slate"
+                          />
+                          <ResumenDefectuoso
+                            etiqueta="Defectuoso"
+                            valor={`${defectuosasReporte} ${pedido.unidad_medida}`}
+                            tono="red"
+                          />
+                          <ResumenDefectuoso
+                            etiqueta="Te queda bueno"
+                            valor={`${buenasReporte} ${pedido.unidad_medida}`}
+                            tono="green"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -613,6 +744,29 @@ function Dato({
   )
 }
 
+function ResumenDefectuoso({
+  etiqueta,
+  tono,
+  valor,
+}: {
+  etiqueta: string
+  tono: 'slate' | 'red' | 'green'
+  valor: string
+}) {
+  const clases =
+    tono === 'red'
+      ? 'bg-red-100 text-red-700'
+      : tono === 'green'
+        ? 'bg-green-100 text-green-700'
+        : 'bg-slate-100 text-slate-700'
+  return (
+    <div className={`rounded-lg px-2 py-3 ${clases}`}>
+      <p className="text-[11px] font-semibold uppercase">{etiqueta}</p>
+      <p className="mt-1 text-sm font-bold">{valor}</p>
+    </div>
+  )
+}
+
 function calcularProgreso(estado?: EstadoPedido) {
   if (!estado) return 0
   if (estado === 'cancelado' || estado === 'rechazado') return 0
@@ -647,7 +801,19 @@ function textoConfirmacionEntrega(estado: EstadoPedido) {
 }
 
 function puedeConfirmarEntrega(estado: EstadoPedido) {
-  return !['entregado', 'cancelado', 'rechazado'].includes(estado)
+  // El franquiciado solo confirma la recepcion cuando bodega ya despacho el pedido.
+  // Antes de eso el material todavia no salio hacia sus manos.
+  return estado === 'en_despacho'
+}
+
+function materialEnManos(estado: EstadoPedido) {
+  return estado === 'en_despacho' || estado === 'entregado'
+}
+
+function motivosDisponiblesReporte(estado: EstadoPedido) {
+  return motivosReporte.filter(
+    (motivo) => motivo.valor !== 'material_defectuoso' || materialEnManos(estado),
+  )
 }
 
 function colorEstado(pedido: Pedido) {

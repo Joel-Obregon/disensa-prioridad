@@ -40,6 +40,10 @@ function esUuid(valor: string | null | undefined): valor is string {
   return typeof valor === 'string' && UUID_RE.test(valor)
 }
 
+function esAgotarStock(material?: InventarioOperativo | null) {
+  return (material?.estado_planificable || '').trim().toLowerCase() === 'agotar stock'
+}
+
 const PASOS_REPOSICION = ['Solicitada', 'Enviada', 'En inventario']
 
 function pasoReposicion(estado: EstadoPedido) {
@@ -136,7 +140,7 @@ export default function Reposicion() {
     [materiales],
   )
 
-  // Reposiciones = pedidos de compra (suministrador -> bodega).
+  // Reposiciones = pedidos de compra (suministrador a bodega).
   const reposiciones = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()
     return pedidos
@@ -152,6 +156,13 @@ export default function Reposicion() {
   function agregarMaterial() {
     if (!materialId || !esEnteroPositivo(cantidad)) {
       setError('Elige un material y una cantidad válida.')
+      return
+    }
+    const materialElegido = materialesLookup.get(materialId)
+    if (esAgotarStock(materialElegido)) {
+      setModalAlerta(
+        `"${materialElegido?.nombre}" está en agotar stock: no se puede solicitar reposición.`,
+      )
       return
     }
     setItems((lista) => [
@@ -189,6 +200,15 @@ export default function Reposicion() {
 
     if (resueltos.length === 0) {
       setError('Agrega al menos un material a la reposición.')
+      setGuardando(false)
+      return
+    }
+
+    const enAgotarStock = resueltos.find((item) => esAgotarStock(item.material))
+    if (enAgotarStock) {
+      setModalAlerta(
+        `"${enAgotarStock.material?.nombre}" está en agotar stock: no se puede solicitar reposición. Quítalo de la lista.`,
+      )
       setGuardando(false)
       return
     }
@@ -387,6 +407,14 @@ export default function Reposicion() {
             </label>
 
             <div className="md:col-span-3">
+              <span className="block text-sm font-medium text-slate-700">Suministrador</span>
+              <div className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600">
+                {materialesLookup.get(materialId)?.nombre_suministrador ||
+                  'Se toma automaticamente del material seleccionado'}
+              </div>
+            </div>
+
+            <div className="md:col-span-3">
               <button
                 type="button"
                 onClick={agregarMaterial}
@@ -556,4 +584,3 @@ export default function Reposicion() {
     </div>
   )
 }
-

@@ -7,6 +7,7 @@ import type { Session } from '@supabase/supabase-js'
 import { AuthContext } from './authState'
 import { esRolInterno } from './permisos'
 import { obtenerUsuarioPorCorreo } from '../services/usuariosService'
+import { latidoSesion, liberarSesion } from '../services/sesionService'
 import { supabase } from '../services/supabaseClient'
 import type { UsuarioApp } from '../types/usuario'
 
@@ -37,6 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function cerrarSesion() {
+    const userId = session?.user?.id
+    if (userId) await liberarSesion(userId)
     setPerfil(null)
     await supabase.auth.signOut()
   }
@@ -63,6 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    const userId = session?.user?.id
+    if (!userId) return
+
+    const correo = session?.user?.email || null
+    latidoSesion(userId, correo)
+    const intervalo = window.setInterval(() => latidoSesion(userId, correo), 30_000)
+
+    return () => window.clearInterval(intervalo)
+  }, [session?.user?.id, session?.user?.email])
 
   const value = {
     cargando,

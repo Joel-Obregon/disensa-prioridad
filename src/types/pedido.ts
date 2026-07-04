@@ -47,6 +47,8 @@ export type Pedido = {
   motivo_nc?: string | null
   fecha_nc?: string | null
   mensaje_suministrador?: string | null
+  suministrador?: string | null
+  zona?: string | null
   origen: 'suministrador' | 'bodega'
   destino: 'bodega' | 'franquiciado'
   solicitante: string

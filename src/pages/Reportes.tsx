@@ -88,6 +88,7 @@ export default function Reportes() {
   const [cargando, setCargando] = useState(true)
   const [reporteDetalle, setReporteDetalle] = useState<ReporteFranquiciado | null>(null)
   const [verHistorialReportes, setVerHistorialReportes] = useState(false)
+  const [pestana, setPestana] = useState<'despacho' | 'franquiciado'>('despacho')
 
   async function cargarReportes() {
     const [
@@ -385,6 +386,46 @@ export default function Reportes() {
         </div>
       </section>
 
+      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setPestana('despacho')}
+            className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition ${
+              pestana === 'despacho'
+                ? 'border-[#a33e00] bg-[#261812] text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex items-center gap-2 font-semibold">
+              <Boxes size={18} />
+              Materiales que necesitan despacho
+            </span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${pestana === 'despacho' ? 'bg-white text-[#261812]' : 'bg-slate-100 text-slate-600'}`}>
+              {materialesPorDespachar.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPestana('franquiciado')}
+            className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition ${
+              pestana === 'franquiciado'
+                ? 'border-[#a33e00] bg-[#261812] text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex items-center gap-2 font-semibold">
+              <FileWarning size={18} />
+              Reportes de franquiciado
+            </span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${pestana === 'franquiciado' ? 'bg-white text-[#261812]' : 'bg-amber-100 text-amber-700'}`}>
+              {reportesFranquiciadoActivos.length}
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {pestana === 'despacho' && (
       <div className="mt-6">
         <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-slate-200 p-5 font-semibold text-slate-800">
@@ -429,7 +470,10 @@ export default function Reportes() {
         </section>
 
       </div>
+      )}
 
+      {pestana === 'franquiciado' && (
+      <>
       <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-slate-200 p-5 font-semibold text-slate-800">
           <FileWarning size={18} className="text-orange-600" />
@@ -571,6 +615,9 @@ export default function Reportes() {
         </section>
       )}
 
+      </>
+      )}
+
       {reporteDetalle && (
         <ReporteDetalleModal
           pedido={pedidoDetalleReporte}
@@ -619,6 +666,36 @@ function ReporteDetalleModal({
             <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
               {reporte.descripcion}
             </p>
+            {reporte.motivo === 'material_defectuoso' &&
+              reporte.cantidad_defectuosa != null && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-amber-800">
+                    Detalle del material defectuoso
+                  </p>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg bg-white px-2 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">Pidio</p>
+                      <p className="mt-1 text-sm font-bold text-slate-800">{reporte.cantidad_pedida ?? '-'}</p>
+                    </div>
+                    <div className="rounded-lg bg-white px-2 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">Defectuoso</p>
+                      <p className="mt-1 text-sm font-bold text-red-700">{reporte.cantidad_defectuosa}</p>
+                    </div>
+                    <div className="rounded-lg bg-white px-2 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">Le queda</p>
+                      <p className="mt-1 text-sm font-bold text-green-700">
+                        {Math.max(0, (reporte.cantidad_pedida ?? 0) - (reporte.cantidad_defectuosa ?? 0))}
+                      </p>
+                    </div>
+                  </div>
+                  {reporte.remedio && (
+                    <p className="mt-2 text-sm font-medium text-amber-900">
+                      Remedio solicitado:{' '}
+                      {reporte.remedio === 'nota_credito' ? 'Nota de credito' : 'Reposicion del material'}
+                    </p>
+                  )}
+                </div>
+              )}
             <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
               <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
                 {formatearEtiqueta(reporte.estado)}

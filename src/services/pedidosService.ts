@@ -21,6 +21,8 @@ export type PedidoInput = {
   codigo_material?: string | null
   material_id: string | null
   material: string
+  suministrador?: string | null
+  zona?: string | null
   grupo_id?: string | null
   cantidad: number
   unidad_medida: string
@@ -88,9 +90,9 @@ export async function obtenerPedidos() {
 export async function obtenerClientesFranquiciado() {
   return supabase
     .from('clientes_franquiciado')
-    .select('codigo_cliente, nombre_cliente')
+    .select('codigo_cliente, nombre_cliente, zona')
     .order('nombre_cliente', { ascending: true })
-    .returns<{ codigo_cliente: string | null; nombre_cliente: string | null }[]>()
+    .returns<{ codigo_cliente: string | null; nombre_cliente: string | null; zona: string | null }[]>()
 }
 
 export async function crearPedido(pedido: PedidoInput) {
@@ -128,6 +130,8 @@ export async function crearPedido(pedido: PedidoInput) {
     condicion_material: pedido.condicion_material,
     tipo_caso: pedido.tipo_caso ?? null,
     cantidad_despacho: pedido.cantidad_despacho,
+    suministrador: pedido.suministrador ?? null,
+    zona: pedido.zona ?? null,
   }).select().single<Pedido>()
 
   if (!result.error) {
@@ -274,8 +278,8 @@ async function sincronizarClienteFranquiciado(pedido: PedidoInput | PedidoUpdate
 }
 
 async function sincronizarPedidoBodegaFq(pedido: PedidoInput) {
-  // Las reposiciones (suministrador -> bodega) no son pedidos de franquiciado:
-  // no se sincronizan a la tabla operativa bodega -> franquiciado (evita violar
+  // Las reposiciones (suministrador a bodega) no son pedidos de franquiciado:
+  // no se sincronizan a la tabla operativa bodega a franquiciado (evita violar
   // la FK codigo_cliente, que apunta a clientes_franquiciado).
   if (
     pedido.tipo_cliente === 'bodega' ||
@@ -397,9 +401,12 @@ export async function despacharPedido(
   pedido: Pedido,
   opciones: DespachoPedidoOptions = {}
 ) {
-  const materialId = opciones.material_id || pedido.material_id || null
+  const materialCrudo = opciones.material_id || pedido.material_id || null
+  const materialId = materialIdUuidONull(materialCrudo)
   const cantidad = cantidadParaDespacho(pedido)
-  const codigoMaterial = normalizarCodigoMaterial(opciones.codigo_material || null)
+  const codigoMaterial = normalizarCodigoMaterial(
+    opciones.codigo_material || codigoDesdeMaterialId(materialCrudo),
+  )
   const stockOperativo = esNumeroOperativo(opciones.stock_disponible_operativo)
     ? Math.max(0, Math.floor(opciones.stock_disponible_operativo))
     : null
@@ -462,8 +469,11 @@ async function despacharPedidoConFuncionBase(
   pedido: Pedido,
   opciones: DespachoPedidoOptions = {}
 ) {
-  const materialId = opciones.material_id || pedido.material_id || null
-  const codigoMaterial = normalizarCodigoMaterial(opciones.codigo_material || null)
+  const materialCrudo = opciones.material_id || pedido.material_id || null
+  const materialId = materialIdUuidONull(materialCrudo)
+  const codigoMaterial = normalizarCodigoMaterial(
+    opciones.codigo_material || codigoDesdeMaterialId(materialCrudo),
+  )
   const cantidad = cantidadParaDespacho(pedido)
   const stockOperativo = esNumeroOperativo(opciones.stock_disponible_operativo)
     ? Math.max(0, Math.floor(opciones.stock_disponible_operativo))
@@ -832,6 +842,18 @@ function sumarStockInventario(rows: InventarioBodegaRow[]) {
 
 function normalizarCodigoMaterial(codigo: string | null | undefined) {
   return codigo?.trim() || null
+}
+
+const UUID_MATERIAL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// El material_id de un pedido puede venir como UUID real o como codigo (MAT-####).
+// Para las RPC que esperan uuid, se pasa null si no es uuid y el codigo va aparte.
+function materialIdUuidONull(valor: string | null | undefined) {
+  return valor && UUID_MATERIAL_RE.test(valor) ? valor : null
+}
+
+function codigoDesdeMaterialId(valor: string | null | undefined) {
+  return valor && !UUID_MATERIAL_RE.test(valor) ? valor : null
 }
 
 function esNumeroOperativo(valor: number | null | undefined): valor is number {

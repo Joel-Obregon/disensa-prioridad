@@ -627,6 +627,12 @@ html[data-theme='dark'] main .login-card button[type='submit'] {
   color: #ffffff !important;
 }
 
+/* El boton amarillo de invitado mantiene su texto negro tambien en modo oscuro. */
+html[data-theme='dark'] main .login-card a.boton-invitado,
+html[data-theme='dark'] main a.boton-invitado {
+  color: #0f0f11 !important;
+}
+
 html[data-theme='dark'] main input,
 html[data-theme='dark'] main select,
 html[data-theme='dark'] main textarea {
@@ -1139,3 +1145,6 @@ html[data-theme='dark'] .pedidos-module [class~='bg-slate-200'] {
     transition-duration: 0.01ms !important;
   }
 }
+
+.regla-responsable { background-color: #fff7f2; color: #6d2b12; }
+html[data-theme='dark'] .regla-responsable { background-color: rgba(255, 255, 255, 0.12); color: #f4d9cc; }

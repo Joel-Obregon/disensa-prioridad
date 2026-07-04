@@ -5,6 +5,7 @@ import { esRolInterno, rutaInicialPorRol } from '../auth/permisos'
 import ThemeToggle from '../components/ThemeToggle'
 import { esCorreoValido } from '../lib/validacionesFormulario'
 import { obtenerUsuarioPorCorreo } from '../services/usuariosService'
+import { intentarRegistrarSesion } from '../services/sesionService'
 import { supabase } from '../services/supabaseClient'
 
 const disensaLogo = '/disensa-holcim-logo-source.png'
@@ -50,6 +51,18 @@ export default function Login() {
       setError('El usuario no tiene un rol interno activo. Usa consulta de invitado si eres franquiciado.')
       setCargando(false)
       return
+    }
+
+    const { data: sesion } = await supabase.auth.getUser()
+    const userId = sesion.user?.id
+    if (userId) {
+      const registro = await intentarRegistrarSesion(userId, correoNormalizado)
+      if (!registro.ok) {
+        await supabase.auth.signOut()
+        setError('Este usuario ya tiene una sesion activa en otro dispositivo. Cierra la otra sesion e intenta de nuevo.')
+        setCargando(false)
+        return
+      }
     }
 
     navigate(rutaInicialPorRol(perfil.rol))
@@ -217,7 +230,7 @@ export default function Login() {
           </p>
           <Link
             to="/consulta-pedido"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-[#e0b400] bg-[#ffd400] px-4 py-3 text-sm font-bold text-[#0f0f11] shadow-sm transition hover:bg-[#f5c800] hover:shadow-md"
+            className="boton-invitado inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-[#e0b400] bg-[#ffd400] px-4 py-3 text-sm font-bold text-[#0f0f11] shadow-sm transition hover:bg-[#f5c800] hover:shadow-md"
           >
             <Search size={18} />
             Consultar como invitado

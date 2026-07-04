@@ -8,6 +8,7 @@ import { actualizarEstadoPedido } from './pedidosService'
 import type { Pedido } from '../types/pedido'
 import type {
   MotivoReporteFranquiciado,
+  RemedioDefectuoso,
   ReporteFranquiciado,
 } from '../types/reporteFranquiciado'
 
@@ -18,6 +19,21 @@ export type ReporteFranquiciadoInput = {
   solicitante?: string | null
   motivo: MotivoReporteFranquiciado
   descripcion: string
+  material_reportado?: string | null
+  cantidad_pedida?: number | null
+  cantidad_defectuosa?: number | null
+  remedio?: RemedioDefectuoso | null
+}
+
+// El franquiciado pidio reposicion por los materiales defectuosos: se deja el
+// pedido esperando reabastecimiento para que bodega lo reponga. No cierra nada.
+export async function solicitarReposicionDefectuoso(pedidoId: string) {
+  const result = await supabase
+    .from('pedidos')
+    .update({ accion_solicitante: 'esperar_pedido', updated_at: new Date().toISOString() })
+    .eq('id', pedidoId)
+  if (!result.error) invalidarDatosReportesFranquiciado()
+  return result
 }
 
 export async function consultarPedidoInvitado(codigo: string, cedula: string) {
@@ -142,6 +158,13 @@ export async function confirmarEntregaFranquiciado(pedido: Pedido, cedula: strin
     }
   }
 
+  if (pedido.estado !== 'en_despacho') {
+    return {
+      data: null,
+      error: new Error('El pedido aun no fue despachado por bodega; no puedes confirmar la recepcion todavia.'),
+    }
+  }
+
   // El franquiciado valida que recibio el material: se cierra el reporte para que
   // el pedido salga de la cola operativa y pase a historial. Se cierra primero el
   // reporte para que, al marcar el pedido como entregado, las alertas se resuelvan.
@@ -170,7 +193,7 @@ export async function marcarReposicionEnviada(
 }
 
 // Cierra los reportes activos de un pedido (al validar la entrega el franquiciado).
-async function cerrarReportesDePedido(
+export async function cerrarReportesDePedido(
   pedido: Pick<Pedido, 'id' | 'codigo' | 'codigo_consulta'>,
 ) {
   const result = await supabase

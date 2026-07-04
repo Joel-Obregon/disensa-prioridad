@@ -101,7 +101,7 @@ export default function MainLayout() {
   }, [alertasNoRevisadas.length, segundosTitileo])
 
   // Re-sincroniza por tiempo las alertas de retraso: cuando un pedido cruza de
-  // tramo (amarillo->naranja->rojo o de vuelta) su alerta se actualiza y salta
+  // tramo (amarillo a naranja a rojo o de vuelta) su alerta se actualiza y salta
   // via realtime, sin que nadie tenga que tocar el pedido.
   useEffect(() => {
     let activo = true

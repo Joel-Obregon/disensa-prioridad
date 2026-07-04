@@ -31,8 +31,10 @@ import {
   escucharMateriales,
   type MaterialInput,
 } from '../services/materialesService'
+import { obtenerPedidos } from '../services/pedidosService'
 import ModalExito from '../components/ModalExito'
 import type { InventarioOperativo } from '../types/material'
+import type { Pedido } from '../types/pedido'
 
 type MaterialForm = {
   codigo_material: string
@@ -62,9 +64,19 @@ const formularioInicial: MaterialForm = {
 
 const MATERIALES_INVENTARIO_POR_PAGINA = 100
 
+function esNombreCatmanValido(nombre: string) {
+  const limpio = (nombre || '').trim()
+  if (!limpio) return false
+  if (limpio.toLowerCase().startsWith('sin catman')) return false
+  if (/^mat-?\d+$/i.test(limpio)) return false
+  if (/^\d+$/.test(limpio)) return false
+  return /[a-záéíóúñ]/i.test(limpio)
+}
+
 export default function Inventario() {
   const confirmar = useConfirmar()
   const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
+  const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const [catmanFiltro, setCatmanFiltro] = useState('todos')
@@ -87,7 +99,10 @@ export default function Inventario() {
     setCargando(true)
     setError('')
 
-    const { data, error } = await obtenerInventarioOperativo()
+    const [{ data, error }, pedidosRes] = await Promise.all([
+      obtenerInventarioOperativo(),
+      obtenerPedidos(),
+    ])
 
     if (error) {
       setError(mensajeErrorMateriales(error))
@@ -97,6 +112,7 @@ export default function Inventario() {
     }
 
     setMateriales(data || [])
+    if (!pedidosRes.error) setPedidos(pedidosRes.data || [])
     setCargando(false)
   }
 
@@ -213,6 +229,19 @@ export default function Inventario() {
     }
   }, [])
 
+  // Reabastecimiento real = reposiciones activas del modulo (suministrador a
+  // bodega, aun sin recibir). Reemplaza al transito importado del ERP.
+  const reabastecimientoModulo = useMemo(() => {
+    const terminales = new Set(['entregado', 'cancelado', 'rechazado', 'sin_stock'])
+    return pedidos
+      .filter(
+        (pedido) =>
+          (pedido.origen === 'suministrador' || pedido.destino === 'bodega') &&
+          !terminales.has(pedido.estado),
+      )
+      .reduce((total, pedido) => total + (Number(pedido.cantidad) || 0), 0)
+  }, [pedidos])
+
   const resumen = useMemo(() => {
     const stockDisponible = materiales.reduce(
       (total, material) => total + material.stock_disponible_operativo,
@@ -223,10 +252,7 @@ export default function Inventario() {
         .map((material) => material.codigo_suministrador)
         .filter((codigo): codigo is string => Boolean(codigo))
     )
-    const reabastecimiento = materiales.reduce(
-      (total, material) => total + reabastecimientoPendiente(material),
-      0
-    )
+    const reabastecimiento = reabastecimientoModulo
 
     return [
       {
@@ -250,22 +276,12 @@ export default function Inventario() {
       {
         titulo: 'Reabastecimiento',
         valor: formatearNumero(reabastecimiento),
-        detalle: 'Transito y OC pendientes',
+        detalle: 'Reposiciones activas del modulo',
         icono: AlertTriangle,
         tono: 'text-yellow-600',
       },
     ]
-  }, [materiales])
-
-  const catmanOpciones = useMemo(() => {
-    return [
-      ...new Set(
-        materiales
-          .map((material) => material.catman_categoria || material.categoria)
-          .filter(Boolean)
-      ),
-    ].sort((a, b) => a.localeCompare(b))
-  }, [materiales])
+  }, [materiales, reabastecimientoModulo])
 
   // Nombre del catman (persona) por categoria, para mostrarlo en los selectores.
   const catmanNombrePorCategoria = useMemo(() => {
@@ -281,6 +297,19 @@ export default function Inventario() {
 
   const etiquetaCatman = (categoria: string) =>
     catmanNombrePorCategoria.get(categoria) || categoria
+
+  // El desplegable solo muestra catman con nombre real (persona), nunca codigos MAT-####.
+  const catmanOpciones = useMemo(() => {
+    return [
+      ...new Set(
+        materiales
+          .map((material) => material.catman_categoria || material.categoria)
+          .filter(Boolean)
+      ),
+    ]
+      .filter((categoria) => esNombreCatmanValido(catmanNombrePorCategoria.get(categoria) || categoria))
+      .sort((a, b) => a.localeCompare(b))
+  }, [materiales, catmanNombrePorCategoria])
 
   const suministradorOpciones = useMemo(() => {
     return [

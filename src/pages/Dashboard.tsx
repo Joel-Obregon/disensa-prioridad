@@ -174,8 +174,8 @@ export default function Dashboard() {
   }, [materialesLookup, pedidos])
 
   const materialesFiltrados = materialesUnicos
-  // El modulo Pedidos es solo bodega -> franquiciado. Las reposiciones
-  // (suministrador -> bodega) NO cuentan como pedidos: se resumen en Abastecimiento.
+  // El modulo Pedidos es solo bodega a franquiciado. Las reposiciones
+  // (suministrador a bodega) NO cuentan como pedidos: se resumen en Abastecimiento.
   const pedidosVisibles = useMemo(
     () => pedidosConStockReal.filter((pedido) => !esReposicionPedido(pedido)),
     [pedidosConStockReal],

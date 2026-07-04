@@ -133,7 +133,7 @@ export async function crearMaterial(material: MaterialInput) {
     return fusionarMaterialConExistente(duplicado.data, material)
   }
 
-  // La FK materiales.codigo_material -> material_catalogo exige que el catalogo
+  // La FK materiales.codigo_material a material_catalogo exige que el catalogo
   // maestro tenga el material antes de insertarlo en la tabla operativa.
   const catalogoPrevio = await sincronizarMaterialCatalogo(material)
   if (catalogoPrevio.error) return catalogoPrevio

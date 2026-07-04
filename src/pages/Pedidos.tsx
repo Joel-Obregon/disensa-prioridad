@@ -38,6 +38,7 @@ import MaterialSearchSelect from '../components/MaterialSearchSelect'
 import { registrarAuditoria } from '../services/auditoriaService'
 import { obtenerAlertas } from '../services/alertasService'
 import {
+  cerrarReportesDePedido,
   escucharReportesFranquiciado,
   marcarReposicionEnviada,
   obtenerReportesFranquiciado,
@@ -50,7 +51,7 @@ import {
   suscribirseACriteriosPrioridad,
   type PrioridadCriterio,
 } from '../services/prioridadCriteriosService'
-import { escucharMateriales, obtenerMateriales } from '../services/materialesService'
+import { escucharMateriales } from '../services/materialesService'
 import {
   actualizarCantidadDespachoPedido,
   actualizarNotaCredito,
@@ -67,7 +68,7 @@ import {
   type PedidoDetalleOperativo,
 } from '../services/pedidosOperativosService'
 import type { Alerta } from '../types/alerta'
-import type { Material } from '../types/material'
+import type { InventarioOperativo, Material } from '../types/material'
 import type {
   AccionSolicitante,
   CondicionMaterial,
@@ -82,6 +83,7 @@ import type { RolUsuario } from '../types/usuario'
 
 type PedidoForm = {
   material_id: string
+  zona: string
   cantidad: string
   cantidad_despacho: string
   origen: 'suministrador' | 'bodega'
@@ -109,9 +111,9 @@ type DetallesOperativosLookup = {
 }
 
 type MaterialesLookup = {
-  porId: Map<string, Material>
-  porCodigo: Map<string, Material>
-  porNombre: Map<string, Material>
+  porId: Map<string, InventarioOperativo>
+  porCodigo: Map<string, InventarioOperativo>
+  porNombre: Map<string, InventarioOperativo>
 }
 
 type VistaPedidos = 'operativos' | 'historial'
@@ -119,10 +121,12 @@ type VistaPedidos = 'operativos' | 'historial'
 type ClienteSolicitante = {
   nombre: string
   documento: string
+  zona?: string
 }
 
 const formularioInicial: PedidoForm = {
   material_id: '',
+  zona: '',
   cantidad: '',
   cantidad_despacho: '',
   origen: 'bodega',
@@ -158,15 +162,20 @@ const estadosPedido: EstadoPedido[] = [
 
 const PEDIDOS_POR_PAGINA = 100
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function esUuid(valor: string | null | undefined): valor is string {
+  return typeof valor === 'string' && UUID_RE.test(valor)
+}
+
 export default function Pedidos() {
   const { perfil } = useAuth()
   const rol = perfil?.rol || 'administrador'
   const [pedidos, setPedidos] = useState<Pedido[]>([])
-  const [materiales, setMateriales] = useState<Material[]>([])
+  const [materiales, setMateriales] = useState<InventarioOperativo[]>([])
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [reportesFranquiciado, setReportesFranquiciado] = useState<ReporteFranquiciado[]>([])
   const [detallesOperativos, setDetallesOperativos] = useState<PedidoDetalleOperativo[]>([])
-  const [clientesMaestro, setClientesMaestro] = useState<{ codigo_cliente: string | null; nombre_cliente: string | null }[]>([])
+  const [clientesMaestro, setClientesMaestro] = useState<{ codigo_cliente: string | null; nombre_cliente: string | null; zona: string | null }[]>([])
   const [catmanResponsable, setCatmanResponsable] = useState<Map<string, string>>(new Map())
   const [modalExito, setModalExito] = useState('')
   const [modalAlerta, setModalAlerta] = useState('')
@@ -195,7 +204,7 @@ export default function Pedidos() {
     ] =
       await Promise.all([
         obtenerPedidos(),
-        obtenerMateriales(),
+        obtenerInventarioOperativo(),
         obtenerAlertas({ incluirStockDerivado: false, sincronizarStock: false }),
         obtenerReportesFranquiciado(),
         obtenerDetallesPedidosOperativos(),
@@ -256,8 +265,8 @@ export default function Pedidos() {
       const { error } = await actualizarPedido(pedidoEditandoId, {
         codigo: pedidos.find((pedido) => pedido.id === pedidoEditandoId)?.codigo,
         codigo_consulta: pedidos.find((pedido) => pedido.id === pedidoEditandoId)?.codigo_consulta || undefined,
-        codigo_material: material.codigo_material || null,
-        material_id: material.id,
+        codigo_material: material.codigo_material || (esUuid(material.id) ? null : material.id),
+        material_id: esUuid(material.id) ? material.id : null,
         material: material.nombre,
         cantidad,
         cantidad_despacho: cantidad,
@@ -323,9 +332,11 @@ export default function Pedidos() {
         codigo: indice === 0 ? codigoConsulta : `${codigoConsulta}-${indice + 1}`,
         codigo_consulta: codigoConsulta,
         grupo_id: grupoId,
-        codigo_material: mat.codigo_material || null,
-        material_id: mat.id,
+        codigo_material: mat.codigo_material || (esUuid(mat.id) ? null : mat.id),
+        material_id: esUuid(mat.id) ? mat.id : null,
         material: mat.nombre,
+        suministrador: mat.nombre_suministrador || null,
+        zona: formulario.zona || null,
         cantidad: item.cantidad,
         cantidad_despacho: item.cantidad,
         unidad_medida: mat.unidad_medida,
@@ -396,14 +407,29 @@ export default function Pedidos() {
 
   function actualizarSolicitante(valor: string) {
     const solicitante = soloTextoNombre(valor, 100)
-    const cliente = clientesDisponibles.find(
-      (item) => normalizarTexto(item.nombre) === normalizarTexto(solicitante)
-    )
+    const objetivo = normalizarTexto(valor)
+    const objetivoLimpio = normalizarTexto(solicitante)
+    const cliente = clientesDisponibles.find((item) => {
+      const nombre = normalizarTexto(item.nombre)
+      return nombre === objetivo || nombre === objetivoLimpio
+    })
 
     setFormulario({
       ...formulario,
       solicitante,
       cedula_solicitante: cliente?.documento || formulario.cedula_solicitante,
+      zona: cliente?.zona || formulario.zona,
+    })
+  }
+
+  function actualizarCedula(valor: string) {
+    const cedula = soloDigitos(valor, 13)
+    const cliente = clientePorDocumento.get(normalizarCedula(cedula))
+    setFormulario({
+      ...formulario,
+      cedula_solicitante: cedula,
+      solicitante: cliente?.nombre || formulario.solicitante,
+      zona: cliente?.zona || formulario.zona,
     })
   }
 
@@ -417,6 +443,7 @@ export default function Pedidos() {
     setPedidoEditandoId(pedido.id)
     setFormulario({
       material_id: material?.id || pedido.material_id || '',
+      zona: pedido.zona || '',
       cantidad: String(pedido.cantidad),
       cantidad_despacho: String(cantidadParaDespacho(pedido)),
       origen: pedido.origen,
@@ -491,12 +518,12 @@ export default function Pedidos() {
 
     if (estadoNc === 'efectiva' || estadoNc === 'rechazada') {
       const ok = await confirmar({
-        titulo: estadoNc === 'efectiva' ? 'Hacer efectiva la nota de crédito' : 'Rechazar nota de crédito',
+        titulo: estadoNc === 'efectiva' ? 'Hacer la nota de crédito' : 'Rechazar nota de crédito',
         mensaje:
           estadoNc === 'efectiva'
-            ? `¿Confirmas el reembolso de ${pedido.material}? El material quedará como reembolsado y saldrá de pendientes.`
+            ? `¿Hacer la nota de crédito de ${pedido.material}? Se cerrará la gestión.`
             : `¿Rechazar la nota de crédito de ${pedido.material}?`,
-        confirmarTexto: estadoNc === 'efectiva' ? 'Sí, reembolsar' : 'Sí, rechazar',
+        confirmarTexto: estadoNc === 'efectiva' ? 'Sí, hacer nota de crédito' : 'Sí, rechazar',
         peligro: estadoNc === 'rechazada',
       })
       if (!ok) return
@@ -515,13 +542,19 @@ export default function Pedidos() {
       detalle: `${pedido.codigo}: nota de crédito -> ${estadoNc}.`,
     })
 
+    // Al resolver la NC (aprobada/efectiva o rechazada) se cierra el reporte del
+    // franquiciado para que la gestion salga de la cola operativa.
+    if (estadoNc === 'efectiva' || estadoNc === 'rechazada') {
+      await cerrarReportesDePedido(pedido)
+    }
+
     const patch: Partial<Pedido> = { estado_nc: estadoNc }
     if (estadoNc === 'efectiva') patch.estado = 'cancelado'
     setPedidoDetalle((prev) => (prev && prev.id === pedido.id ? { ...prev, ...patch } : prev))
 
     setModalExito(
       estadoNc === 'efectiva'
-        ? 'Nota de crédito efectiva. Material reembolsado y fuera de pendientes.'
+        ? 'Se hizo la nota de crédito y se cerró la gestión.'
         : estadoNc === 'rechazada'
           ? 'Nota de crédito rechazada.'
           : 'Nota de crédito actualizada.',
@@ -732,7 +765,7 @@ export default function Pedidos() {
     }
   }, [])
 
-  // Mapa material -> responsable del catman (para mostrarlo al elegir el material).
+  // Mapa material a responsable del catman (para mostrarlo al elegir el material).
   useEffect(() => {
     let activo = true
     obtenerInventarioOperativo().then((resultado) => {
@@ -788,9 +821,9 @@ export default function Pedidos() {
   }
 
   const materialesLookup = useMemo(() => {
-    const porId = new Map<string, Material>()
-    const porCodigo = new Map<string, Material>()
-    const porNombre = new Map<string, Material>()
+    const porId = new Map<string, InventarioOperativo>()
+    const porCodigo = new Map<string, InventarioOperativo>()
+    const porNombre = new Map<string, InventarioOperativo>()
 
     materiales.forEach((material) => {
       porId.set(material.id, material)
@@ -821,30 +854,50 @@ export default function Pedidos() {
   const clientesDisponibles = useMemo<ClienteSolicitante[]>(() => {
     const porNombre = new Map<string, ClienteSolicitante>()
 
-    const registrar = (nombreRaw: string | null | undefined, documentoRaw: string) => {
+    const registrar = (
+      nombreRaw: string | null | undefined,
+      documentoRaw: string,
+      zonaRaw?: string | null,
+    ) => {
       const nombre = nombreRaw?.trim()
       if (!nombre) return
       const documento = normalizarCedula(documentoRaw || '')
+      const zona = (zonaRaw || '').trim() || undefined
       const llave = normalizarTexto(nombre)
       const actual = porNombre.get(llave)
-      if (!actual || (!actual.documento && documento)) {
-        porNombre.set(llave, { nombre, documento })
+      if (!actual) {
+        porNombre.set(llave, { nombre, documento, zona })
+      } else {
+        if (!actual.documento && documento) actual.documento = documento
+        if (!actual.zona && zona) actual.zona = zona
       }
     }
 
     // Lista maestra de clientes: su cedula/RUC esta en codigo_cliente.
     clientesMaestro.forEach((cliente) =>
-      registrar(cliente.nombre_cliente, cliente.codigo_cliente || '')
+      registrar(cliente.nombre_cliente, cliente.codigo_cliente || '', cliente.zona)
     )
 
     // Clientes que ya aparecen en pedidos previos.
     pedidos.forEach((pedido) => {
       const detalle = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
-      registrar(pedido.solicitante, detalle?.codigo_cliente || pedido.cedula_solicitante || '')
+      registrar(
+        pedido.solicitante,
+        detalle?.codigo_cliente || pedido.cedula_solicitante || '',
+        pedido.zona || detalle?.zonas,
+      )
     })
 
     return [...porNombre.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [clientesMaestro, detallesOperativosLookup, pedidos])
+
+  const clientePorDocumento = useMemo(() => {
+    const mapa = new Map<string, ClienteSolicitante>()
+    clientesDisponibles.forEach((c) => {
+      if (c.documento) mapa.set(normalizarCedula(c.documento), c)
+    })
+    return mapa
+  }, [clientesDisponibles])
 
   const pedidosConStockReal = useMemo(() => {
     return pedidos
@@ -981,6 +1034,34 @@ export default function Pedidos() {
 
     return codigos
   }, [reportesFranquiciado])
+
+  // Reposiciones activas (solicitadas al suministrador y aun sin recibir) por material.
+  // Alimenta el "reabastecimiento pendiente" con lo que viene en camino desde el modulo Reposicion.
+  const reposicionesPendientesPorMaterial = useMemo(() => {
+    const mapa = new Map<string, number>()
+    const terminales = new Set(['entregado', 'cancelado', 'rechazado', 'sin_stock'])
+
+    pedidos
+      .filter(
+        (pedido) =>
+          (pedido.origen === 'suministrador' || pedido.destino === 'bodega') &&
+          !terminales.has(pedido.estado),
+      )
+      .forEach((pedido) => {
+        const cantidad = Number(pedido.cantidad) || 0
+        if (cantidad <= 0) return
+        if (pedido.codigo_material) {
+          const clave = `cod:${normalizarTexto(pedido.codigo_material)}`
+          mapa.set(clave, (mapa.get(clave) || 0) + cantidad)
+        }
+        if (pedido.material) {
+          const clave = `nom:${normalizarTexto(pedido.material)}`
+          mapa.set(clave, (mapa.get(clave) || 0) + cantidad)
+        }
+      })
+
+    return mapa
+  }, [pedidos])
 
   const pedidosOperativos = useMemo(
     () =>
@@ -1163,6 +1244,14 @@ export default function Pedidos() {
             ))}
           </datalist>
 
+          <datalist id="cedulas-pedido">
+            {clientesDisponibles
+              .filter((cliente) => cliente.documento)
+              .map((cliente) => (
+                <option key={`ced-${cliente.documento}`} value={cliente.documento} label={cliente.nombre} />
+              ))}
+          </datalist>
+
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
             <MaterialSearchSelect
               label="Material"
@@ -1250,22 +1339,18 @@ export default function Pedidos() {
                 inputMode="numeric"
                 maxLength={13}
                 pattern="\d*"
+                list="cedulas-pedido"
                 value={formulario.cedula_solicitante}
-                onChange={(event) =>
-                  setFormulario({
-                    ...formulario,
-                    cedula_solicitante: soloDigitos(event.target.value, 13),
-                  })
-                }
+                onChange={(event) => actualizarCedula(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Ej. 6192102 o 0912345678"
               />
             </Campo>
 
-            <Campo label="Flujo del pedido">
+            <Campo label="Area de envio (zona del cliente)">
               <input
                 type="text"
-                value="Bodega a franquiciado"
+                value={formulario.zona || 'Se toma automaticamente del cliente'}
                 readOnly
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-slate-600 outline-none"
               />
@@ -1283,24 +1368,6 @@ export default function Pedidos() {
                 }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
               />
-            </Campo>
-
-            <Campo label="Urgencia">
-              <select
-                value={formulario.urgencia}
-                onChange={(event) =>
-                  setFormulario({
-                    ...formulario,
-                    urgencia: event.target.value as PedidoForm['urgencia'],
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="baja">Baja</option>
-                <option value="media">Media</option>
-                <option value="alta">Alta</option>
-                <option value="critica">Critica</option>
-              </select>
             </Campo>
 
             <Campo label="Tipo de caso">
@@ -1327,8 +1394,8 @@ export default function Pedidos() {
           <div className="mt-6 flex justify-end">
             <button
               type="submit"
-              disabled={guardando || materiales.length === 0}
-              className="rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              disabled={guardando}
+              className="rounded-lg bg-[#ed1c24] px-6 py-2.5 text-base font-bold text-white shadow-md transition hover:bg-[#c8102e] disabled:opacity-60"
             >
               {guardando ? 'Guardando...' : pedidoEditandoId ? 'Guardar cambios' : 'Guardar pedido'}
             </button>
@@ -1381,7 +1448,9 @@ export default function Pedidos() {
                     ? 'riesgo'
                     : semaforoBaseRetraso
                 const stockDisponible = stockDisponiblePedido(pedido, material, detalleOperativo)
-                const reabastecimiento = reabastecimientoPedido(detalleOperativo)
+                const reabastecimiento =
+                  reabastecimientoPedido(detalleOperativo) +
+                  reposicionPendienteDe(pedido, reposicionesPendientesPorMaterial)
                 const estadoVisible = enHistorial
                   ? 'Cerrado'
                   : reposicionPendiente
@@ -1407,7 +1476,7 @@ export default function Pedidos() {
                         {describirTiempoPedido(pedido, { reabiertoPorReporte })}
                       </p>
                       <p className="mt-1 text-xs font-medium text-[#7e5a4b]">
-                        Zonas: {detalleOperativo?.zonas || 'Sin zona registrada'}
+                        Zona: {pedido.zona || detalleOperativo?.zonas || '—'}
                       </p>
                       <p className="text-xs font-medium text-[#7e5a4b]">{pedido.solicitante}</p>
                       <p className="text-xs font-medium text-[#7e5a4b]">
@@ -1420,9 +1489,6 @@ export default function Pedidos() {
                     <td className="px-5 py-4">
                       <p className="font-semibold text-black">
                         {etiquetaFlujo(flujo)}
-                      </p>
-                      <p className="mt-1 text-xs font-medium text-[#7e5a4b]">
-                        {pedido.origen} a {pedido.destino}
                       </p>
                     </td>
                     <td className="px-5 py-4">
@@ -1453,7 +1519,10 @@ export default function Pedidos() {
                     </td>
                     <td className="px-5 py-4">
                       <p className="text-xs font-semibold text-[#7e5a4b]">
-                        {pedido.catman || catmanResponsable.get(pedido.material_id || '') || 'Sin responsable'}
+                        {pedido.catman ||
+                          material?.catman_nombre ||
+                          catmanResponsable.get(pedido.material_id || '') ||
+                          'Sin responsable'}
                       </p>
                     </td>
                     <td className="px-5 py-4">
@@ -1524,14 +1593,24 @@ export default function Pedidos() {
                                 onClick={() => undefined}
                               />
                             ) : (
-                              <AccionEstado
-                                label="Reponer y reenviar"
-                                icono={<Truck size={14} />}
-                                disabled={
-                                  !puedeGestionar || stockDisponible <= 0 || reponiendoId === pedido.id
-                                }
-                                onClick={() => reponerPedidoReportado(pedido)}
-                              />
+                              <>
+                                {notaCreditoPendiente(pedido.estado_nc) && (
+                                  <AccionEstado
+                                    label="Aprobar nota de credito"
+                                    icono={<CheckCircle2 size={14} />}
+                                    disabled={rol !== 'bodega' && rol !== 'administrador'}
+                                    onClick={() => gestionarNotaCredito(pedido, 'efectiva')}
+                                  />
+                                )}
+                                <AccionEstado
+                                  label="Reponer y enviar"
+                                  icono={<Truck size={14} />}
+                                  disabled={
+                                    !puedeGestionar || stockDisponible <= 0 || reponiendoId === pedido.id
+                                  }
+                                  onClick={() => reponerPedidoReportado(pedido)}
+                                />
+                              </>
                             )
                           ) : (
                             <>
@@ -1599,6 +1678,23 @@ export default function Pedidos() {
                                       !puedeCambiarA(pedido.estado, 'en_despacho')
                                     }
                                     onClick={() => despacharPedidoSeleccionado(pedido)}
+                                  />
+                                </>
+                              )}
+                              {notaCreditoPendiente(pedido.estado_nc) && (
+                                <>
+                                  <AccionEstado
+                                    label="Aprobar NC (reembolsar)"
+                                    icono={<CheckCircle2 size={14} />}
+                                    disabled={rol !== 'bodega' && rol !== 'administrador'}
+                                    onClick={() => gestionarNotaCredito(pedido, 'efectiva')}
+                                  />
+                                  <AccionEstado
+                                    label="Rechazar NC"
+                                    icono={<XCircle size={14} />}
+                                    peligro
+                                    disabled={rol !== 'bodega' && rol !== 'administrador'}
+                                    onClick={() => gestionarNotaCredito(pedido, 'rechazada')}
                                   />
                                 </>
                               )}
@@ -1697,6 +1793,7 @@ export default function Pedidos() {
           alertas={alertas}
           reabiertoPorReporte={tieneReporteActivo(pedidoDetalle, pedidosConReporteActivo)}
           detalleOperativo={obtenerDetalleOperativo(pedidoDetalle, detallesOperativosLookup)}
+          reposicionPendiente={reposicionPendienteDe(pedidoDetalle, reposicionesPendientesPorMaterial)}
           materiales={materiales}
           onClose={() => setPedidoDetalle(null)}
           onGestionNc={gestionarNotaCredito}
@@ -1959,6 +2056,7 @@ function DetallePedido({
   puedeGestionarNc,
   pedido,
   reabiertoPorReporte,
+  reposicionPendiente = 0,
 }: {
   alertas: Alerta[]
   detalleOperativo?: PedidoDetalleOperativo
@@ -1968,6 +2066,7 @@ function DetallePedido({
   puedeGestionarNc: boolean
   pedido: Pedido
   reabiertoPorReporte?: boolean
+  reposicionPendiente?: number
 }) {
   const material = materiales.find(
     (item) =>
@@ -1986,7 +2085,7 @@ function DetallePedido({
       ? 'riesgo'
       : semaforoBase
   const stockActual = stockDisponiblePedido(pedido, material, detalleOperativo)
-  const reabastecimiento = reabastecimientoPedido(detalleOperativo)
+  const reabastecimiento = reabastecimientoPedido(detalleOperativo) + (reposicionPendiente || 0)
   const resolucion = resolucionPedido(pedido, detalleOperativo)
   const unidad = material?.unidad_medida || pedido.unidad_medida
   const esCompra = flujoOperativoPedido(pedido, detalleOperativo) === 'compra'
@@ -2003,7 +2102,7 @@ function DetallePedido({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="rounded-lg border border-[#c8102e] bg-[#c8102e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a50d26]"
           >
             Cerrar
           </button>
@@ -2037,12 +2136,13 @@ function DetallePedido({
               <Dato label="Semaforo" valor={etiquetaSemaforo(semaforo)} destaque={claseSemaforoBadge(semaforo)} />
               <Dato label="Tiempo" valor={describirTiempoPedido(pedido, { reabiertoPorReporte })} />
               <Dato label="Resolucion" valor={resolucion} />
-              <Dato label="Zonas" valor={detalleOperativo?.zonas || 'Sin zona registrada'} />
+              <Dato label="Zona de envio" valor={pedido.zona || detalleOperativo?.zonas || '—'} />
               <Dato
                 label="Codigo cliente"
                 valor={detalleOperativo?.codigo_cliente || pedido.cedula_solicitante || 'Sin registrar'}
               />
-              <Dato label="Fecha solicitud" valor={formatearFechaHora(pedido.fecha_solicitud)} />
+              <Dato label="Fecha del pedido" valor={formatearFechaHora(pedido.fecha_solicitud)} />
+              <Dato label="Fecha de entrega" valor={formatearFechaHora(pedido.fecha_compromiso)} />
               <Dato label="Cantidad" valor={String(pedido.cantidad)} />
               <Dato
                 label="Reabastecimiento"
@@ -2070,6 +2170,7 @@ function DetallePedido({
                 <Dato
                   label="Suministrador"
                   valor={
+                    pedido.suministrador ||
                     detalleOperativo?.nombre_suministrador ||
                     obtenerSuministradorDesdePedido(pedido) ||
                     'Sin suministrador registrado'
@@ -2297,6 +2398,22 @@ function reabastecimientoPedido(detalle?: PedidoDetalleOperativo) {
   return numeroOperativo(detalle?.reabastecimiento_pendiente, 0)
 }
 
+function notaCreditoPendiente(estadoNc?: string | null) {
+  return !!estadoNc && !['efectiva', 'rechazada'].includes(estadoNc)
+}
+
+function reposicionPendienteDe(pedido: Pedido, mapa: Map<string, number>) {
+  if (pedido.codigo_material) {
+    const porCodigo = mapa.get(`cod:${normalizarTexto(pedido.codigo_material)}`)
+    if (porCodigo !== undefined) return porCodigo
+  }
+  if (pedido.material) {
+    const porNombre = mapa.get(`nom:${normalizarTexto(pedido.material)}`)
+    if (porNombre !== undefined) return porNombre
+  }
+  return 0
+}
+
 function resolucionPedido(pedido: Pedido, detalle?: PedidoDetalleOperativo) {
   if (detalle?.resolucion) return detalle.resolucion
   if (pedido.accion_solicitante === 'nota_credito') return 'NC en proceso'
@@ -2319,9 +2436,7 @@ function flujoOperativoPedido(
 }
 
 function etiquetaFlujo(flujo: 'compra' | 'venta') {
-  return flujo === 'compra'
-    ? 'Compra: suministrador a bodega'
-    : 'Venta: bodega a franquiciado'
+  return flujo === 'compra' ? 'Suministrador a Bodega' : 'Bodega a Franquiciado'
 }
 
 function puedeGestionarFlujo(flujo: 'compra' | 'venta', rol: RolUsuario) {
@@ -2413,6 +2528,8 @@ function buscarMaterialPedido(
 ) {
   return (
     (pedido.material_id ? lookup.porId.get(pedido.material_id) : undefined) ||
+    (pedido.material_id ? lookup.porCodigo.get(pedido.material_id) : undefined) ||
+    (pedido.codigo_material ? lookup.porCodigo.get(pedido.codigo_material) : undefined) ||
     (detalle?.codigo_material ? lookup.porCodigo.get(detalle.codigo_material) : undefined) ||
     lookup.porNombre.get(normalizarTexto(detalle?.nombre_material || pedido.material))
   )

@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import type { Material } from '../types/material'
 
-const MAX_OPCIONES_VISIBLES = 80
+const MAX_OPCIONES_VISIBLES = 250
 
 type MaterialSearchSelectProps = {
   label: string

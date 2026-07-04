@@ -20,7 +20,7 @@ export async function sincronizarAlertaSemaforoPedido(
   pedido: Pedido,
   opciones: OpcionesSyncPedido = {}
 ) {
-  // Las reposiciones (suministrador -> bodega) se siguen en la pestana
+  // Las reposiciones (suministrador a bodega) se siguen en la pestana
   // "Falta de materiales"; no generan alertas de priorizacion de pedidos.
   const esReposicion =
     pedido.tipo_cliente === 'bodega' ||
@@ -99,8 +99,8 @@ export async function sincronizarAlertaSemaforoPedido(
 function nivelAlertaPedido(pedido: Pedido): Alerta['nivel'] | null {
   const semaforo = resolverSemaforoPedido(pedido)
 
-  // El nivel escala con el tramo del semaforo para que cada paso (amarillo ->
-  // naranja -> rojo) re-dispare la alerta.
+  // El nivel escala con el tramo del semaforo para que cada paso (amarillo a 
+  // naranja a rojo) re-dispare la alerta.
   if (semaforo === 'critico') return 'critica' // rojo: +30 d de retraso
   if (semaforo === 'alto') return 'critica'     // naranja/reprogramado: alerta ROJA
   if (semaforo === 'riesgo') return 'media'     // amarillo: 1-6 d de retraso

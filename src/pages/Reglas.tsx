@@ -439,7 +439,7 @@ function TarjetaRegla({
           <span className={`px-3 py-1.5 font-semibold ${claseBadgeNivel(nivel)}`}>
             {configuracionNivel[nivel].etiqueta}
           </span>
-          <span className="bg-[#fff7f2] px-3 py-1.5 font-semibold text-[#6d2b12]">
+          <span className="regla-responsable px-3 py-1.5 font-semibold">
             Responsable: {guia.responsable}
           </span>
         </div>
