@@ -25,7 +25,10 @@ import {
   obtenerAlertas,
 } from '../services/alertasService'
 import { obtenerPedidos } from '../services/pedidosService'
+import { obtenerReglas } from '../services/reglasService'
+import { leerVisibilidadAlertas } from '../lib/reglasAlertas'
 import type { Alerta } from '../types/alerta'
+import type { ReglaNegocio } from '../types/regla'
 import type { SemaforoOperativo } from '../lib/semaforoOperativo'
 import type { EstadoPedido, Pedido } from '../types/pedido'
 
@@ -78,6 +81,7 @@ export default function Alertas() {
   const { perfil } = useAuth()
   const rolUsuario = perfil?.rol
   const [alertas, setAlertas] = useState<Alerta[]>([])
+  const [reglas, setReglas] = useState<ReglaNegocio[]>([])
   const [reposiciones, setReposiciones] = useState<Pedido[]>([])
   const [categoria, setCategoria] = useState<CategoriaAlertas>('priorizacion')
   const [vista, setVista] = useState<VistaAlertas>('operativas')
@@ -114,6 +118,9 @@ export default function Alertas() {
         ),
       )
     }
+
+    const reglasRes = await obtenerReglas()
+    if (!reglasRes.error) setReglas(reglasRes.data || [])
 
     setCargando(false)
   }
@@ -181,6 +188,20 @@ export default function Alertas() {
     [reposiciones],
   )
 
+  // Regla parametrizable: que alertas se muestran (por color y por categoria).
+  const visibilidad = useMemo(() => leerVisibilidadAlertas(reglas), [reglas])
+  const categoriasVisibles = useMemo(
+    () =>
+      categoriasAlertas.filter((item) =>
+        item.id === 'materiales' ? visibilidad.materiales : visibilidad.pedidos,
+      ),
+    [visibilidad],
+  )
+
+  const categoriaActiva: CategoriaAlertas = categoriasVisibles.some((item) => item.id === categoria)
+    ? categoria
+    : categoriasVisibles[0]?.id ?? categoria
+
   const conteoCategorias = useMemo(() => {
     const operativas = alertas.filter(alertaOperativa)
     return {
@@ -201,7 +222,7 @@ export default function Alertas() {
   }, [alertas, rolUsuario])
 
   const alertasPorCategoria = useMemo(() => {
-    if (categoria === 'materiales') {
+    if (categoriaActiva === 'materiales') {
       // La pestaña Falta de materiales se dibuja con reposiciones, no con alertas.
       return [] as Alerta[]
     }
@@ -209,7 +230,7 @@ export default function Alertas() {
     return alertasRol.filter(
       (alerta) => !esAlertaFaltaMaterial(alerta) && esAlertaPriorizacionPedido(alerta)
     )
-  }, [alertasRol, categoria])
+  }, [alertasRol, categoriaActiva])
 
   const materialesFiltro = useMemo(() => {
     const materiales = alertasRol
@@ -246,9 +267,11 @@ export default function Alertas() {
         filtros.fechaHasta
       )
 
-      return coincideTexto && coincideNivel && coincideMaterial && coincideFecha
+      const coincideColor = alerta.nivel === 'critica' ? visibilidad.rojas : visibilidad.amarillas
+
+      return coincideTexto && coincideNivel && coincideMaterial && coincideFecha && coincideColor
     })
-  }, [alertasPorCategoria, filtros])
+  }, [alertasPorCategoria, filtros, visibilidad])
 
   const alertasOperativas = useMemo(
     () =>
@@ -281,7 +304,7 @@ export default function Alertas() {
   }, [reposActivas, reposExito, reposNegado, filtros.busqueda])
 
   const resumen = useMemo(() => {
-    if (categoria === 'materiales') {
+    if (categoriaActiva === 'materiales') {
       return [
         {
           titulo: 'Materiales pedidos al suministrador',
@@ -302,7 +325,7 @@ export default function Alertas() {
         clase: 'border-orange-200 bg-orange-50 text-orange-700',
       },
     ]
-  }, [alertasPorCategoria, categoria, reposActivas])
+  }, [alertasPorCategoria, categoriaActiva, reposActivas])
 
   const seccionesAlertas = useMemo(() => {
     if (vista === 'historial') {
@@ -415,9 +438,9 @@ export default function Alertas() {
           Tipo de alerta
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {categoriasAlertas.map((item) => {
+          {categoriasVisibles.map((item) => {
             const Icono = item.icono
-            const activo = categoria === item.id
+            const activo = categoriaActiva === item.id
 
             return (
               <button
@@ -560,7 +583,7 @@ export default function Alertas() {
           </p>
         )}
 
-        {!cargando && categoria === 'materiales' && (
+        {!cargando && categoriaActiva === 'materiales' && (
           <PanelFaltaMateriales
             vista={vista}
             activas={reposFiltradas.activas}
@@ -570,7 +593,7 @@ export default function Alertas() {
         )}
 
         {!cargando &&
-          categoria !== 'materiales' &&
+          categoriaActiva !== 'materiales' &&
           alertasVisibles.length > 0 &&
           seccionesAlertas.map((seccion) => (
             <section
@@ -611,7 +634,7 @@ export default function Alertas() {
             </section>
           ))}
 
-        {!cargando && categoria !== 'materiales' && alertasVisibles.length === 0 && (
+        {!cargando && categoriaActiva !== 'materiales' && alertasVisibles.length === 0 && (
           <p className="border border-dashed border-[#d8d2df] bg-white p-8 text-center text-[#5f5964]">
             No hay alertas en esta vista.
           </p>

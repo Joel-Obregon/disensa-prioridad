@@ -28,6 +28,7 @@ import {
 } from '../lib/reportNotifications'
 import { supabase } from '../services/supabaseClient'
 import { obtenerReglas } from '../services/reglasService'
+import { leerRecordatorioMinutos } from '../lib/reglasAlertas'
 import RealtimeAlertToast from './RealtimeAlertToast'
 import ThemeToggle from './ThemeToggle'
 
@@ -64,21 +65,8 @@ export default function MainLayout() {
     let activo = true
     obtenerReglas().then((resultado) => {
       if (!activo || resultado.error) return
-      const regla = (resultado.data || []).find(
-        (item) => item.nombre === 'Recordatorio de alertas pendientes',
-      )
-      const activa = regla && regla.estado !== 'inactiva' && regla.activo !== false
-      if (!regla || !activa) {
-        setSegundosTitileo(0)
-        return
-      }
-      try {
-        const condicion = JSON.parse(regla.condicion || '{}') as { segundosTitileo?: number }
-        const segundos = Number(condicion.segundosTitileo)
-        setSegundosTitileo(Number.isFinite(segundos) && segundos > 0 ? segundos : 30)
-      } catch {
-        setSegundosTitileo(30)
-      }
+      const minutos = leerRecordatorioMinutos(resultado.data || [])
+      setSegundosTitileo(minutos > 0 ? minutos * 60 : 0)
     })
     return () => {
       activo = false
@@ -259,7 +247,7 @@ export default function MainLayout() {
       <main className="min-w-0 flex-1 lg:ml-[260px]">
         <header className="app-header pointer-events-none fixed right-4 top-3 z-40 flex justify-end sm:right-6">
           <div className="pointer-events-auto flex items-center gap-2 text-[#1a1a1a]">
-            <RealtimeAlertToast />
+            {perfil?.rol !== 'suministrador' && <RealtimeAlertToast />}
             <ThemeToggle className="hidden sm:inline-flex" />
             <span className="hidden items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 md:inline-flex">
               <span className="h-2 w-2 rounded-full bg-green-600" />

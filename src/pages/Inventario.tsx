@@ -42,6 +42,8 @@ type MaterialForm = {
   categoria: string
   stock_actual: string
   unidad_medida: string
+  suministrador_codigo: string
+  suministrador_nombre: string
 }
 
 type EstadoPlanificableFiltro = 'todos' | 'planificable' | 'no planificable' | 'agotar stock'
@@ -60,6 +62,8 @@ const formularioInicial: MaterialForm = {
   categoria: '',
   stock_actual: '',
   unidad_medida: 'UN',
+  suministrador_codigo: '',
+  suministrador_nombre: '',
 }
 
 const MATERIALES_INVENTARIO_POR_PAGINA = 100
@@ -130,7 +134,22 @@ export default function Inventario() {
       return
     }
 
-    const resultado = await crearMaterial(payload)
+    if (!formulario.suministrador_nombre.trim()) {
+      setError('Selecciona el suministrador del material.')
+      setGuardando(false)
+      return
+    }
+
+    const resultado = await crearMaterial(
+      payload,
+      {
+        codigo: formulario.suministrador_codigo || null,
+        nombre: formulario.suministrador_nombre,
+      },
+      formulario.categoria.trim()
+        ? { nombre: etiquetaCatman(formulario.categoria), categoria: formulario.categoria }
+        : undefined,
+    )
 
     if (resultado.error) {
       setError(resultado.error.message)
@@ -155,6 +174,8 @@ export default function Inventario() {
       categoria: material.catman_categoria || material.categoria,
       stock_actual: String(material.stock_disponible_operativo),
       unidad_medida: normalizarUmb(material.unidad_medida),
+      suministrador_codigo: material.codigo_suministrador || '',
+      suministrador_nombre: material.nombre_suministrador || '',
     })
   }
 
@@ -171,12 +192,22 @@ export default function Inventario() {
       return
     }
 
-    const resultado = await actualizarMaterial(material.id, payload, {
-      demanda_bodega_fq: material.demanda_bodega_fq,
-      pedido_maximo_material: material.pedido_maximo_material,
-      stockAnterior: material.stock_disponible_operativo,
-      stock_objetivo_material: material.stock_objetivo_material,
-    })
+    const resultado = await actualizarMaterial(
+      material.id,
+      payload,
+      {
+        demanda_bodega_fq: material.demanda_bodega_fq,
+        pedido_maximo_material: material.pedido_maximo_material,
+        stockAnterior: material.stock_disponible_operativo,
+        stock_objetivo_material: material.stock_objetivo_material,
+      },
+      edicion.suministrador_nombre.trim()
+        ? { codigo: edicion.suministrador_codigo || null, nombre: edicion.suministrador_nombre }
+        : undefined,
+      edicion.categoria.trim()
+        ? { nombre: etiquetaCatman(edicion.categoria), categoria: edicion.categoria }
+        : undefined,
+    )
 
     if (resultado.error) {
       setError(resultado.error.message)
@@ -297,6 +328,20 @@ export default function Inventario() {
 
   const etiquetaCatman = (categoria: string) =>
     catmanNombrePorCategoria.get(categoria) || categoria
+
+  // Lista de suministradores existentes para elegir al crear/editar un material.
+  const suministradorLista = useMemo(() => {
+    const mapa = new Map<string, { codigo: string; nombre: string }>()
+    materiales.forEach((material) => {
+      const nombre = (material.nombre_suministrador || '').trim()
+      if (!nombre) return
+      const clave = nombre.toLowerCase()
+      if (!mapa.has(clave)) {
+        mapa.set(clave, { codigo: (material.codigo_suministrador || '').trim(), nombre })
+      }
+    })
+    return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [materiales])
 
   // El desplegable solo muestra catman con nombre real (persona), nunca codigos MAT-####.
   const catmanOpciones = useMemo(() => {
@@ -463,6 +508,29 @@ export default function Inventario() {
                 {catmanOpciones.map((catman) => (
                   <option key={catman} value={catman}>
                     {etiquetaCatman(catman)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Suministrador
+              <select
+                value={formulario.suministrador_nombre}
+                onChange={(event) => {
+                  const nombre = event.target.value
+                  const opcion = suministradorLista.find((item) => item.nombre === nombre)
+                  setFormulario({
+                    ...formulario,
+                    suministrador_nombre: nombre,
+                    suministrador_codigo: opcion?.codigo || '',
+                  })
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="">Selecciona suministrador</option>
+                {suministradorLista.map((item) => (
+                  <option key={item.nombre} value={item.nombre}>
+                    {item.nombre}
                   </option>
                 ))}
               </select>
@@ -647,15 +715,44 @@ export default function Inventario() {
                       )}
                     </td>
                     <td className="px-5 py-4 text-slate-600">
-                      <p className="font-semibold text-slate-700">
-                        {material.nombre_suministrador || 'Sin suministrador'}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {material.codigo_suministrador || 'Sin codigo'}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Marca: {material.marca_material || 'Sin marca'}
-                      </p>
+                      {editando ? (
+                        <select
+                          value={edicion.suministrador_nombre}
+                          onChange={(event) => {
+                            const nombre = event.target.value
+                            const opcion = suministradorLista.find((item) => item.nombre === nombre)
+                            setEdicion({
+                              ...edicion,
+                              suministrador_nombre: nombre,
+                              suministrador_codigo: opcion?.codigo || '',
+                            })
+                          }}
+                          className="w-full min-w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          {edicion.suministrador_nombre &&
+                            !suministradorLista.some((item) => item.nombre === edicion.suministrador_nombre) && (
+                              <option value={edicion.suministrador_nombre}>{edicion.suministrador_nombre}</option>
+                            )}
+                          <option value="">Sin suministrador</option>
+                          {suministradorLista.map((item) => (
+                            <option key={item.nombre} value={item.nombre}>
+                              {item.nombre}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <>
+                          <p className="font-semibold text-slate-700">
+                            {material.nombre_suministrador || 'Sin suministrador'}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {material.codigo_suministrador || 'Sin codigo'}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Marca: {material.marca_material || 'Sin marca'}
+                          </p>
+                        </>
+                      )}
                     </td>
                     <td className="px-5 py-4 text-slate-600">
                       {editando ? (

@@ -561,7 +561,9 @@ function EditorRegla({
             regla={regla}
           />
 
-          <VistaPreviaRegla formulario={formulario} />
+          {regla.clave !== 'visibilidad_alertas' && regla.clave !== 'recordatorio_alertas' && (
+            <VistaPreviaRegla formulario={formulario} />
+          )}
 
           <Campo label="Descripción de la condición">
             <textarea
@@ -630,6 +632,7 @@ function EditorRegla({
 function ParametrosRegla({
   formulario,
   onChange,
+  regla,
 }: {
   formulario: FormularioRegla
   onChange: (formulario: FormularioRegla) => void
@@ -637,19 +640,103 @@ function ParametrosRegla({
 }) {
   const llaves = Object.keys(formulario.parametros)
 
-  function actualizarParametro(llave: string, valor: string) {
+  function fijarParametro(llave: string, valor: string) {
     onChange({
       ...formulario,
-      parametros: {
-        ...formulario.parametros,
-        [llave]: valor.replace(/[^\d.]/g, ''),
-      },
+      parametros: { ...formulario.parametros, [llave]: valor },
     })
+  }
+
+  function actualizarParametro(llave: string, valor: string) {
+    fijarParametro(llave, valor.replace(/[^\d.]/g, ''))
+  }
+
+  // Regla de visibilidad: casillas por color y por tipo de alerta.
+  if (regla.clave === 'visibilidad_alertas') {
+    const casillas = [
+      { llave: 'rojas', etiqueta: 'Alertas rojas (criticas)', detalle: 'Quiebre de stock y retraso critico' },
+      { llave: 'amarillas', etiqueta: 'Alertas amarillas (media/alta)', detalle: 'Riesgo, stock bajo y retrasos' },
+      { llave: 'pedidos', etiqueta: 'De pedidos (priorizacion)', detalle: 'Pestana Priorizacion de pedidos' },
+      { llave: 'materiales', etiqueta: 'De materiales (falta de materiales)', detalle: 'Pestana Falta de materiales' },
+    ]
+    return (
+      <GrupoParametros descripcion="Marca solo las alertas que quieres ver en el modulo Alertas.">
+        {casillas.map((casilla) => (
+          <label
+            key={casilla.llave}
+            className="flex items-start gap-3 border border-slate-200 bg-white p-3 text-sm"
+          >
+            <input
+              type="checkbox"
+              checked={(formulario.parametros[casilla.llave] ?? '1') !== '0'}
+              onChange={(event) => fijarParametro(casilla.llave, event.target.checked ? '1' : '0')}
+              className="mt-0.5 h-4 w-4 accent-[#c8102e]"
+            />
+            <span>
+              <span className="block font-semibold text-slate-800">{casilla.etiqueta}</span>
+              <span className="block text-xs text-slate-500">{casilla.detalle}</span>
+            </span>
+          </label>
+        ))}
+      </GrupoParametros>
+    )
+  }
+
+  // Regla de recordatorio: cada cuanto (numero + unidad) parpadea el aviso.
+  if (regla.clave === 'recordatorio_alertas') {
+    return (
+      <GrupoParametros descripcion="Cada cuanto se repite el aviso de Alertas en el menu como recordatorio.">
+        <ParametroNumerico
+          etiqueta="Repetir el recordatorio cada"
+          unidad=""
+          valor={formulario.parametros.valor ?? '30'}
+          onChange={(valor) => fijarParametro('valor', valor.replace(/[^\d]/g, ''))}
+        />
+        <label className="block text-sm font-semibold text-slate-800">
+          Unidad
+          <select
+            value={formulario.parametros.factor ?? '1'}
+            onChange={(event) => fijarParametro('factor', event.target.value)}
+            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5"
+          >
+            <option value="1">Minutos</option>
+            <option value="60">Horas</option>
+            <option value="1440">Dias</option>
+          </select>
+        </label>
+        <div className="sm:col-span-2">
+          <p className="text-sm font-semibold text-[#261812]">Que alertas quieres recordar</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Marca los tipos de alertas flotantes que quieres que se repitan como recordatorio.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {[
+              { llave: 'sel_reposicion', etiqueta: 'Alertas de reposicion' },
+              { llave: 'sel_pedidos', etiqueta: 'Alertas de pedidos' },
+              { llave: 'sel_reportes', etiqueta: 'Alertas de reportes' },
+            ].map((item) => (
+              <label
+                key={item.llave}
+                className="flex items-start gap-3 border border-slate-200 bg-white p-3 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={(formulario.parametros[item.llave] ?? '1') !== '0'}
+                  onChange={(event) => fijarParametro(item.llave, event.target.checked ? '1' : '0')}
+                  className="mt-0.5 h-4 w-4 accent-[#c8102e]"
+                />
+                <span className="font-medium text-slate-800">{item.etiqueta}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </GrupoParametros>
+    )
   }
 
   if (llaves.length === 0) {
     return (
-      <section className="border border-[#e3bfb1] bg-[#fff7f2] p-4">
+      <section className="reglas-param-panel border border-[#e3bfb1] bg-[#fff7f2] p-4">
         <p className="text-sm font-semibold text-[#261812]">Parametros</p>
         <p className="mt-1 text-sm leading-5 text-slate-600">
           Esta regla no usa umbrales numericos: solo se activa/desactiva y se le
@@ -718,7 +805,7 @@ function GrupoParametros({
   descripcion: string
 }) {
   return (
-    <section className="border border-[#e3bfb1] bg-[#fff7f2] p-4">
+    <section className="reglas-param-panel border border-[#e3bfb1] bg-[#fff7f2] p-4">
       <p className="text-sm font-semibold text-[#261812]">Parámetros que usa el cálculo</p>
       <p className="mt-1 text-sm leading-5 text-slate-600">{descripcion}</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">{children}</div>

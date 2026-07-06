@@ -40,6 +40,10 @@ export type MaterialInput = {
   es_critico: boolean
 }
 
+export type SuministradorMaterial = { codigo?: string | null; nombre?: string | null }
+
+export type CatmanMaterial = { nombre?: string | null; categoria?: string | null }
+
 export type MaterialAlertasContexto = {
   demanda_bodega_fq?: number | null
   pedido_maximo_material?: number | null
@@ -125,7 +129,11 @@ async function consultarMaterialesSinCreatedAt() {
   }
 }
 
-export async function crearMaterial(material: MaterialInput) {
+export async function crearMaterial(
+  material: MaterialInput,
+  suministrador?: SuministradorMaterial,
+  catman?: CatmanMaterial,
+) {
   const duplicado = await buscarMaterialDuplicado(material)
 
   if (duplicado.error) return duplicado
@@ -135,7 +143,7 @@ export async function crearMaterial(material: MaterialInput) {
 
   // La FK materiales.codigo_material a material_catalogo exige que el catalogo
   // maestro tenga el material antes de insertarlo en la tabla operativa.
-  const catalogoPrevio = await sincronizarMaterialCatalogo(material)
+  const catalogoPrevio = await sincronizarMaterialCatalogo(material, suministrador, catman)
   if (catalogoPrevio.error) return catalogoPrevio
 
   const result = await supabase.from('materiales').insert(material).select().single<Material>()
@@ -153,7 +161,9 @@ export async function crearMaterial(material: MaterialInput) {
 export async function actualizarMaterial(
   id: string,
   material: MaterialInput,
-  contextoAlertas: MaterialAlertasContexto = {}
+  contextoAlertas: MaterialAlertasContexto = {},
+  suministrador?: SuministradorMaterial,
+  catman?: CatmanMaterial,
 ) {
   const referencia = await resolverMaterial(id)
   if (!referencia) {
@@ -200,6 +210,14 @@ export async function actualizarMaterial(
   if (result.error) return result
   if (!result.data) {
     return errorAplicacion('Supabase no devolvio el material actualizado. Verifica permisos de la tabla materiales.')
+  }
+
+  if (suministrador?.nombre || catman?.nombre) {
+    await sincronizarMaterialCatalogo(
+      { codigo_material: material.codigo_material, nombre: material.nombre },
+      suministrador,
+      catman,
+    )
   }
 
   const materialAlertaAnterior = materialConContextoAlertas(
@@ -414,19 +432,28 @@ async function sincronizarMaterialEnModulos(
 
 async function sincronizarMaterialCatalogo(
   material: { codigo_material?: string | null; nombre: string },
+  suministrador?: SuministradorMaterial,
+  catman?: CatmanMaterial,
 ) {
   if (!material.codigo_material) return { data: null, error: null }
 
+  const registro: Record<string, unknown> = {
+    codigo_material: material.codigo_material,
+    nombre_material: material.nombre,
+    updated_at: new Date().toISOString(),
+  }
+  if (suministrador?.nombre) {
+    registro.nombre_suministrador = suministrador.nombre
+    registro.codigo_suministrador = suministrador.codigo || null
+  }
+  if (catman?.nombre) {
+    registro.catman_nombre = catman.nombre
+    if (catman.categoria) registro.catman_categoria = catman.categoria
+  }
+
   const catalogoResult = await supabase
     .from('material_catalogo')
-    .upsert(
-      {
-        codigo_material: material.codigo_material,
-        nombre_material: material.nombre,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'codigo_material' }
-    )
+    .upsert(registro, { onConflict: 'codigo_material' })
 
   return esErrorTablaOColumnaOpcional(catalogoResult.error)
     ? { data: null, error: null }

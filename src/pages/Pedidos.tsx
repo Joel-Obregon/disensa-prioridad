@@ -1007,11 +1007,27 @@ export default function Pedidos() {
     })
   }, [busqueda, detallesOperativosLookup, filtros, pedidosConStockReal])
 
+  // Un reporte por retraso NO reabre la gestion (el pedido aun no estaba cerrado):
+  // las acciones siguen normales y solo se resalta el reporte. Reabren los demas
+  // reportes (defectuoso, nota de credito, otro) porque llegan tras la entrega.
   const pedidosConReporteActivo = useMemo(() => {
     const codigos = new Set<string>()
 
     reportesFranquiciado
-      .filter((reporte) => reporte.estado !== 'cerrado')
+      .filter((reporte) => reporte.estado !== 'cerrado' && reporte.motivo !== 'retraso')
+      .forEach((reporte) => {
+        if (reporte.pedido_id) codigos.add(`id:${reporte.pedido_id}`)
+        if (reporte.codigo_consulta) codigos.add(`codigo:${normalizarTexto(reporte.codigo_consulta)}`)
+      })
+
+    return codigos
+  }, [reportesFranquiciado])
+
+  const pedidosConReporteRetraso = useMemo(() => {
+    const codigos = new Set<string>()
+
+    reportesFranquiciado
+      .filter((reporte) => reporte.estado !== 'cerrado' && reporte.motivo === 'retraso')
       .forEach((reporte) => {
         if (reporte.pedido_id) codigos.add(`id:${reporte.pedido_id}`)
         if (reporte.codigo_consulta) codigos.add(`codigo:${normalizarTexto(reporte.codigo_consulta)}`)
@@ -1434,6 +1450,7 @@ export default function Pedidos() {
                 const enHistorial =
                   pedidoCerrado(pedido.estado) && !tieneReporteActivo(pedido, pedidosConReporteActivo)
                 const reabiertoPorReporte = tieneReporteActivo(pedido, pedidosConReporteActivo)
+                const reporteRetraso = tieneReporteActivo(pedido, pedidosConReporteRetraso)
                 const reposicionPendiente = tieneReporteActivo(pedido, pedidosConReposicionPendiente)
                 const cantidadPendiente = cantidadParaDespacho(pedido)
                 const detalleOperativo = obtenerDetalleOperativo(pedido, detallesOperativosLookup)
@@ -1456,7 +1473,9 @@ export default function Pedidos() {
                   : reposicionPendiente
                     ? 'Esperando validacion del franquiciado'
                     : reabiertoPorReporte
-                      ? 'Reabierto por reporte'
+                      ? pedidoCerrado(pedido.estado)
+                        ? 'Reabierto por reporte'
+                        : 'Pedido reportado'
                       : resolucion
                 const semaforoProducto = resolverSemaforoProducto(
                   stockDisponible,
@@ -1502,6 +1521,11 @@ export default function Pedidos() {
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1">
                         <Badge texto={formatearEtiqueta(pedido.condicion_material || 'normal')} />
+                        {reporteRetraso && (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-300">
+                            Reporte por retraso
+                          </span>
+                        )}
                         {pedido.estado_nc && (
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${

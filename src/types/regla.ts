@@ -10,4 +10,5 @@ export type ReglaNegocio = {
   efecto: string
   peso: number
   estado: 'activa' | 'inactiva'
+  clave?: string
 }

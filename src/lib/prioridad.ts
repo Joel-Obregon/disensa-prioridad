@@ -34,11 +34,12 @@ const NOMBRE_REGLA = {
   franquiciado_nc: 'Franquiciado solicita NC',
 } as const
 
-// Pesos de respaldo (si la regla no existe en BD). Coinciden con la semilla de
-// supabase/24_reglas_negocio_nuevas.sql.
+// Pesos de respaldo (si la regla no existe en BD).
+// Las reglas de stock (sin existencia / stock critico) se eliminaron del
+// catalogo: su peso por defecto es 0 para que no influyan en la cola.
 const PESO_DEFECTO = {
-  sin_existencia: 40,
-  stock_critico: 30,
+  sin_existencia: 0,
+  stock_critico: 0,
   retraso_amarillo: 20,
   retraso_naranja: 30,
   retraso_critico: 40,

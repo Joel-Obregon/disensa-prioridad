@@ -19,6 +19,9 @@ import {
 } from '../lib/alertRuntimeEvents'
 import type { Alerta } from '../types/alerta'
 import { alertaSilenciada } from '../lib/alertSilencio'
+import { obtenerReglas } from '../services/reglasService'
+import { leerVisibilidadAlertas, leerRecordatorioConfig } from '../lib/reglasAlertas'
+import type { VisibilidadAlertas, RecordatorioConfig } from '../lib/reglasAlertas'
 
 const DURACION_TOAST_MS = 6000
 const INTERVALO_RESPALDO_MS = 30000
@@ -36,6 +39,17 @@ export default function RealtimeAlertToast() {
   const firmasVisualesConocidasRef = useRef<Set<string>>(new Set())
   const lineaBaseListaRef = useRef(false)
   const enPaginaAlertasRef = useRef(false)
+  const visibilidadRef = useRef<VisibilidadAlertas>({
+    rojas: true,
+    amarillas: true,
+    pedidos: true,
+    materiales: true,
+  })
+  const [recordatorio, setRecordatorio] = useState<RecordatorioConfig>({
+    activo: false,
+    minutos: 0,
+    deseleccionadas: [],
+  })
 
   const sincronizarFirmasVisualesConocidas = useCallback(() => {
     firmasVisualesConocidasRef.current = new Set(alertasConocidasRef.current.values())
@@ -55,6 +69,15 @@ export default function RealtimeAlertToast() {
       const firmaAnterior = alertasConocidasRef.current.get(nuevaAlerta.id)
       alertasConocidasRef.current.delete(nuevaAlerta.id)
       if (firmaAnterior) sincronizarFirmasVisualesConocidas()
+      setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
+      return
+    }
+
+    // Regla de visibilidad: si el color/categoria de la alerta no esta marcado,
+    // no se notifica ni se cuenta (no aparece el aviso flotante ni en el centro).
+    if (!alertaVisiblePorRegla(nuevaAlerta, visibilidadRef.current)) {
+      alertasConocidasRef.current.set(nuevaAlerta.id, firmaAlerta(nuevaAlerta))
+      firmasVisualesConocidasRef.current.add(firmaAlerta(nuevaAlerta))
       setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
       return
     }
@@ -186,6 +209,65 @@ export default function RealtimeAlertToast() {
     limpiarNotificacionesVistas()
     void establecerLineaBase()
   }, [establecerLineaBase, location.pathname])
+
+  useEffect(() => {
+    let activo = true
+    const cargarReglas = () =>
+      obtenerReglas().then((resultado) => {
+        if (!activo || resultado.error) return
+        const reglas = resultado.data || []
+        visibilidadRef.current = leerVisibilidadAlertas(reglas)
+        const siguiente = leerRecordatorioConfig(reglas)
+        setRecordatorio((prev) =>
+          prev.activo === siguiente.activo &&
+          prev.minutos === siguiente.minutos &&
+          prev.deseleccionadas.join(',') === siguiente.deseleccionadas.join(',')
+            ? prev
+            : siguiente,
+        )
+      })
+    cargarReglas()
+    const intervalo = window.setInterval(cargarReglas, 20000)
+    return () => {
+      activo = false
+      window.clearInterval(intervalo)
+    }
+  }, [])
+
+  // Recordatorio: cada X minutos vuelven a aparecer las alertas activas que
+  // pasan la visibilidad y cuya regla no fue desmarcada (nunca las de historial).
+  useEffect(() => {
+    if (!recordatorio.activo || recordatorio.minutos <= 0) return
+
+    const repetir = async () => {
+      if (enPaginaAlertasRef.current) return
+      const { data, error } = await obtenerAlertas()
+      if (error) return
+
+      const aRecordar = (data || []).filter(
+        (item) =>
+          item.estado !== 'cerrada' &&
+          item.nivel !== 'informativa' &&
+          alertaVisiblePorRegla(item, visibilidadRef.current) &&
+          alertaEnRecordatorio(item, recordatorio.deseleccionadas),
+      )
+
+      if (aRecordar.length === 0) return
+
+      setCola((actual) => {
+        const nueva = [...actual]
+        aRecordar.forEach((item) => {
+          if (!nueva.some((x) => x.id === item.id)) nueva.push(item)
+        })
+        return nueva.slice(-5)
+      })
+      aRecordar.forEach((item) => agregarAlertaNoRevisada(item.id))
+      setIdsNoRevisados(obtenerAlertasNoRevisadas())
+    }
+
+    const intervalo = window.setInterval(repetir, recordatorio.minutos * 60000)
+    return () => window.clearInterval(intervalo)
+  }, [recordatorio])
 
   useEffect(() => escucharAlertasNoRevisadas(setIdsNoRevisados), [])
 
@@ -414,6 +496,34 @@ function colorNivel(nivel: Alerta['nivel']) {
   if (nivel === 'critica') return 'bg-red-500'
   if (nivel === 'alta' || nivel === 'media') return 'bg-yellow-400'
   return 'bg-green-400'
+}
+
+// Clasifica cada alerta flotante en una de las tres categorias del recordatorio.
+function categoriaAlerta(alerta: Alerta): 'reposicion' | 'pedidos' | 'reportes' {
+  const tipo = (alerta.tipo_alerta || '').toLowerCase()
+  if (tipo.includes('reporte') || tipo.includes('nota_credito') || tipo.includes('_nc')) {
+    return 'reportes'
+  }
+  if (
+    tipo.includes('stock') ||
+    tipo.includes('inventario') ||
+    tipo.includes('material') ||
+    tipo.includes('falta') ||
+    tipo.includes('agotar')
+  ) {
+    return 'reposicion'
+  }
+  return 'pedidos'
+}
+
+function alertaEnRecordatorio(alerta: Alerta, deseleccionadas: string[]) {
+  return !deseleccionadas.includes(categoriaAlerta(alerta))
+}
+
+function alertaVisiblePorRegla(alerta: Alerta, visibilidad: VisibilidadAlertas) {
+  const colorOk = alerta.nivel === 'critica' ? visibilidad.rojas : visibilidad.amarillas
+  const categoriaOk = esAlertaStockMaterial(alerta) ? visibilidad.materiales : visibilidad.pedidos
+  return colorOk && categoriaOk
 }
 
 function esAlertaStockMaterial(alerta: Alerta) {

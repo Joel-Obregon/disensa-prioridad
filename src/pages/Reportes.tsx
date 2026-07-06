@@ -486,7 +486,6 @@ export default function Reportes() {
                 <th className="px-5 py-3 text-left">Pedido</th>
                 <th className="px-5 py-3 text-left">Solicitante</th>
                 <th className="px-5 py-3 text-left">Motivo</th>
-                <th className="px-5 py-3 text-left">Detalle</th>
                 <th className="px-5 py-3 text-left">Estado</th>
                 <th className="px-5 py-3 text-left">Fecha</th>
                 <th className="px-5 py-3 text-left">Acciones</th>
@@ -504,9 +503,6 @@ export default function Reportes() {
                   <td className="px-5 py-4 text-slate-600">{reporte.solicitante || '-'}</td>
                   <td className="px-5 py-4 text-slate-600">
                     {formatearEtiqueta(reporte.motivo)}
-                  </td>
-                  <td className="max-w-md px-5 py-4 text-slate-600">
-                    {recortarTexto(reporte.descripcion, 78)}
                   </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
@@ -531,7 +527,7 @@ export default function Reportes() {
 
               {!cargando && reportesFranquiciadoActivos.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                     {filtros.busqueda.trim()
                       ? 'No hay reportes activos que coincidan con la busqueda.'
                       : 'No hay reportes activos de franquiciados.'}
@@ -566,7 +562,6 @@ export default function Reportes() {
                     <th className="px-5 py-3 text-left">Pedido</th>
                     <th className="px-5 py-3 text-left">Solicitante</th>
                     <th className="px-5 py-3 text-left">Motivo</th>
-                    <th className="px-5 py-3 text-left">Detalle</th>
                     <th className="px-5 py-3 text-left">Estado</th>
                     <th className="px-5 py-3 text-left">Fecha</th>
                     <th className="px-5 py-3 text-left">Acciones</th>
@@ -584,9 +579,6 @@ export default function Reportes() {
                       <td className="px-5 py-4 text-slate-600">{reporte.solicitante || '-'}</td>
                       <td className="px-5 py-4 text-slate-600">
                         {formatearEtiqueta(reporte.motivo)}
-                      </td>
-                      <td className="max-w-md px-5 py-4 text-slate-600">
-                        {recortarTexto(reporte.descripcion, 78)}
                       </td>
                       <td className="px-5 py-4">
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -809,12 +801,6 @@ function umbralNormalMaterial(material: InventarioOperativo) {
 
 function formatearEtiqueta(valor: string) {
   return valor.replace(/_/g, ' ')
-}
-
-function recortarTexto(valor: string, maximo: number) {
-  const limpio = valor.trim().replace(/\s+/g, ' ')
-  if (limpio.length <= maximo) return limpio
-  return `${limpio.slice(0, maximo).trim()}...`
 }
 
 function formatearFechaReporte(fecha?: string | null) {

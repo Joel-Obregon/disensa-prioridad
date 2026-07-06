@@ -57,7 +57,7 @@ const consultaInicial: ConsultaForm = {
 }
 
 const reporteInicial: ReporteForm = {
-  motivo: 'retraso',
+  motivo: 'nota_credito',
   descripcion: '',
   cantidadDefectuosa: '',
   remedio: 'reposicion',
@@ -75,7 +75,6 @@ const motivosReporte: Array<{ valor: MotivoReporteFranquiciado; etiqueta: string
   { valor: 'retraso', etiqueta: 'Retraso del pedido' },
   { valor: 'material_defectuoso', etiqueta: 'Material defectuoso' },
   { valor: 'nota_credito', etiqueta: 'Solicitar nota de credito' },
-  { valor: 'otro', etiqueta: 'Otro motivo' },
 ]
 
 function etiquetaNc(estado: string) {
@@ -168,6 +167,12 @@ export default function ConsultaPedido() {
 
     if (esDefectuoso && !materialEnManos(pedido.estado)) {
       setError('Solo puedes reportar material defectuoso cuando bodega ya despacho el pedido y lo tienes contigo.')
+      setEnviandoReporte(false)
+      return
+    }
+
+    if (reporte.motivo === 'retraso' && !pedidoReagendadoPorRetraso(pedido)) {
+      setError('El reporte por retraso se habilita cuando el pedido se reagenda por retraso.')
       setEnviandoReporte(false)
       return
     }
@@ -378,7 +383,7 @@ export default function ConsultaPedido() {
 
           <form onSubmit={consultar} className="mt-6 space-y-4">
             <label className="block text-sm font-medium text-slate-700">
-              Codigo unico
+              Numero de pedido
               <input
                 value={consulta.codigo}
                 onChange={(event) =>
@@ -609,7 +614,7 @@ export default function ConsultaPedido() {
                       }
                       className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
                     >
-                      {motivosDisponiblesReporte(pedido.estado).map((motivo) => (
+                      {motivosDisponiblesReporte(pedido).map((motivo) => (
                         <option key={motivo.valor} value={motivo.valor}>
                           {motivo.etiqueta}
                         </option>
@@ -810,10 +815,19 @@ function materialEnManos(estado: EstadoPedido) {
   return estado === 'en_despacho' || estado === 'entregado'
 }
 
-function motivosDisponiblesReporte(estado: EstadoPedido) {
-  return motivosReporte.filter(
-    (motivo) => motivo.valor !== 'material_defectuoso' || materialEnManos(estado),
-  )
+function pedidoReagendadoPorRetraso(pedido: Pedido) {
+  const semaforo = resolverSemaforoPedido(pedido)
+  return semaforo === 'alto' || semaforo === 'critico'
+}
+
+function motivosDisponiblesReporte(pedido: Pedido) {
+  const enManos = materialEnManos(pedido.estado)
+  const reagendado = pedidoReagendadoPorRetraso(pedido)
+  return motivosReporte.filter((motivo) => {
+    if (motivo.valor === 'material_defectuoso') return enManos
+    if (motivo.valor === 'retraso') return reagendado
+    return true
+  })
 }
 
 function colorEstado(pedido: Pedido) {

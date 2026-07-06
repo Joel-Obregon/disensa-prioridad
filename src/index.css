@@ -1147,4 +1147,23 @@ html[data-theme='dark'] .pedidos-module [class~='bg-slate-200'] {
 }
 
 .regla-responsable { background-color: #fff7f2; color: #6d2b12; }
+
+/* Editor de reglas: en modo oscuro el panel de parametros se mantiene claro y su
+   texto en negro, para que las etiquetas y campos se lean con buen contraste. */
+html[data-theme='dark'] .reglas-param-panel {
+  background-color: #fff7f2 !important;
+  border-color: #e3bfb1 !important;
+}
+html[data-theme='dark'] .reglas-param-panel,
+html[data-theme='dark'] .reglas-param-panel * {
+  color: #1a1a1a !important;
+}
+html[data-theme='dark'] .reglas-param-panel [class~='bg-white'],
+html[data-theme='dark'] .reglas-param-panel input,
+html[data-theme='dark'] .reglas-param-panel select,
+html[data-theme='dark'] .reglas-param-panel textarea {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #1a1a1a !important;
+}
 html[data-theme='dark'] .regla-responsable { background-color: rgba(255, 255, 255, 0.12); color: #f4d9cc; }
