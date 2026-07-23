@@ -50,6 +50,11 @@ export default function RealtimeAlertToast() {
     minutos: 0,
     deseleccionadas: [],
   })
+  const recordatorioRef = useRef<RecordatorioConfig>({
+    activo: false,
+    minutos: 0,
+    deseleccionadas: [],
+  })
 
   const sincronizarFirmasVisualesConocidas = useCallback(() => {
     firmasVisualesConocidasRef.current = new Set(alertasConocidasRef.current.values())
@@ -76,6 +81,18 @@ export default function RealtimeAlertToast() {
     // Regla de visibilidad: si el color/categoria de la alerta no esta marcado,
     // no se notifica ni se cuenta (no aparece el aviso flotante ni en el centro).
     if (!alertaVisiblePorRegla(nuevaAlerta, visibilidadRef.current)) {
+      alertasConocidasRef.current.set(nuevaAlerta.id, firmaAlerta(nuevaAlerta))
+      firmasVisualesConocidasRef.current.add(firmaAlerta(nuevaAlerta))
+      setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
+      return
+    }
+
+    // Regla de recordatorio activa: solo saltan como aviso flotante las categorias
+    // seleccionadas (reposicion / pedidos / reportes). Las desmarcadas no notifican.
+    if (
+      recordatorioRef.current.activo &&
+      !alertaEnRecordatorio(nuevaAlerta, recordatorioRef.current.deseleccionadas)
+    ) {
       alertasConocidasRef.current.set(nuevaAlerta.id, firmaAlerta(nuevaAlerta))
       firmasVisualesConocidasRef.current.add(firmaAlerta(nuevaAlerta))
       setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
@@ -218,6 +235,7 @@ export default function RealtimeAlertToast() {
         const reglas = resultado.data || []
         visibilidadRef.current = leerVisibilidadAlertas(reglas)
         const siguiente = leerRecordatorioConfig(reglas)
+        recordatorioRef.current = siguiente
         setRecordatorio((prev) =>
           prev.activo === siguiente.activo &&
           prev.minutos === siguiente.minutos &&
@@ -240,7 +258,6 @@ export default function RealtimeAlertToast() {
     if (!recordatorio.activo || recordatorio.minutos <= 0) return
 
     const repetir = async () => {
-      if (enPaginaAlertasRef.current) return
       const { data, error } = await obtenerAlertas()
       if (error) return
 
@@ -254,17 +271,22 @@ export default function RealtimeAlertToast() {
 
       if (aRecordar.length === 0) return
 
+      // Recordatorio: TODAS las alertas registradas del/los modulo(s) seleccionado(s)
+      // vuelven a la cola y aparecen una tras otra, en el orden de prioridad
+      // vigente (primero rojas/criticas, luego amarillas), unos segundos cada una.
+      const ordenadas = [...aRecordar].sort(ordenarAlertasPorPrioridad)
       setCola((actual) => {
         const nueva = [...actual]
-        aRecordar.forEach((item) => {
+        ordenadas.forEach((item) => {
           if (!nueva.some((x) => x.id === item.id)) nueva.push(item)
         })
-        return nueva.slice(-5)
+        return nueva.slice(-50).sort(ordenarAlertasPorPrioridad)
       })
       aRecordar.forEach((item) => agregarAlertaNoRevisada(item.id))
       setIdsNoRevisados(obtenerAlertasNoRevisadas())
     }
 
+    void repetir()
     const intervalo = window.setInterval(repetir, recordatorio.minutos * 60000)
     return () => window.clearInterval(intervalo)
   }, [recordatorio])
@@ -338,7 +360,7 @@ export default function RealtimeAlertToast() {
     <>
       {alerta && visible && (
         <div
-          className={`alert-toast fixed right-4 top-4 z-50 w-[calc(100vw-2rem)] max-w-md rounded-lg border p-5 shadow-xl ${estilos}`}
+          className={`alert-toast fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] max-w-md rounded-lg border p-5 shadow-xl ${estilos}`}
         >
           <div className="flex items-start gap-3">
             <span className="rounded-lg bg-white/20 p-2">
@@ -498,8 +520,21 @@ function colorNivel(nivel: Alerta['nivel']) {
   return 'bg-green-400'
 }
 
-// Clasifica cada alerta flotante en una de las tres categorias del recordatorio.
-function categoriaAlerta(alerta: Alerta): 'reposicion' | 'pedidos' | 'reportes' {
+// Orden de prioridad vigente: primero las rojas (criticas), luego las amarillas.
+function pesoNivelAlerta(nivel: Alerta['nivel']) {
+  if (nivel === 'critica') return 0
+  if (nivel === 'alta') return 1
+  if (nivel === 'media') return 2
+  return 3
+}
+
+function ordenarAlertasPorPrioridad(a: Alerta, b: Alerta) {
+  return pesoNivelAlerta(a.nivel) - pesoNivelAlerta(b.nivel)
+}
+
+// Clasifica cada alerta flotante en una de las tres categorias del recordatorio:
+// pedidos (priorizacion de pedidos), inventario (stock/materiales) o reportes.
+function categoriaAlerta(alerta: Alerta): 'inventario' | 'pedidos' | 'reportes' {
   const tipo = (alerta.tipo_alerta || '').toLowerCase()
   if (tipo.includes('reporte') || tipo.includes('nota_credito') || tipo.includes('_nc')) {
     return 'reportes'
@@ -511,7 +546,7 @@ function categoriaAlerta(alerta: Alerta): 'reposicion' | 'pedidos' | 'reportes' 
     tipo.includes('falta') ||
     tipo.includes('agotar')
   ) {
-    return 'reposicion'
+    return 'inventario'
   }
   return 'pedidos'
 }

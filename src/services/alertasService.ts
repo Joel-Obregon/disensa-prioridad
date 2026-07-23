@@ -7,6 +7,7 @@ import {
 import type { Alerta } from '../types/alerta'
 import type { InventarioOperativo } from '../types/material'
 import { obtenerInventarioOperativo } from './inventarioService'
+import { diasRetrasoPedido } from '../lib/semaforoOperativo'
 import { sincronizarAlertaStockMaterial } from './stockAlertasService'
 
 type PedidoParaAlerta = {
@@ -78,7 +79,7 @@ const TIPOS_ALERTA_STOCK = new Set([
   'transito_cubre_pedido',
 ])
 
-const INTERVALO_SYNC_STOCK_ALERTAS_MS = 10000
+const INTERVALO_SYNC_STOCK_ALERTAS_MS = 300000
 const TAMANO_LOTE_SYNC_STOCK = 25
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -109,11 +110,30 @@ export async function obtenerAlertas(opciones: ObtenerAlertasOpciones = {}) {
 }
 
 async function cargarAlertasDesdeSupabase(incluirStockDerivado: boolean) {
-  const result = await supabase
-    .from('alertas')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .returns<Alerta[]>()
+  // Supabase limita cada consulta a 1000 filas. Si se pide todo junto ordenado
+  // por fecha, las alertas activas antiguas (p. ej. retrasos de hace semanas)
+  // quedan fuera del corte. Por eso se piden por separado: TODAS las abiertas
+  // (activas/revisadas) mas un historial reciente de cerradas.
+  const [abiertas, cerradas] = await Promise.all([
+    supabase
+      .from('alertas')
+      .select('*')
+      .in('estado', ['activa', 'revisada'])
+      .order('created_at', { ascending: false })
+      .limit(1000)
+      .returns<Alerta[]>(),
+    supabase
+      .from('alertas')
+      .select('*')
+      .eq('estado', 'cerrada')
+      .order('created_at', { ascending: false })
+      .limit(400)
+      .returns<Alerta[]>(),
+  ])
+
+  const result = abiertas.error
+    ? abiertas
+    : { ...abiertas, data: [...(abiertas.data || []), ...(cerradas.data || [])] }
 
   if (result.error) return result
 
@@ -171,7 +191,9 @@ async function sincronizarAlertasStockInventarioActual() {
       await Promise.all(
         lote.map(async (material) => {
           if (!esUuid(material.id)) {
-            await sincronizarAlertaStockInventarioPorReferencia(material)
+            // Materiales solo de inventario (sin uuid): la interfaz ya muestra su
+            // alerta derivada en memoria. Persistirla generaba un bucle de
+            // crear/cerrar que inundaba la tabla y ocultaba las alertas reales.
             return
           }
 
@@ -452,6 +474,19 @@ function normalizarEstadoOperativoAlerta(alerta: Alerta): Alerta {
   return alerta
 }
 
+// El texto de la alerta guarda los dias calculados por el servidor (UTC), que
+// pueden diferir en 1 dia (o quedar viejos) frente al modulo de Pedidos. Antes
+// de mostrarla se reescriben con el MISMO calculo local que usa Pedidos.
+function sincronizarDiasRetrasoMensaje(
+  mensaje: string | null | undefined,
+  fechaCompromiso: string | null | undefined,
+): string {
+  const texto = mensaje || ''
+  const retraso = diasRetrasoPedido(fechaCompromiso)
+  if (retraso === null || retraso <= 0) return texto
+  return texto.replace(/\d+\s*d(?:ias)?\s*de\s*retraso/gi, `${retraso} d de retraso`)
+}
+
 function pedidoCerradoAlerta(alerta: Pick<Alerta, 'pedido_estado'>) {
   return ['entregado', 'cancelado', 'rechazado', 'cerrado', 'gestion_cerrada'].includes(
     normalizarTexto(alerta.pedido_estado)
@@ -480,6 +515,7 @@ function enriquecerAlertasDesdePedidos(alertas: Alerta[], contexto: ContextoPedi
       pedido_codigo: alerta.pedido_codigo || pedido.codigo,
       pedido_estado: pedido.estado,
       pedido_fecha_compromiso: pedido.fecha_compromiso,
+      mensaje: sincronizarDiasRetrasoMensaje(alerta.mensaje, pedido.fecha_compromiso),
       pedido_fecha_solicitud: pedido.fecha_solicitud || null,
       pedido_stock_disponible: pedido.stock_disponible,
       pedido_cantidad: pedido.cantidad,
@@ -1073,57 +1109,6 @@ function umbralNormalInventario(material: InventarioOperativo) {
   )
 }
 
-async function sincronizarAlertaStockInventarioPorReferencia(material: InventarioOperativo) {
-  const nivel = nivelStockInventario(material)
-  if (!nivel) {
-    await cerrarAlertasStockPorReferencia(material)
-    return
-  }
-
-  const existentes = await consultarAlertasStockPorReferencia(material)
-  if (existentes.length === 0) {
-    await crearAlertaStockPorReferencia(material, nivel)
-    return
-  }
-
-  const alertaMismoNivel = existentes.find((alerta) => alerta.nivel === nivel)
-
-  if (alertaMismoNivel) {
-    await supabase
-      .from('alertas')
-      .update({
-        estado: 'activa',
-        nivel,
-        tipo_alerta: 'stock_bajo',
-        mensaje: mensajeStockInventario(material, nivel),
-        responsable: RESPONSABLE_SYNC_STOCK,
-      })
-      .eq('id', alertaMismoNivel.id)
-
-    const duplicadas = existentes.filter((alerta) => alerta.id !== alertaMismoNivel.id)
-    if (duplicadas.length > 0) {
-      await supabase
-        .from('alertas')
-        .update({ estado: 'cerrada' })
-        .in(
-          'id',
-          duplicadas.map((alerta) => alerta.id)
-        )
-    }
-
-    return
-  }
-
-  await supabase
-    .from('alertas')
-    .update({ estado: 'cerrada' })
-    .in(
-      'id',
-      existentes.map((alerta) => alerta.id)
-    )
-  await crearAlertaStockPorReferencia(material, nivel)
-}
-
 async function consultarAlertasStockPorReferencia(material: InventarioOperativo) {
   const codigo = normalizarCodigo(material.codigo_material)
   const nombre = normalizarTexto(material.nombre)
@@ -1156,19 +1141,6 @@ async function cerrarAlertasStockPorReferencia(material: InventarioOperativo) {
       'id',
       existentes.map((alerta) => alerta.id)
     )
-}
-
-async function crearAlertaStockPorReferencia(
-  material: InventarioOperativo,
-  nivel: Alerta['nivel']
-) {
-  await supabase.from('alertas').insert({
-    tipo_alerta: 'stock_bajo',
-    nivel,
-    mensaje: mensajeStockInventario(material, nivel),
-    estado: 'activa',
-    responsable: RESPONSABLE_SYNC_STOCK,
-  })
 }
 
 function mensajeStockInventario(material: InventarioOperativo, nivel: Alerta['nivel']) {

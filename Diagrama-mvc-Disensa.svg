@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 760" font-family="Segoe UI, Arial, sans-serif"><rect width="1440" height="760" fill="#fff"/>
+<defs><marker id="a2" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9 Z" fill="#444"/></marker></defs>
+<text x="720" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#13294a">Arquitectura MVC — Disensa Prioridad (React + Supabase)</text>
+<rect x="40" y="60" width="1360" height="150" rx="8" fill="#ffffff" stroke="#17365D" stroke-width="1.6"/><text x="60" y="84" font-size="15" font-weight="bold" fill="#17365D">VISTA (View) — React + Tailwind CSS   ·   src/pages, src/components</text>
+<rect x="62.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="150.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Login</text>
+<rect x="252.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="340.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Pedidos</text>
+<rect x="442.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="530.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Alertas</text>
+<rect x="632.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="720.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Inventario</text>
+<rect x="822.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="910.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Reglas</text>
+<rect x="1012.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="1100.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Reportes</text>
+<rect x="1202.0" y="96" width="176.0" height="52" rx="6" fill="#17365D"/>
+<text x="1290.0" y="118.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Dashboard</text>
+<rect x="62.0" y="156" width="318.5" height="44" rx="6" fill="#3a5a8a"/>
+<text x="221.25" y="174.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">MainLayout</text>
+<text x="221.25" y="191.0" text-anchor="middle" font-size="10" fill="#eef2f8">navegacion</text>
+<rect x="394.5" y="156" width="318.5" height="44" rx="6" fill="#3a5a8a"/>
+<text x="553.75" y="174.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">RealtimeAlertToast</text>
+<text x="553.75" y="191.0" text-anchor="middle" font-size="10" fill="#eef2f8">avisos</text>
+<rect x="727.0" y="156" width="318.5" height="44" rx="6" fill="#3a5a8a"/>
+<text x="886.25" y="174.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Modales</text>
+<text x="886.25" y="191.0" text-anchor="middle" font-size="10" fill="#eef2f8">confirmacion/exito</text>
+<rect x="1059.5" y="156" width="318.5" height="44" rx="6" fill="#3a5a8a"/>
+<text x="1218.75" y="174.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">MaterialSearchSelect</text>
+<text x="1218.75" y="191.0" text-anchor="middle" font-size="10" fill="#eef2f8">busqueda</text>
+<text x="720" y="232" text-anchor="middle" font-size="11" fill="#444">props / eventos / hooks</text>
+<path d="M 720 210 L 720 244" stroke="#444" stroke-width="2" marker-end="url(#a2)"/>
+<rect x="40" y="250" width="1360" height="150" rx="8" fill="#ffffff" stroke="#E1701A" stroke-width="1.6"/><text x="60" y="274" font-size="15" font-weight="bold" fill="#E1701A">CONTROLADOR (Controller) — logica de negocio   ·   src/services, src/lib, src/auth</text>
+<rect x="62.0" y="286" width="207.66666666666666" height="50" rx="6" fill="#E1701A"/>
+<text x="165.83333333333331" y="307.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">pedidosService</text>
+<rect x="283.66666666666663" y="286" width="207.66666666666666" height="50" rx="6" fill="#E1701A"/>
+<text x="387.49999999999994" y="307.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">alertasService</text>
+<rect x="505.3333333333333" y="286" width="207.66666666666666" height="50" rx="6" fill="#E1701A"/>
+<text x="609.1666666666666" y="307.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">materialesService</text>
+<rect x="727.0" y="286" width="207.66666666666666" height="50" rx="6" fill="#E1701A"/>
+<text x="830.8333333333334" y="307.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">reglasService</text>
+<rect x="948.6666666666666" y="286" width="207.66666666666666" height="50" rx="6" fill="#E1701A"/>
+<text x="1052.5" y="307.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">reportesService</text>
+<rect x="1170.3333333333333" y="286" width="207.66666666666666" height="50" rx="6" fill="#E1701A"/>
+<text x="1274.1666666666665" y="307.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">sesionService</text>
+<rect x="62.0" y="344" width="318.5" height="44" rx="6" fill="#c66214"/>
+<text x="221.25" y="362.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">lib/prioridad</text>
+<text x="221.25" y="379.0" text-anchor="middle" font-size="10" fill="#eef2f8">motor de reglas</text>
+<rect x="394.5" y="344" width="318.5" height="44" rx="6" fill="#c66214"/>
+<text x="553.75" y="362.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">lib/semaforoOperativo</text>
+<text x="553.75" y="379.0" text-anchor="middle" font-size="10" fill="#eef2f8">estados</text>
+<rect x="727.0" y="344" width="318.5" height="44" rx="6" fill="#c66214"/>
+<text x="886.25" y="362.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">AuthContext / permisos</text>
+<text x="886.25" y="379.0" text-anchor="middle" font-size="10" fill="#eef2f8">roles (RBAC)</text>
+<rect x="1059.5" y="344" width="318.5" height="44" rx="6" fill="#c66214"/>
+<text x="1218.75" y="362.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">cacheService</text>
+<text x="1218.75" y="379.0" text-anchor="middle" font-size="10" fill="#eef2f8">cache</text>
+<text x="720" y="422" text-anchor="middle" font-size="11" fill="#444">supabase-js  ·  API REST (PostgREST)  ·  RPC  ·  Realtime</text>
+<path d="M 720 400 L 720 434" stroke="#444" stroke-width="2" marker-end="url(#a2)"/>
+<rect x="40" y="440" width="1360" height="150" rx="8" fill="#ffffff" stroke="#4f7d24" stroke-width="1.6"/><text x="60" y="464" font-size="15" font-weight="bold" fill="#4f7d24">MODELO (Model) — datos y persistencia   ·   src/types + Supabase / PostgreSQL</text>
+<rect x="62.0" y="476" width="207.66666666666666" height="54" rx="6" fill="#4f7d24"/>
+<text x="165.83333333333331" y="499.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">src/types</text>
+<text x="165.83333333333331" y="516.0" text-anchor="middle" font-size="10" fill="#eef2f8">interfaces TS</text>
+<rect x="283.66666666666663" y="476" width="207.66666666666666" height="54" rx="6" fill="#4f7d24"/>
+<text x="387.49999999999994" y="499.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">supabaseClient</text>
+<text x="387.49999999999994" y="516.0" text-anchor="middle" font-size="10" fill="#eef2f8">conexion</text>
+<rect x="505.3333333333333" y="476" width="207.66666666666666" height="54" rx="6" fill="#4f7d24"/>
+<text x="609.1666666666666" y="499.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">PostgreSQL 17</text>
+<text x="609.1666666666666" y="516.0" text-anchor="middle" font-size="10" fill="#eef2f8">22 tablas</text>
+<rect x="727.0" y="476" width="207.66666666666666" height="54" rx="6" fill="#4f7d24"/>
+<text x="830.8333333333334" y="499.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Funciones RPC</text>
+<text x="830.8333333333334" y="516.0" text-anchor="middle" font-size="10" fill="#eef2f8">store procedures</text>
+<rect x="948.6666666666666" y="476" width="207.66666666666666" height="54" rx="6" fill="#4f7d24"/>
+<text x="1052.5" y="499.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Triggers</text>
+<text x="1052.5" y="516.0" text-anchor="middle" font-size="10" fill="#eef2f8">sincronizacion</text>
+<rect x="1170.3333333333333" y="476" width="207.66666666666666" height="54" rx="6" fill="#4f7d24"/>
+<text x="1274.1666666666665" y="499.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">RLS</text>
+<text x="1274.1666666666665" y="516.0" text-anchor="middle" font-size="10" fill="#eef2f8">seguridad</text>
+<text x="40" y="628" font-size="12" font-style="italic" fill="#333">La aplicacion sigue el patron MVC: la Vista (componentes React) no accede a los datos directamente, sino a traves del</text>
+<text x="40" y="646" font-size="12" font-style="italic" fill="#333">Controlador (servicios), que consume el Modelo (Supabase/PostgreSQL) mediante el SDK y la API REST autogenerada.</text>
+</svg>

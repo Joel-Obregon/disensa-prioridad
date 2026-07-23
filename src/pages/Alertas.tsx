@@ -1117,6 +1117,21 @@ function esAlertaFaltaMaterial(alerta: Alerta) {
   const tipo = normalizarTexto(alerta.tipo_alerta || '')
   const texto = normalizarTexto(`${alerta.tipo_alerta || ''} ${alerta.mensaje || ''}`)
 
+  // 0) Una alerta de priorizacion/retraso de pedido SIEMPRE pertenece a la
+  //    pestana de priorizacion (aunque el pedido tenga poco o cero stock, o su
+  //    mensaje mencione materiales). Todo pedido retrasado, reprogramado,
+  //    reabierto o critico debe verse en Priorizacion mientras este abierto.
+  const tipoPriorizacion =
+    tipo.includes('priorizacion') ||
+    tipo.includes('retras') ||
+    tipo.includes('reagend') ||
+    tipo.includes('reabierto') ||
+    tipo.includes('sin_gestion') ||
+    tipo.includes('urgencia') ||
+    tipo.includes('nota_credito') ||
+    tipo.includes('reporte')
+  if (tipoPriorizacion) return false
+
   // 1) Alertas cuyo tipo/mensaje son de inventario (stock, existencia, etc.).
   const esAlertaDeStock =
     tipo.includes('stock') ||

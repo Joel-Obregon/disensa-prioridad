@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 920" font-family="Segoe UI, Arial, sans-serif"><rect width="1000" height="920" fill="#fff"/>
+<defs><marker id="ar" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#555"/></marker></defs>
+<text x="500" y="30" text-anchor="middle" font-size="19" font-weight="bold" fill="#13294a">Diagrama de actividades — Gestion y priorizacion de pedidos</text>
+<circle cx="430" cy="66" r="11" fill="#333"/>
+<rect x="280" y="96" width="300" height="44" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="430.0" y="115" text-anchor="middle" font-size="11.5" fill="#1b2b45">Franquiciado registra el pedido</text>
+<text x="430.0" y="129" text-anchor="middle" font-size="11.5" fill="#1b2b45">(zona asignada automaticamente)</text>
+<rect x="280" y="172" width="300" height="44" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="430.0" y="191" text-anchor="middle" font-size="11.5" fill="#1b2b45">El sistema calcula la prioridad</text>
+<text x="430.0" y="205" text-anchor="middle" font-size="11.5" fill="#1b2b45">(motor de reglas + semaforo)</text>
+<rect x="280" y="248" width="300" height="40" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="430.0" y="272" text-anchor="middle" font-size="11.5" fill="#1b2b45">El pedido entra en la cola priorizada</text>
+<polygon points="430,309.0 515.0,352 430,395.0 345.0,352" fill="#fff3e6" stroke="#E1701A" stroke-width="1.5"/>
+<text x="430" y="349" text-anchor="middle" font-size="10.5" fill="#5a3210">¿Hay stock</text>
+<text x="430" y="362" text-anchor="middle" font-size="10.5" fill="#5a3210">disponible en bodega?</text>
+<rect x="70" y="330" width="235" height="44" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="187.5" y="349" text-anchor="middle" font-size="11.5" fill="#1b2b45">Bodega genera una reposicion</text>
+<text x="187.5" y="363" text-anchor="middle" font-size="11.5" fill="#1b2b45">al suministrador</text>
+<rect x="70" y="408" width="235" height="44" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="187.5" y="427" text-anchor="middle" font-size="11.5" fill="#1b2b45">Suministrador confirma envio</text>
+<text x="187.5" y="441" text-anchor="middle" font-size="11.5" fill="#1b2b45">e indica estado del material</text>
+<rect x="280" y="452" width="300" height="40" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="430.0" y="476" text-anchor="middle" font-size="11.5" fill="#1b2b45">Bodega despacha el pedido</text>
+<rect x="280" y="528" width="300" height="40" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="430.0" y="552" text-anchor="middle" font-size="11.5" fill="#1b2b45">Franquiciado confirma la recepcion</text>
+<polygon points="430,589.0 515.0,632 430,675.0 345.0,632" fill="#fff3e6" stroke="#E1701A" stroke-width="1.5"/>
+<text x="430" y="629" text-anchor="middle" font-size="10.5" fill="#5a3210">¿El material</text>
+<text x="430" y="642" text-anchor="middle" font-size="10.5" fill="#5a3210">es conforme?</text>
+<rect x="650" y="610" width="290" height="44" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="795.0" y="629" text-anchor="middle" font-size="11.5" fill="#1b2b45">Franquiciado levanta un reporte</text>
+<text x="795.0" y="643" text-anchor="middle" font-size="11.5" fill="#1b2b45">(defectuoso / retraso / NC)</text>
+<rect x="650" y="688" width="290" height="52" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="795.0" y="704" text-anchor="middle" font-size="11.5" fill="#1b2b45">Se reabre la gestion:</text>
+<text x="795.0" y="718" text-anchor="middle" font-size="11.5" fill="#1b2b45">bodega repone o</text>
+<text x="795.0" y="732" text-anchor="middle" font-size="11.5" fill="#1b2b45">aprueba nota de credito</text>
+<rect x="280" y="748" width="300" height="44" rx="14" fill="#eaf1fb" stroke="#17365D" stroke-width="1.4"/>
+<text x="430.0" y="767" text-anchor="middle" font-size="11.5" fill="#1b2b45">Pedido entregado</text>
+<text x="430.0" y="781" text-anchor="middle" font-size="11.5" fill="#1b2b45">y gestion cerrada</text>
+<circle cx="430" cy="838" r="13" fill="#fff" stroke="#333" stroke-width="2"/><circle cx="430" cy="838" r="7" fill="#333"/>
+<path d="M 430 77 L 430 96" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 140 L 430 172" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 216 L 430 248" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 288 L 430 309" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 395 L 430 452" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<text x="438" y="428" font-size="10.5" fill="#333">Si</text>
+<path d="M 345 352 L 307 352" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<text x="300" y="344" font-size="10.5" fill="#333">No</text>
+<path d="M 187 374 L 187 408" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 187 452 L 187 472 L 268 472" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 492 L 430 528" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 568 L 430 589" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 675 L 430 748" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<text x="438" y="712" font-size="10.5" fill="#333">Si</text>
+<path d="M 515 632 L 648 632" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<text x="560" y="624" font-size="10.5" fill="#333">No</text>
+<path d="M 795 654 L 795 688" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 795 740 L 795 770 L 572 770" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M 430 792 L 430 824" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+</svg>

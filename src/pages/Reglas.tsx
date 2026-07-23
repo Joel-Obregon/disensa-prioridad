@@ -711,8 +711,8 @@ function ParametrosRegla({
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {[
-              { llave: 'sel_reposicion', etiqueta: 'Alertas de reposicion' },
               { llave: 'sel_pedidos', etiqueta: 'Alertas de pedidos' },
+              { llave: 'sel_inventario', etiqueta: 'Alertas de inventario' },
               { llave: 'sel_reportes', etiqueta: 'Alertas de reportes' },
             ].map((item) => (
               <label

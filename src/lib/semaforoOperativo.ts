@@ -128,6 +128,15 @@ export function claseEstadoInventario(estado: 'disponible' | 'bajo_minimo' | 'si
   return claseSemaforoBadge('a_tiempo')
 }
 
+// Dias de retraso de un pedido calculados EXACTAMENTE igual que en el modulo
+// de Pedidos (hora local del navegador). 0 = sin retraso; null = sin fecha.
+export function diasRetrasoPedido(fecha?: string | null): number | null {
+  if (!fecha) return null
+  const dias = diasHasta(fecha)
+  if (dias === 999) return null
+  return dias < 0 ? Math.abs(dias) : 0
+}
+
 function diasHasta(fecha: string) {
   const fechaDestino = new Date(fecha)
   if (Number.isNaN(fechaDestino.getTime())) return 999
