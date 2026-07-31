@@ -184,7 +184,7 @@ export default function Reportes() {
       const anterior = mapa.get(nombre)
       const solicitado = Math.max(
         anterior?.solicitado || 0,
-        umbralNormalMaterial(material) - Math.max(0, material.stock_disponible_operativo)
+        60 - Math.max(0, material.stock_disponible_operativo)
       )
 
       mapa.set(nombre, {
@@ -783,20 +783,7 @@ function pedidoPendienteDespacho(estado: EstadoPedido) {
 }
 
 function materialNecesitaSeguimiento(material: InventarioOperativo) {
-  return material.stock_disponible_operativo < umbralNormalMaterial(material)
-}
-
-function umbralMinimoMaterial(material: InventarioOperativo) {
-  return Math.max(
-    1,
-    material.pedido_maximo_material || 0,
-    material.stock_minimo || 0,
-    material.demanda_bodega_fq || 0
-  )
-}
-
-function umbralNormalMaterial(material: InventarioOperativo) {
-  return Math.max(umbralMinimoMaterial(material) * 3, material.stock_objetivo_material || 0)
+  return material.stock_disponible_operativo <= 60
 }
 
 function formatearEtiqueta(valor: string) {

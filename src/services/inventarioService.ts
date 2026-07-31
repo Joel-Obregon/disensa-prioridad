@@ -25,11 +25,16 @@ export type MovimientoInventarioInput = {
 }
 
 type PedidoMaterialDemanda = {
+  id: string
   material_id: string | null
   material: string | null
+  codigo_material?: string | null
   cantidad: number | string | null
   cantidad_despacho?: number | string | null
   estado?: string | null
+  tipo_cliente?: string | null
+  origen?: string | null
+  destino?: string | null
 }
 
 type MaterialOperativoRow = {
@@ -65,6 +70,7 @@ type MaterialOperativoRow = {
 
 const TAMANO_BLOQUE_INVENTARIO_OPERATIVO = 1000
 const CACHE_INVENTARIO_OPERATIVO_MS = 15_000
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function obtenerInventarioOperativo(incluirTodos = false) {
   return consultarConCache(
@@ -101,7 +107,7 @@ async function cargarInventarioOperativo(incluirTodos = false) {
     materiales.map((material) => [normalizarLlave(material.nombre), material])
   )
 
-  const demandaMaxima = await obtenerPedidoMaximoPorMaterial()
+  const demandaMaxima = await obtenerDemandaPedidosPorMaterial()
 
   const materialesIncluidos = new Set<string>()
 
@@ -127,6 +133,15 @@ async function cargarInventarioOperativo(incluirTodos = false) {
     )
     const pedidoMaximo = pedidoMaximoReal || numeroNoNegativo(row.pedido_maximo_material) || demanda || 1
     const stockObjetivo = numeroNoNegativo(row.stock_objetivo_material) || pedidoMaximo * 3
+    const llavesMaterial = [
+      material?.id ? `id:${material.id}` : '',
+      material?.id && !esUuid(material.id) ? `codigo:${material.id}` : '',
+      row.codigo_material ? `codigo:${row.codigo_material}` : '',
+      material?.nombre || row.nombre_material
+        ? `nombre:${normalizarLlave(material?.nombre || row.nombre_material)}`
+        : '',
+    ]
+    const stockSolicitado = sumarSolicitadoPedidos(llavesMaterial, demandaMaxima.solicitadoPorLlave)
 
     return {
       id: material?.id || row.codigo_material,
@@ -146,6 +161,7 @@ async function cargarInventarioOperativo(incluirTodos = false) {
       codigo_suministrador: row.codigo_suministrador,
       nombre_suministrador: row.nombre_suministrador,
       stock_libre: stockLibre,
+      stock_solicitado_pedidos: stockSolicitado,
       stock_disponible_operativo: stockDisponibleSistema,
       stock_bloqueado: numeroNoNegativo(row.bloqueado),
       stock_en_curso_pedido: numeroNoNegativo(row.stock_en_curso_pedido),
@@ -190,39 +206,99 @@ async function cargarInventarioOperativo(incluirTodos = false) {
   return { ...materialesResult, data: inventarioVisible }
 }
 
-async function obtenerPedidoMaximoPorMaterial() {
+async function obtenerDemandaPedidosPorMaterial() {
   const porMaterialId = new Map<string, number>()
   const porNombre = new Map<string, number>()
   const porCodigo = new Map<string, number>()
+  const solicitadoPorLlave = new Map<string, Map<string, number>>()
 
   const result = await supabase
     .from('pedidos')
-    .select('material_id,material,cantidad,cantidad_despacho,estado,codigo')
-    .not('estado', 'in', '(entregado,cancelado,rechazado)')
+    .select(
+      'id,material_id,material,codigo_material,cantidad,cantidad_despacho,estado,tipo_cliente,origen,destino,codigo'
+    )
     .returns<Array<PedidoMaterialDemanda & { codigo?: string | null }>>()
 
-  if (result.error) return { porMaterialId, porNombre, porCodigo }
+  if (result.error) {
+    return { porMaterialId, porNombre, porCodigo, solicitadoPorLlave }
+  }
 
-  ;(result.data || []).forEach((pedido) => {
-    const cantidad = Math.max(numeroNoNegativo(pedido.cantidad), numeroNoNegativo(pedido.cantidad_despacho))
-    if (cantidad <= 0) return
+  const pedidosActivos = (result.data || []).filter(
+    (pedido) => !['entregado', 'cancelado', 'rechazado'].includes(pedido.estado || '')
+  )
 
-    if (pedido.material_id) {
-      porMaterialId.set(pedido.material_id, Math.max(porMaterialId.get(pedido.material_id) || 0, cantidad))
-    }
+  pedidosActivos.forEach((pedido) => {
+    const cantidadMax = Math.max(
+      numeroNoNegativo(pedido.cantidad),
+      numeroNoNegativo(pedido.cantidad_despacho)
+    )
+    const cantidadSolicitada = numeroNoNegativo(pedido.cantidad)
+    if (cantidadMax <= 0 && cantidadSolicitada <= 0) return
 
-    if (pedido.material) {
-      const nombre = normalizarLlave(pedido.material)
-      porNombre.set(nombre, Math.max(porNombre.get(nombre) || 0, cantidad))
-    }
+    if (cantidadMax > 0) {
+      if (pedido.material_id) {
+        porMaterialId.set(pedido.material_id, Math.max(porMaterialId.get(pedido.material_id) || 0, cantidadMax))
+      }
 
-    const codigoMaterial = extraerCodigoMaterialPedido(pedido.codigo)
-    if (codigoMaterial) {
-      porCodigo.set(codigoMaterial, Math.max(porCodigo.get(codigoMaterial) || 0, cantidad))
+      if (pedido.material) {
+        const nombre = normalizarLlave(pedido.material)
+        porNombre.set(nombre, Math.max(porNombre.get(nombre) || 0, cantidadMax))
+      }
+
+      const codigoMaterial = extraerCodigoMaterialPedido(pedido.codigo)
+      if (codigoMaterial) {
+        porCodigo.set(codigoMaterial, Math.max(porCodigo.get(codigoMaterial) || 0, cantidadMax))
+      }
     }
   })
 
-  return { porMaterialId, porNombre, porCodigo }
+  // Stock OUT: solo pedidos ya despachados (en_despacho o entregado), que es
+  // cuando el stock se descuento porque la mercancia ya salio hacia el
+  // franquiciado. Se suma la cantidad que realmente salio (cantidad_despacho
+  // si esta definida, si no la cantidad original). Reposiciones (suministrador
+  // a bodega) entran al inventario, no salen: se excluyen. Sin pedidos
+  // despachados la cifra queda en cero.
+  const esReposicion = (pedido: PedidoMaterialDemanda) =>
+    pedido.tipo_cliente === 'bodega' ||
+    pedido.origen === 'suministrador' ||
+    pedido.destino === 'bodega'
+
+  ;(result.data || [])
+    .filter(
+      (pedido) =>
+        (pedido.estado === 'en_despacho' || pedido.estado === 'entregado') && !esReposicion(pedido)
+    )
+    .forEach((pedido) => {
+      const cantidadDespacho = numeroNoNegativo(pedido.cantidad_despacho)
+      const cantidadSalida = cantidadDespacho > 0 ? cantidadDespacho : numeroNoNegativo(pedido.cantidad)
+      if (cantidadSalida <= 0) return
+
+      // Misma logica de vinculo que el modulo de pedidos (buscarMaterialPedido):
+      // id real, id como codigo (MAT-####), codigo_material, codigo extraido y nombre.
+      const llaves = llavesVinculoPedido(pedido)
+      llaves.forEach((llave) => {
+        let porPedido = solicitadoPorLlave.get(llave)
+        if (!porPedido) {
+          porPedido = new Map()
+          solicitadoPorLlave.set(llave, porPedido)
+        }
+        porPedido.set(pedido.id, Math.max(porPedido.get(pedido.id) || 0, cantidadSalida))
+      })
+    })
+
+  return { porMaterialId, porNombre, porCodigo, solicitadoPorLlave }
+}
+
+function llavesVinculoPedido(pedido: PedidoMaterialDemanda & { codigo?: string | null }) {
+  const llaves = new Set<string>()
+  if (pedido.material_id) {
+    llaves.add(esUuid(pedido.material_id) ? `id:${pedido.material_id}` : `codigo:${pedido.material_id}`)
+  }
+  if (pedido.codigo_material) llaves.add(`codigo:${pedido.codigo_material}`)
+  const codigoMaterial = extraerCodigoMaterialPedido(pedido.codigo)
+  if (codigoMaterial) llaves.add(`codigo:${codigoMaterial}`)
+  if (pedido.material) llaves.add(`nombre:${normalizarLlave(pedido.material)}`)
+  return llaves
 }
 
 export async function obtenerMovimientosInventario() {
@@ -506,6 +582,7 @@ function materialAInventarioFallback(material: Material): InventarioOperativo {
   return {
     ...material,
     stock_libre: material.stock_actual,
+    stock_solicitado_pedidos: 0,
     stock_disponible_operativo: material.stock_actual,
     stock_bloqueado: 0,
     stock_en_curso_pedido: 0,
@@ -553,6 +630,28 @@ function stockSistema(stockFuente: number, stockMaterial: number | null) {
   if (stockFuente > 0 && stockMaterial > 0) return Math.min(stockFuente, stockMaterial)
   if (stockFuente > 0) return stockFuente
   return stockMaterial
+}
+
+// Suma la cantidad solicitada de los pedidos activos que coinciden con el
+// material por cualquiera de sus llaves, deduplicando por id de pedido para
+// no contarla dos veces cuando un mismo pedido matchea por varias llaves.
+function sumarSolicitadoPedidos(llaves: string[], solicitadoPorLlave: Map<string, Map<string, number>>) {
+  const cantidadesPorPedido = new Map<string, number>()
+
+  llaves.forEach((llave) => {
+    const porPedido = solicitadoPorLlave.get(llave)
+    if (!porPedido) return
+
+    porPedido.forEach((cantidad, pedidoId) => {
+      cantidadesPorPedido.set(pedidoId, Math.max(cantidadesPorPedido.get(pedidoId) || 0, cantidad))
+    })
+  })
+
+  return [...cantidadesPorPedido.values()].reduce((total, cantidad) => total + cantidad, 0)
+}
+
+function esUuid(valor: string | null | undefined) {
+  return Boolean(valor && UUID_RE.test(valor))
 }
 
 function extraerCodigoMaterialPedido(codigo: string | null | undefined) {

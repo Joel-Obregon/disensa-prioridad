@@ -22,12 +22,15 @@ type OpcionesSyncStock = {
 
 const TIPOS_ALERTA_STOCK = ['stock_bajo', 'faltante_bodega_fq']
 
+const UMBRAL_MINIMO_STOCK = 30
+const UMBRAL_NORMAL_STOCK = 60
+
 export async function sincronizarAlertaStockMaterial(
   material: MaterialConStock,
   stockActual = material.stock_actual,
   opciones: OpcionesSyncStock = {}
 ) {
-  const nivelNuevo = nivelAlertaStock(stockActual, material)
+  const nivelNuevo = nivelAlertaStock(stockActual)
   const responsable = opciones.responsable || 'Departamento de inventario'
 
   if (!nivelNuevo) {
@@ -152,15 +155,9 @@ async function cerrarAlertasStock(ids: string[]) {
   return result
 }
 
-function nivelAlertaStock(
-  stockActual: number,
-  material: Pick<MaterialConStock, 'stock_minimo' | 'pedido_maximo_material' | 'stock_objetivo_material' | 'demanda_bodega_fq'>
-): Alerta['nivel'] | null {
-  const minimo = umbralMinimoStock(material)
-  const normal = umbralNormalStock(material)
-
-  if (stockActual >= normal) return null
-  if (stockActual <= 0 || stockActual < minimo) return 'critica'
+function nivelAlertaStock(stockActual: number): Alerta['nivel'] | null {
+  if (stockActual > umbralNormalStock()) return null
+  if (stockActual <= umbralMinimoStock()) return 'critica'
   return 'alta'
 }
 
@@ -168,7 +165,7 @@ export function resolverNivelAlertaStock(
   material: MaterialConStock,
   stockActual = material.stock_actual
 ) {
-  return nivelAlertaStock(stockActual, material)
+  return nivelAlertaStock(stockActual)
 }
 
 function mensajeAlertaStock(
@@ -176,8 +173,8 @@ function mensajeAlertaStock(
   stockActual: number,
   nivel: Alerta['nivel']
 ) {
-  const minimo = umbralMinimoStock(material)
-  const normal = umbralNormalStock(material)
+  const minimo = umbralMinimoStock()
+  const normal = umbralNormalStock()
   const estado = nivel === 'critica' ? 'critico' : 'en riesgo'
   const codigo = material.codigo_material ? `${material.codigo_material} - ` : ''
 
@@ -193,7 +190,7 @@ function alertaStockNormalizado(
   responsable: string
 ): Alerta {
   const codigo = material.codigo_material ? `${material.codigo_material} - ` : ''
-  const normal = umbralNormalStock(material)
+  const normal = umbralNormalStock()
 
   return {
     id: `stock-normalizado-${material.id}-${Date.now()}`,
@@ -232,14 +229,12 @@ function alertaStockNormalizado(
   }
 }
 
-function umbralMinimoStock(
-  material: Pick<MaterialConStock, 'stock_minimo' | 'pedido_maximo_material' | 'demanda_bodega_fq'>
-) {
-  return Math.max(1, material.pedido_maximo_material || material.stock_minimo || material.demanda_bodega_fq || 1)
+function umbralMinimoStock() {
+  return UMBRAL_MINIMO_STOCK
 }
 
-function umbralNormalStock(material: Pick<MaterialConStock, 'stock_minimo' | 'pedido_maximo_material' | 'stock_objetivo_material' | 'demanda_bodega_fq'>) {
-  return Math.max(umbralMinimoStock(material) * 3, material.stock_objetivo_material || 0)
+function umbralNormalStock() {
+  return UMBRAL_NORMAL_STOCK
 }
 
 function esErrorTablaOColumnaOpcional(error: { code?: string } | null | undefined) {

@@ -19,6 +19,7 @@ export type InventarioOperativo = Material & {
   codigo_suministrador?: string | null
   nombre_suministrador?: string | null
   stock_libre: number
+  stock_solicitado_pedidos: number
   stock_disponible_operativo: number
   stock_bloqueado: number
   stock_en_curso_pedido: number

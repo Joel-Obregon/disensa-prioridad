@@ -88,6 +88,7 @@ const REGLAS_PRIORIDAD_OCULTAS = [
   'Retraso del pedido (amarillo)',
   'Reprogramado por retraso (naranja)',
   'Retraso critico (rojo)',
+  'Franquiciado solicita NC',
 ]
 
 export default function Reglas() {

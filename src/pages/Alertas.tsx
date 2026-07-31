@@ -24,13 +24,13 @@ import {
   escucharCambiosAlertas,
   obtenerAlertas,
 } from '../services/alertasService'
-import { obtenerPedidos } from '../services/pedidosService'
+import { obtenerInventarioOperativo } from '../services/inventarioService'
 import { obtenerReglas } from '../services/reglasService'
 import { leerVisibilidadAlertas } from '../lib/reglasAlertas'
 import type { Alerta } from '../types/alerta'
 import type { ReglaNegocio } from '../types/regla'
 import type { SemaforoOperativo } from '../lib/semaforoOperativo'
-import type { EstadoPedido, Pedido } from '../types/pedido'
+import type { EstadoPedido } from '../types/pedido'
 
 type AlertaVista = Alerta & { fusionadas?: string[] }
 
@@ -82,7 +82,6 @@ export default function Alertas() {
   const rolUsuario = perfil?.rol
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [reglas, setReglas] = useState<ReglaNegocio[]>([])
-  const [reposiciones, setReposiciones] = useState<Pedido[]>([])
   const [categoria, setCategoria] = useState<CategoriaAlertas>('priorizacion')
   const [vista, setVista] = useState<VistaAlertas>('operativas')
   const [filtros, setFiltros] = useState<FiltrosAlertas>(filtrosIniciales)
@@ -94,7 +93,12 @@ export default function Alertas() {
     if (!silencioso) setCargando(true)
     setError('')
 
-    const { data, error } = await obtenerAlertas({ sincronizarStock: !silencioso })
+    const [alertasResult, inventarioResult] = await Promise.all([
+      obtenerAlertas({ sincronizarStock: !silencioso }),
+      obtenerInventarioOperativo(),
+    ])
+
+    const { data, error } = alertasResult
 
     if (error) {
       setError(
@@ -105,19 +109,25 @@ export default function Alertas() {
       return
     }
 
-    setAlertas(data || [])
+    // Falta de materiales: solo se muestran las alertas de stock cuyo material
+    // existe en el modulo de inventario (misma lista del modulo Inventario).
+    const llavesInventario = new Set<string>()
+    ;(inventarioResult.data || []).forEach((material) => {
+      if (material.id) llavesInventario.add(`id:${material.id}`)
+      if (material.nombre) llavesInventario.add(`nombre:${normalizarTexto(material.nombre)}`)
+      if (material.codigo_material) {
+        llavesInventario.add(`codigo:${normalizarTexto(material.codigo_material)}`)
+      }
+    })
 
-    const pedidosRes = await obtenerPedidos()
-    if (!pedidosRes.error) {
-      setReposiciones(
-        (pedidosRes.data || []).filter(
-          (pedido) =>
-            pedido.tipo_cliente === 'bodega' ||
-            pedido.origen === 'suministrador' ||
-            pedido.destino === 'bodega',
-        ),
-      )
-    }
+    const alertasVisibles =
+      inventarioResult.error || llavesInventario.size === 0
+        ? data || []
+        : (data || []).filter(
+            (alerta) => !esAlertaFaltaMaterial(alerta) || materialEnInventario(alerta, llavesInventario)
+          )
+
+    setAlertas(alertasVisibles)
 
     const reglasRes = await obtenerReglas()
     if (!reglasRes.error) setReglas(reglasRes.data || [])
@@ -171,23 +181,6 @@ export default function Alertas() {
     }
   }, [])
 
-  // Falta de materiales = reposiciones pedidas al suministrador.
-  const reposActivas = useMemo(
-    () =>
-      reposiciones.filter((pedido) =>
-        ['pendiente', 'en_revision', 'aprobado', 'en_despacho'].includes(pedido.estado),
-      ),
-    [reposiciones],
-  )
-  const reposExito = useMemo(
-    () => reposiciones.filter((pedido) => pedido.estado === 'entregado'),
-    [reposiciones],
-  )
-  const reposNegado = useMemo(
-    () => reposiciones.filter((pedido) => pedido.estado === 'rechazado'),
-    [reposiciones],
-  )
-
   // Regla parametrizable: que alertas se muestran (por color y por categoria).
   const visibilidad = useMemo(() => leerVisibilidadAlertas(reglas), [reglas])
   const categoriasVisibles = useMemo(
@@ -205,15 +198,15 @@ export default function Alertas() {
   const conteoCategorias = useMemo(() => {
     const operativas = alertas.filter(alertaOperativa)
     return {
-      // Un material esperando reposición cuenta como alerta activa de falta.
-      materiales: reposActivas.length,
+      // Materiales en semaforo rojo/amarillo (alertas de stock activas).
+      materiales: operativas.filter(esAlertaFaltaMaterial).length,
       priorizacion: fusionarAlertasPorPedido(
         operativas.filter(
           (alerta) => !esAlertaFaltaMaterial(alerta) && esAlertaPriorizacionPedido(alerta)
         )
       ).length,
     }
-  }, [alertas, reposActivas])
+  }, [alertas])
 
   // El suministrador solo ve alertas ligadas a pedidos (no de materiales/stock).
   const alertasRol = useMemo(() => {
@@ -223,8 +216,11 @@ export default function Alertas() {
 
   const alertasPorCategoria = useMemo(() => {
     if (categoriaActiva === 'materiales') {
-      // La pestaña Falta de materiales se dibuja con reposiciones, no con alertas.
-      return [] as Alerta[]
+      // Falta de materiales = solo alertas de stock (semaforo rojo y amarillo),
+      // sin reposiciones del suministrador.
+      return alertasRol.filter(
+        (alerta) => esAlertaFaltaMaterial(alerta) && alerta.nivel !== 'informativa'
+      )
     }
 
     return alertasRol.filter(
@@ -241,22 +237,24 @@ export default function Alertas() {
   }, [alertasRol])
 
   const alertasFiltradas = useMemo(() => {
-    const texto = normalizarTexto(filtros.busqueda)
+    const tokens = normalizarTexto(filtros.busqueda)
+      .split(/\s+/)
+      .filter(Boolean)
 
     return alertasPorCategoria.filter((alerta) => {
       const material = materialAlerta(alerta)
-      const coincideTexto = texto
-        ? normalizarTexto(
-            [
-              alerta.tipo_alerta,
-              alerta.mensaje,
-              alerta.pedido_codigo || '',
-              alerta.pedido_estado || '',
-              material || '',
-              alerta.responsable || '',
-            ].join(' ')
-          ).includes(texto)
-        : true
+      const textoCompleto = normalizarTexto(
+        [
+          alerta.tipo_alerta,
+          alerta.mensaje,
+          alerta.pedido_codigo || '',
+          alerta.pedido_estado || '',
+          material || '',
+          alerta.responsable || '',
+        ].join(' ')
+      )
+      const coincideTexto =
+        tokens.length === 0 || tokens.every((token) => textoCompleto.includes(token))
       const coincideNivel = filtros.nivel === 'todos' || alerta.nivel === filtros.nivel
       const coincideMaterial =
         filtros.material === 'todos' ||
@@ -291,25 +289,14 @@ export default function Alertas() {
     return fusionarAlertasPorPedido(base)
   }, [alertasFiltradas, alertasOperativas, vista])
 
-  const reposFiltradas = useMemo(() => {
-    const texto = normalizarTexto(filtros.busqueda)
-    const aplica = (pedido: Pedido) =>
-      !texto ||
-      normalizarTexto([pedido.material, pedido.codigo, pedido.solicitante].join(' ')).includes(texto)
-    return {
-      activas: reposActivas.filter(aplica),
-      exito: reposExito.filter(aplica),
-      negado: reposNegado.filter(aplica),
-    }
-  }, [reposActivas, reposExito, reposNegado, filtros.busqueda])
-
   const resumen = useMemo(() => {
     if (categoriaActiva === 'materiales') {
+      const operativas = alertasPorCategoria.filter(alertaOperativa).length
       return [
         {
-          titulo: 'Materiales pedidos al suministrador',
-          valor: reposActivas.length,
-          detalle: 'Enviados, esperando respuesta',
+          titulo: 'Materiales en semaforo rojo y amarillo',
+          valor: operativas,
+          detalle: 'Stock bajo o sin cobertura, segun el semaforo de inventario',
           icono: PackageX,
           clase: 'border-orange-200 bg-orange-50 text-orange-700',
         },
@@ -325,7 +312,7 @@ export default function Alertas() {
         clase: 'border-orange-200 bg-orange-50 text-orange-700',
       },
     ]
-  }, [alertasPorCategoria, categoriaActiva, reposActivas])
+  }, [alertasPorCategoria, categoriaActiva])
 
   const seccionesAlertas = useMemo(() => {
     if (vista === 'historial') {
@@ -583,19 +570,7 @@ export default function Alertas() {
           </p>
         )}
 
-        {!cargando && categoriaActiva === 'materiales' && (
-          <PanelFaltaMateriales
-            vista={vista}
-            activas={reposFiltradas.activas}
-            exito={reposFiltradas.exito}
-            negado={reposFiltradas.negado}
-          />
-        )}
-
-        {!cargando &&
-          categoriaActiva !== 'materiales' &&
-          alertasVisibles.length > 0 &&
-          seccionesAlertas.map((seccion) => (
+        {!cargando && alertasVisibles.length > 0 && seccionesAlertas.map((seccion) => (
             <section
               key={seccion.id}
               className="alertas-panel overflow-hidden border border-[#d8d2df] bg-white"
@@ -634,7 +609,7 @@ export default function Alertas() {
             </section>
           ))}
 
-        {!cargando && categoriaActiva !== 'materiales' && alertasVisibles.length === 0 && (
+        {!cargando && alertasVisibles.length === 0 && (
           <p className="border border-dashed border-[#d8d2df] bg-white p-8 text-center text-[#5f5964]">
             No hay alertas en esta vista.
           </p>
@@ -645,143 +620,6 @@ export default function Alertas() {
         <DetalleAlerta alerta={alertaDetalle} onClose={() => setAlertaDetalle(null)} />
       )}
     </div>
-  )
-}
-
-function PanelFaltaMateriales({
-  activas,
-  exito,
-  negado,
-  vista,
-}: {
-  activas: Pedido[]
-  exito: Pedido[]
-  negado: Pedido[]
-  vista: VistaAlertas
-}) {
-  if (vista === 'operativas') {
-    return (
-      <SeccionReposicion
-        titulo="Pedidos al suministrador sin respuesta"
-        detalle="Materiales enviados al suministrador que aun no reponen ni niegan."
-        icono={PackageX}
-        pedidos={activas}
-        tono="activa"
-        vacio="No hay materiales esperando reposicion."
-      />
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      <SeccionReposicion
-        titulo="Repuestos con exito"
-        detalle="El suministrador envio el material y se sumo al inventario de bodega."
-        icono={CheckCircle2}
-        pedidos={exito}
-        tono="exito"
-        vacio="Todavia no hay reposiciones completadas."
-      />
-      <SeccionReposicion
-        titulo="Negados por el suministrador"
-        detalle="El suministrador no contaba con stock para el envio."
-        icono={PackageX}
-        pedidos={negado}
-        tono="negado"
-        vacio="No hay reposiciones negadas."
-      />
-    </div>
-  )
-}
-
-function SeccionReposicion({
-  detalle,
-  icono: Icono,
-  pedidos,
-  titulo,
-  tono,
-  vacio,
-}: {
-  detalle: string
-  icono: typeof BellRing
-  pedidos: Pedido[]
-  titulo: string
-  tono: 'activa' | 'exito' | 'negado'
-  vacio: string
-}) {
-  return (
-    <section className="alertas-panel overflow-hidden border border-[#d8d2df] bg-white">
-      <div className="flex flex-col gap-3 border-b border-[#eadbd6] bg-[#fffaf7] p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="alertas-section-icon inline-flex h-10 w-10 items-center justify-center text-[#a33e00]">
-            <Icono size={20} />
-          </span>
-          <div>
-            <h2 className="font-semibold text-[#0f0f11]">{titulo}</h2>
-            <p className="mt-1 text-sm text-[#5f5964]">{detalle}</p>
-          </div>
-        </div>
-        <span className="w-fit bg-[#261812] px-3 py-1 text-xs font-semibold text-white">
-          {pedidos.length} materiales
-        </span>
-      </div>
-
-      {pedidos.length === 0 ? (
-        <p className="p-6 text-sm text-slate-500">{vacio}</p>
-      ) : (
-        <div className="space-y-3 p-4">
-          {pedidos.map((pedido) => (
-            <TarjetaReposicion key={pedido.id} pedido={pedido} tono={tono} />
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function TarjetaReposicion({
-  pedido,
-  tono,
-}: {
-  pedido: Pedido
-  tono: 'activa' | 'exito' | 'negado'
-}) {
-  const estilos = {
-    activa: {
-      borde: 'border-l-4 border-amber-400',
-      badge: 'bg-amber-100 text-amber-800',
-      texto: 'Esperando al suministrador',
-    },
-    exito: {
-      borde: 'border-l-4 border-green-500',
-      badge: 'bg-green-100 text-green-700',
-      texto: 'Repuesto',
-    },
-    negado: {
-      borde: 'border-l-4 border-red-500',
-      badge: 'bg-red-100 text-red-700',
-      texto: 'Negado',
-    },
-  }[tono]
-
-  return (
-    <article className={`border bg-white p-4 ${estilos.borde}`}>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="font-semibold text-[#111111]">{pedido.material}</h3>
-          <p className="mt-1 text-sm text-[#5f5964]">
-            Pedido {pedido.codigo} - {pedido.cantidad} {pedido.unidad_medida} - {pedido.solicitante}
-          </p>
-          {tono === 'negado' && pedido.mensaje_suministrador && (
-            <p className="mt-2 text-sm font-medium text-red-600">{pedido.mensaje_suministrador}</p>
-          )}
-        </div>
-        <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${estilos.badge}`}>
-          {estilos.texto}
-        </span>
-      </div>
-      <p className="mt-2 text-xs font-medium text-[#69636d]">{describirTiempoPedido(pedido)}</p>
-    </article>
   )
 }
 
@@ -1378,6 +1216,13 @@ function materialAlerta(alerta: Alerta) {
   const match = mensaje.match(/Material\s+(.+?)\s+(?:bajo|sin|en|no|con|requiere)/i)
 
   return match?.[1]?.trim() || null
+}
+
+function materialEnInventario(alerta: Alerta, llaves: Set<string>) {
+  if (alerta.material_id && llaves.has(`id:${alerta.material_id}`)) return true
+
+  const nombre = materialAlerta(alerta)
+  return Boolean(nombre && llaves.has(`nombre:${normalizarTexto(nombre)}`))
 }
 
 function cantidadOperativaAlerta(alerta: Alerta) {

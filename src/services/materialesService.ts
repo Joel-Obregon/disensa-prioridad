@@ -166,10 +166,23 @@ export async function actualizarMaterial(
   catman?: CatmanMaterial,
 ) {
   const referencia = await resolverMaterial(id)
+
+  let idReal: string
+
   if (!referencia) {
-    return errorAplicacion('No se encontro el material que intentas editar. Recarga la pagina e intentalo nuevamente.')
+    // El material solo existe en el inventario operativo (aun sin fila en la
+    // tabla materiales): se crea la fila (con su catalogo) para poder persistir
+    // la edicion y que los cambios se reflejen en el modulo.
+    const catalogo = await sincronizarMaterialCatalogo(material, suministrador, catman)
+    if (catalogo.error) return catalogo
+
+    const crear = await supabase.from('materiales').insert(material).select().single<Material>()
+
+    if (crear.error) return crear
+    idReal = crear.data.id
+  } else {
+    idReal = referencia.id
   }
-  const idReal = referencia.id
 
   const anterior = await supabase
     .from('materiales')

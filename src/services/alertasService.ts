@@ -205,9 +205,9 @@ async function sincronizarAlertasStockInventarioActual() {
               codigo_material: material.codigo_material,
               nombre: material.nombre,
               stock_actual: material.stock_disponible_operativo,
-              stock_minimo: umbralMinimoInventario(material),
+              stock_minimo: umbralMinimoInventario(),
               pedido_maximo_material: material.pedido_maximo_material,
-              stock_objetivo_material: umbralNormalInventario(material),
+              stock_objetivo_material: umbralNormalInventario(),
               demanda_bodega_fq: material.demanda_bodega_fq,
             },
             Math.max(0, material.stock_disponible_operativo),
@@ -767,7 +767,7 @@ function stockResuelto(alerta: Alerta, contexto: ContextoAlertas) {
 
   if (!esAlertaStock(alerta)) return false
 
-  return stock >= umbralNormalStock(alerta, material, inventario)
+  return stock > umbralNormalStock(alerta, material, inventario)
 }
 
 function obtenerMaterialContexto(alerta: Alerta, contexto: ContextoMaterialesAlertas) {
@@ -829,21 +829,8 @@ function cantidadPedidoAlerta(alerta: Alerta) {
   return typeof alerta.pedido_cantidad === 'number' ? alerta.pedido_cantidad : null
 }
 
-function umbralNormalStock(
-  alerta: Alerta,
-  material: MaterialParaAlerta | null,
-  inventario: InventarioParaAlerta | null
-) {
-  const pedidoCantidad = cantidadPedidoAlerta(alerta) || 0
-  const minimo = Math.max(
-    1,
-    numeroNoNegativo(inventario?.pedido_maximo_material),
-    numeroNoNegativo(material?.stock_minimo),
-    numeroNoNegativo(inventario?.demanda_bodega_fq),
-    pedidoCantidad
-  )
-
-  return Math.max(minimo * 3, numeroNoNegativo(inventario?.stock_objetivo_material))
+function umbralNormalStock() {
+  return umbralNormalInventario()
 }
 
 function tieneContextoOperativo(alerta: Alerta, contexto: ContextoAlertas) {
@@ -1003,8 +990,8 @@ function alertaStockDerivada(material: InventarioOperativo): Alerta | null {
     pedido_fecha_compromiso: null,
     pedido_fecha_solicitud: null,
     pedido_stock_disponible: material.stock_disponible_operativo,
-    pedido_cantidad: umbralNormalInventario(material),
-    pedido_cantidad_despacho: umbralNormalInventario(material),
+    pedido_cantidad: umbralNormalInventario(),
+    pedido_cantidad_despacho: umbralNormalInventario(),
     pedido_cantidad_despachada: null,
     pedido_material: material.nombre,
     pedido_unidad_medida: material.unidad_medida,
@@ -1078,11 +1065,9 @@ function materialesInventarioUnicos(materiales: InventarioOperativo[]) {
 
 function nivelStockInventario(material: InventarioOperativo): Alerta['nivel'] | null {
   const stock = Math.max(0, numeroNoNegativo(material.stock_disponible_operativo))
-  const minimo = umbralMinimoInventario(material)
-  const normal = umbralNormalInventario(material)
 
-  if (stock >= normal) return null
-  if (stock <= 0 || stock < minimo) return 'critica'
+  if (stock > umbralNormalInventario()) return null
+  if (stock <= umbralMinimoInventario()) return 'critica'
   return 'alta'
 }
 
@@ -1093,20 +1078,12 @@ function severidadStockInventario(material: InventarioOperativo) {
   return 2
 }
 
-function umbralMinimoInventario(material: InventarioOperativo) {
-  return Math.max(
-    1,
-    numeroNoNegativo(material.pedido_maximo_material),
-    numeroNoNegativo(material.stock_minimo),
-    numeroNoNegativo(material.demanda_bodega_fq)
-  )
+function umbralMinimoInventario() {
+  return 30
 }
 
-function umbralNormalInventario(material: InventarioOperativo) {
-  return Math.max(
-    umbralMinimoInventario(material) * 3,
-    numeroNoNegativo(material.stock_objetivo_material)
-  )
+function umbralNormalInventario() {
+  return 60
 }
 
 async function consultarAlertasStockPorReferencia(material: InventarioOperativo) {
@@ -1150,9 +1127,7 @@ function mensajeStockInventario(material: InventarioOperativo, nivel: Alerta['ni
   return `Material ${codigo}${material.nombre} en estado ${estado}: stock ${Math.max(
     0,
     material.stock_disponible_operativo
-  )} / minimo ${umbralMinimoInventario(material)} / normal ${umbralNormalInventario(
-    material
-  )}. Departamento debe verificar reposicion.`
+  )} / minimo ${umbralMinimoInventario()} / normal ${umbralNormalInventario()}. Departamento debe verificar reposicion.`
 }
 
 function esUuid(valor: string | null | undefined) {

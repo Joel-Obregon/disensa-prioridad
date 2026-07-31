@@ -589,7 +589,9 @@ export default function Pedidos() {
 
     if (!confirmado) return
 
-    silenciarAlertasPedido(pedido.id, contexto.material?.id || pedido.material_id)
+    // Se silencia solo el pedido (no el material): la alerta de stock que genera
+    // el descuento debe saltar en tiempo real, pero el pedido gestionado no repite toast.
+    silenciarAlertasPedido(pedido.id)
     const { error } = await despacharPedido(pedidoContextual, {
       material_id: contexto.material?.id || pedido.material_id,
       codigo_material: contexto.codigoMaterial,
@@ -1079,6 +1081,34 @@ export default function Pedidos() {
     return mapa
   }, [pedidos])
 
+  // Fecha colocada para el reabastecimiento de cada material: la fecha_compromiso
+  // del pedido de reposicion (modulo Reposicion) mas reciente en camino.
+  const reposicionesFechasPorMaterial = useMemo(() => {
+    const mapa = new Map<string, string>()
+    const terminales = new Set(['entregado', 'cancelado', 'rechazado', 'sin_stock'])
+
+    pedidos
+      .filter(
+        (pedido) =>
+          (pedido.origen === 'suministrador' || pedido.destino === 'bodega') &&
+          !terminales.has(pedido.estado),
+      )
+      .forEach((pedido) => {
+        if (!pedido.fecha_compromiso) return
+        const fechaValor = new Date(pedido.fecha_compromiso).getTime()
+        if (!Number.isFinite(fechaValor) || fechaValor <= 0) return
+        const guardar = (clave: string) => {
+          const actual = mapa.get(clave)
+          const actualValor = actual ? new Date(actual).getTime() : 0
+          if (!actual || fechaValor > actualValor) mapa.set(clave, pedido.fecha_compromiso)
+        }
+        if (pedido.codigo_material) guardar(`cod:${normalizarTexto(pedido.codigo_material)}`)
+        if (pedido.material) guardar(`nom:${normalizarTexto(pedido.material)}`)
+      })
+
+    return mapa
+  }, [pedidos])
+
   const pedidosOperativos = useMemo(
     () =>
       ordenarPorPrioridad(
@@ -1468,6 +1498,10 @@ export default function Pedidos() {
                 const reabastecimiento =
                   reabastecimientoPedido(detalleOperativo) +
                   reposicionPendienteDe(pedido, reposicionesPendientesPorMaterial)
+                const fechaReabastecimiento =
+                  reposicionFechaDe(pedido, reposicionesFechasPorMaterial) ||
+                  detalleOperativo?.fecha_reabastecimiento ||
+                  null
                 const estadoVisible = enHistorial
                   ? 'Cerrado'
                   : reposicionPendiente
@@ -1570,12 +1604,9 @@ export default function Pedidos() {
                     <td className="px-5 py-4">
                       <p className="font-semibold text-black">{reabastecimiento}</p>
                       <p className="mt-1 text-xs font-medium text-[#7e5a4b]">
-                        {detalleOperativo?.fecha_reabastecimiento
-                          ? formatearFechaCorta(detalleOperativo.fecha_reabastecimiento)
+                        {fechaReabastecimiento
+                          ? formatearFechaCorta(fechaReabastecimiento)
                           : 'Sin fecha'}
-                      </p>
-                      <p className="text-xs font-medium text-[#7e5a4b]">
-                        OC {detalleOperativo?.orden_compra_reabastecimiento || 'sin registrar'}
                       </p>
                     </td>
                     <td className="px-5 py-4">
@@ -2380,7 +2411,8 @@ function puedeCambiarA(actual: EstadoPedido, siguiente: EstadoPedido) {
     return ['pendiente', 'sin_stock', 'retrasado'].includes(actual)
   }
   if (siguiente === 'aprobado') {
-    return ['pendiente', 'en_revision', 'sin_stock', 'retrasado'].includes(actual)
+    // No se puede aprobar un pedido que no ha sido revisado primero.
+    return actual === 'en_revision'
   }
   if (siguiente === 'en_despacho') return actual === 'aprobado'
   if (siguiente === 'entregado') return actual === 'en_despacho'
@@ -2438,14 +2470,30 @@ function reposicionPendienteDe(pedido: Pedido, mapa: Map<string, number>) {
   return 0
 }
 
+function reposicionFechaDe(pedido: Pedido, mapaFechas: Map<string, string>) {
+  if (pedido.codigo_material) {
+    const porCodigo = mapaFechas.get(`cod:${normalizarTexto(pedido.codigo_material)}`)
+    if (porCodigo) return porCodigo
+  }
+  if (pedido.material) {
+    const porNombre = mapaFechas.get(`nom:${normalizarTexto(pedido.material)}`)
+    if (porNombre) return porNombre
+  }
+  return null
+}
+
 function resolucionPedido(pedido: Pedido, detalle?: PedidoDetalleOperativo) {
-  if (detalle?.resolucion) return detalle.resolucion
+  if (detalle?.resolucion) {
+    // Rows sincronizadas antes del cambio a "Revisado" pueden traer el texto viejo.
+    if (detalle.resolucion === 'Sin revisar' && pedido.estado === 'en_revision') return 'Revisado'
+    return detalle.resolucion
+  }
   if (pedido.accion_solicitante === 'nota_credito') return 'NC en proceso'
   if (pedido.accion_solicitante === 'esperar_pedido') return 'Reabastecimiento'
   if (pedido.estado === 'entregado') return 'Entregado'
   if (pedido.estado === 'aprobado') return 'Planificado'
   if (pedido.estado === 'en_despacho') return 'Listo para entregar'
-  if (pedido.estado === 'en_revision') return 'Sin revisar'
+  if (pedido.estado === 'en_revision') return 'Revisado'
   return 'En proceso'
 }
 
@@ -2499,6 +2547,7 @@ function claseResolucion(resolucion: string) {
   if (texto.includes('planificado')) return 'bg-blue-100 text-blue-800 ring-1 ring-blue-200'
   if (texto.includes('entregado')) return 'bg-green-100 text-green-800 ring-1 ring-green-200'
   if (texto.includes('compra')) return 'bg-orange-100 text-orange-800 ring-1 ring-orange-200'
+  if (texto.includes('revision') || texto.includes('revisado')) return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200'
   if (texto.includes('sin revisar')) return 'bg-red-100 text-red-800 ring-1 ring-red-200'
   if (texto.includes('evaluacion')) return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200'
   if (texto.includes('reabastecimiento')) return 'bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200'

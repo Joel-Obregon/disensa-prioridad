@@ -15,7 +15,6 @@ import {
 import { claseSemaforoBadge, claseSemaforoBarra } from '../lib/semaforoOperativo'
 import {
   esCodigoMaterialValido,
-  esEnteroNoNegativo,
   soloDigitos,
   soloEnteroNoNegativo,
   textoMixtoOperativo,
@@ -31,7 +30,8 @@ import {
   escucharMateriales,
   type MaterialInput,
 } from '../services/materialesService'
-import { obtenerPedidos } from '../services/pedidosService'
+import { escucharPedidos, obtenerPedidos } from '../services/pedidosService'
+import { invalidarCache } from '../services/cacheService'
 import ModalExito from '../components/ModalExito'
 import type { InventarioOperativo } from '../types/material'
 import type { Pedido } from '../types/pedido'
@@ -120,19 +120,25 @@ export default function Inventario() {
     setCargando(false)
   }
 
+  async function recargarPorPedidoCambiado() {
+    invalidarCache('inventario')
+    await cargarDatos()
+  }
+
   async function registrarMaterial(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setGuardando(true)
     setError('')
     setAviso('')
 
-    const payload = prepararPayload(formulario, 0)
-
-    if (!payload) {
-      setError('Completa codigo, nombre, catman, UMB y stock disponible. El codigo del material debe tener exactamente 8 digitos.')
+    const motivo = motivoMaterialInvalido(formulario, false)
+    if (motivo) {
+      setError(motivo)
       setGuardando(false)
       return
     }
+
+    const payload = prepararPayload(formulario, 0)
 
     if (!formulario.suministrador_nombre.trim()) {
       setError('Selecciona el suministrador del material.')
@@ -184,7 +190,14 @@ export default function Inventario() {
     setError('')
     setAviso('')
 
-    const payload = prepararPayload(edicion, material.stock_minimo)
+    const motivo = motivoMaterialInvalido(edicion, true)
+    if (motivo) {
+      setError(motivo)
+      setGuardando(false)
+      return
+    }
+
+    const payload = prepararPayload(edicion, material.stock_minimo, true)
 
     if (!payload) {
       setError('Revisa los campos del material antes de guardar.')
@@ -252,11 +265,13 @@ export default function Inventario() {
     const timer = window.setTimeout(cargarDatos, 0)
     const dejarDeEscucharMateriales = escucharMateriales(cargarDatos)
     const dejarDeEscucharInventario = escucharInventarioOperativo(cargarDatos)
+    const dejarDeEscucharPedidos = escucharPedidos(recargarPorPedidoCambiado)
 
     return () => {
       window.clearTimeout(timer)
       dejarDeEscucharMateriales()
       dejarDeEscucharInventario()
+      dejarDeEscucharPedidos()
     }
   }, [])
 
@@ -367,28 +382,29 @@ export default function Inventario() {
   }, [materiales])
 
   const inventarioFiltrado = useMemo(() => {
-    const texto = normalizarTexto(busqueda)
+    const tokens = normalizarTexto(busqueda)
+      .split(/\s+/)
+      .filter(Boolean)
 
     return materiales
       .filter((material) => {
         const catman = material.catman_categoria || material.categoria
         const estadoStock = resolverEstadoStock(material)
         const estadoPlanificable = normalizarEstadoPlanificable(material.estado_planificable)
-        const coincideTexto = texto
-          ? [
-              material.codigo_material,
-              material.nombre,
-              catman,
-              material.catman_nombre,
-              material.nombre_suministrador,
-              material.codigo_suministrador,
-              material.marca_material,
-              material.unidad_medida,
-            ]
-              .join(' ')
-              .toLowerCase()
-              .includes(texto)
-          : true
+        const textoCompleto = normalizarTexto(
+          [
+            material.codigo_material,
+            material.nombre,
+            catman,
+            material.catman_nombre,
+            material.nombre_suministrador,
+            material.codigo_suministrador,
+            material.marca_material,
+            material.unidad_medida,
+          ].join(' ')
+        )
+        const coincideTexto =
+          tokens.length === 0 || tokens.every((token) => textoCompleto.includes(token))
         const coincideCatman = catmanFiltro === 'todos' || catman === catmanFiltro
         const coincidePlanificable =
           estadoPlanificableFiltro === 'todos' ||
@@ -666,7 +682,7 @@ export default function Inventario() {
                 <th className="px-5 py-3 text-left">Suministrador</th>
                 <th className="px-5 py-3 text-left">Catman</th>
                 <th className="px-5 py-3 text-left">Stock disponible</th>
-                <th className="px-5 py-3 text-left">Stock LU</th>
+                <th className="px-5 py-3 text-left">Stock OUT</th>
                 <th className="px-5 py-3 text-left">Stock bloqueado</th>
                 <th className="px-5 py-3 text-left">Stock transito</th>
                 <th className="px-5 py-3 text-left">UMB</th>
@@ -799,7 +815,9 @@ export default function Inventario() {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-slate-600">{formatearNumero(material.stock_libre)}</td>
+                    <td className="px-5 py-4 text-slate-600">
+                      {formatearNumero(material.stock_solicitado_pedidos)}
+                    </td>
                     <td className="px-5 py-4 text-slate-600">{formatearNumero(material.stock_bloqueado)}</td>
                     <td className="px-5 py-4 text-slate-600">
                       {formatearNumero(stockTransitoOperativo(material))}
@@ -1020,7 +1038,7 @@ function FiltroSelect({
   )
 }
 
-function prepararPayload(form: MaterialForm, stockMinimo: number): MaterialInput | null {
+function prepararPayload(form: MaterialForm, stockMinimo: number, esEdicion = false): MaterialInput | null {
   const stockActual = Number(form.stock_actual)
   const codigoMaterial = form.codigo_material.trim()
 
@@ -1029,9 +1047,9 @@ function prepararPayload(form: MaterialForm, stockMinimo: number): MaterialInput
     !form.categoria.trim() ||
     !form.unidad_medida.trim() ||
     !codigoMaterial ||
-    !esCodigoMaterialValido(codigoMaterial) ||
-    !esEnteroNoNegativo(form.stock_actual) ||
-    Number.isNaN(stockActual)
+    (!esEdicion && !esCodigoMaterialValido(codigoMaterial)) ||
+    !form.stock_actual.trim() ||
+    !Number.isFinite(stockActual)
   ) {
     return null
   }
@@ -1047,19 +1065,27 @@ function prepararPayload(form: MaterialForm, stockMinimo: number): MaterialInput
   }
 }
 
+function motivoMaterialInvalido(form: MaterialForm, esEdicion: boolean) {
+  if (!form.nombre.trim()) return 'Completa el nombre del material.'
+  if (!form.categoria.trim()) return 'Completa la categoria (catman) del material.'
+  if (!form.unidad_medida.trim()) return 'Completa la unidad de medida (UMB).'
+  if (!form.codigo_material.trim()) return 'Completa el codigo del material.'
+  if (!esEdicion && !esCodigoMaterialValido(form.codigo_material.trim())) {
+    return 'El codigo del material debe tener exactamente 8 digitos.'
+  }
+  if (!form.stock_actual.trim() || !Number.isFinite(Number(form.stock_actual))) {
+    return 'El stock disponible debe ser un numero.'
+  }
+  return null
+}
+
 function resolverEstadoStock(material: InventarioOperativo): EstadoStockFiltro {
   const stock = material.stock_disponible_operativo
-  const minimo = umbralMinimoMaterial(material)
-  const amarillo = umbralAmarilloMaterial(material)
-  const verde = umbralVerdeMaterial(material)
 
-  if (material.stock_disponible_operativo < 0) return 'stock_negativo'
-  if (stock <= 0) return 'sin_stock'
-  if (stock < minimo) return 'bajo_minimo'
-  if (stock < amarillo && reabastecimientoPendiente(material) > 0) {
-    return 'reabastecimiento'
-  }
-  if (stock < verde) return 'cobertura_media'
+  if (stock < 0) return 'stock_negativo'
+  if (stock <= 30) return 'bajo_minimo'
+  if (stock <= 60 && reabastecimientoPendiente(material) > 0) return 'reabastecimiento'
+  if (stock <= 60) return 'cobertura_media'
   return 'disponible'
 }
 
@@ -1074,10 +1100,9 @@ function prioridadEstadoStock(material: InventarioOperativo) {
 }
 
 function porcentajeStock(material: InventarioOperativo) {
-  const base = Math.max(umbralVerdeMaterial(material), 1)
   const cobertura =
     Math.max(0, material.stock_disponible_operativo) + Math.max(0, reabastecimientoPendiente(material))
-  const porcentaje = Math.round((cobertura / base) * 100)
+  const porcentaje = Math.round((cobertura / 60) * 100)
 
   return Math.max(0, Math.min(porcentaje, 100))
 }
@@ -1109,18 +1134,6 @@ function colorBarraStock(estado: EstadoStockFiltro) {
   if (estado === 'cobertura_media') return claseSemaforoBarra('riesgo')
   if (estado === 'reabastecimiento') return claseSemaforoBarra('riesgo')
   return claseSemaforoBarra('a_tiempo')
-}
-
-function umbralMinimoMaterial(material: InventarioOperativo) {
-  return Math.max(1, material.pedido_maximo_material || material.stock_minimo || material.demanda_bodega_fq || 1)
-}
-
-function umbralAmarilloMaterial(material: InventarioOperativo) {
-  return umbralMinimoMaterial(material) * 2
-}
-
-function umbralVerdeMaterial(material: InventarioOperativo) {
-  return Math.max(umbralMinimoMaterial(material) * 3, material.stock_objetivo_material || 0)
 }
 
 // Nota: en la vista del ERP, stock_transito, stock_en_curso_pedido y

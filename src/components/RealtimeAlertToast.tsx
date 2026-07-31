@@ -20,11 +20,20 @@ import {
 import type { Alerta } from '../types/alerta'
 import { alertaSilenciada } from '../lib/alertSilencio'
 import { obtenerReglas } from '../services/reglasService'
+import { supabase } from '../services/supabaseClient'
 import { leerVisibilidadAlertas, leerRecordatorioConfig } from '../lib/reglasAlertas'
 import type { VisibilidadAlertas, RecordatorioConfig } from '../lib/reglasAlertas'
 
 const DURACION_TOAST_MS = 6000
 const INTERVALO_RESPALDO_MS = 30000
+
+// Nivel esperado segun el stock real del material con los umbrales fijos
+// del semaforo (rojo <= 30, amarillo 31-60, verde >= 61).
+function nivelStockEsperado(stock: number): Alerta['nivel'] | null {
+  if (stock > 60) return null
+  if (stock <= 30) return 'critica'
+  return 'alta'
+}
 
 export default function RealtimeAlertToast() {
   const location = useLocation()
@@ -55,6 +64,47 @@ export default function RealtimeAlertToast() {
     minutos: 0,
     deseleccionadas: [],
   })
+  const stockMaterialesRef = useRef<Map<string, { stock: number; expira: number }>>(new Map())
+
+  const nivelStockMaterialActual = useCallback(
+    async (materialId: string): Promise<number | null> => {
+      const ahora = Date.now()
+      const guardado = stockMaterialesRef.current.get(materialId)
+      if (guardado && guardado.expira > ahora) return guardado.stock
+
+      const { data, error } = await supabase
+        .from('materiales')
+        .select('stock_actual')
+        .eq('id', materialId)
+        .limit(1)
+        .returns<{ stock_actual: number | null }[]>()
+
+      if (error || !data?.[0] || typeof data[0].stock_actual !== 'number') return null
+
+      stockMaterialesRef.current.set(materialId, {
+        stock: data[0].stock_actual,
+        expira: ahora + 3000,
+      })
+      return data[0].stock_actual
+    },
+    []
+  )
+
+  // Valida que una alerta de stock tenga el color del estado actual del material.
+  // Si el trigger de la BD o un sync viejo creo una alerta con nivel distinto
+  // al que corresponde (umbrales fijos), se oculta para que no se duplique.
+  const alertaStockColorValido = useCallback(
+    async (alerta: Alerta): Promise<boolean> => {
+      if (!esAlertaStockMaterial(alerta) || alerta.nivel === 'informativa') return true
+      if (!alerta.material_id) return true
+
+      const stock = await nivelStockMaterialActual(alerta.material_id)
+      if (stock === null) return true
+
+      return nivelStockEsperado(stock) === alerta.nivel
+    },
+    [nivelStockMaterialActual]
+  )
 
   const sincronizarFirmasVisualesConocidas = useCallback(() => {
     firmasVisualesConocidasRef.current = new Set(alertasConocidasRef.current.values())
@@ -115,7 +165,8 @@ export default function RealtimeAlertToast() {
 
     if (
       alertaSilenciada(nuevaAlerta) ||
-      (!opciones.forzarNotificacion && (yaConocidaPorId || yaConocidaPorFirma)) ||
+      yaConocidaPorId ||
+      yaConocidaPorFirma ||
       (!opciones.forzarNotificacion && opciones.notificar === false) ||
       enPaginaAlertasRef.current
     ) {
@@ -136,6 +187,22 @@ export default function RealtimeAlertToast() {
     agregarAlertaNoRevisada(nuevaAlerta.id)
     setIdsNoRevisados(obtenerAlertasNoRevisadas())
   }, [sincronizarFirmasVisualesConocidas])
+
+  const registrarAlertaEntranteValidada = useCallback((
+    nuevaAlerta: Alerta,
+    opciones: { notificar?: boolean } & OpcionesAlertaVisualLocal = {}
+  ) => {
+    void alertaStockColorValido(nuevaAlerta).then((valida) => {
+      if (!valida) {
+        // La alerta no coincide con el color del stock: se marca como conocida
+        // para no reprocesarla, pero no se muestra ni se notifica.
+        alertasConocidasRef.current.set(nuevaAlerta.id, firmaAlerta(nuevaAlerta))
+        firmasVisualesConocidasRef.current.add(firmaAlerta(nuevaAlerta))
+        return
+      }
+      registrarAlertaEntrante(nuevaAlerta, opciones)
+    })
+  }, [registrarAlertaEntrante, alertaStockColorValido])
 
   const establecerLineaBase = useCallback(async () => {
     const { data, error } = await obtenerAlertasVisualesActivas()
@@ -158,19 +225,19 @@ export default function RealtimeAlertToast() {
 
   useEffect(() => {
     const dejarDeEscuchar = escucharAlertas((nuevaAlerta) => {
-      registrarAlertaEntrante(nuevaAlerta, {
+      registrarAlertaEntranteValidada(nuevaAlerta, {
         notificar: !esAlertaStockSincronizada(nuevaAlerta),
       })
     })
 
     return dejarDeEscuchar
-  }, [registrarAlertaEntrante])
+  }, [registrarAlertaEntranteValidada])
 
   useEffect(() => {
     return escucharAlertasVisualesLocales((nuevaAlerta, opciones) => {
-      registrarAlertaEntrante(nuevaAlerta, opciones)
+      registrarAlertaEntranteValidada(nuevaAlerta, opciones)
     })
-  }, [registrarAlertaEntrante])
+  }, [registrarAlertaEntranteValidada])
 
   useEffect(() => {
     let cancelado = false
@@ -203,7 +270,7 @@ export default function RealtimeAlertToast() {
         .filter((item) => alertasConocidasRef.current.get(item.id) !== firmaAlerta(item))
         .reverse()
         .forEach((item) =>
-          registrarAlertaEntrante(item, {
+          registrarAlertaEntranteValidada(item, {
             notificar: !esAlertaStockSincronizada(item),
           })
         )
@@ -216,7 +283,7 @@ export default function RealtimeAlertToast() {
       cancelado = true
       window.clearInterval(intervalo)
     }
-  }, [establecerLineaBase, registrarAlertaEntrante, sincronizarFirmasVisualesConocidas])
+  }, [establecerLineaBase, registrarAlertaEntranteValidada, sincronizarFirmasVisualesConocidas])
 
   useEffect(() => {
     enPaginaAlertasRef.current = location.pathname.startsWith('/alertas')
@@ -333,11 +400,15 @@ export default function RealtimeAlertToast() {
 
     setCargandoCentro(true)
     const { data } = await obtenerAlertas()
-    setAlertasCentro(
-      (data || [])
-        .filter((item) => item.estado !== 'cerrada' && item.nivel !== 'informativa')
-        .slice(0, 8)
-    )
+
+    const visibles: Alerta[] = []
+    for (const item of data || []) {
+      if (item.estado === 'cerrada' || item.nivel === 'informativa') continue
+      if (!(await alertaStockColorValido(item))) continue
+      visibles.push(item)
+    }
+
+    setAlertasCentro(visibles.slice(0, 8))
     setCargandoCentro(false)
   }
 

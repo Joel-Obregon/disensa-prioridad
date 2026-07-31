@@ -5,6 +5,7 @@ import {
   invalidarCache,
 } from './cacheService'
 import { sincronizarAlertaSemaforoPedido } from './pedidoAlertasService'
+import { sincronizarAlertaStockMaterial } from './stockAlertasService'
 import type {
   AccionSolicitante,
   CondicionMaterial,
@@ -433,6 +434,13 @@ export async function despacharPedido(
       ...pedido,
       estado: despacho?.pedido_estado || 'en_despacho',
     })
+    await sincronizarAlertaStockPorDespacho({
+      materialId,
+      codigoMaterial,
+      nombre: pedido.material,
+      stockNuevo:
+        despacho?.stock_nuevo ?? (stockOperativo !== null ? Math.max(0, stockOperativo - cantidad) : 0),
+    })
     invalidarDatosPedidos()
     return operativoResult
   }
@@ -541,6 +549,13 @@ async function despacharPedidoConFuncionBase(
 
     if (syncMaterialFinal.error) return { ...result, error: syncMaterialFinal.error }
   }
+
+  await sincronizarAlertaStockPorDespacho({
+    materialId,
+    codigoMaterial,
+    nombre: pedido.material,
+    stockNuevo: stockNuevoOperativo,
+  })
 
   const syncFuente = await sincronizarFuenteOperativaPedido(pedido, 'en_despacho', {
     ...opciones,
@@ -809,7 +824,7 @@ function estadoFuenteBodegaFq(estado: EstadoPedido) {
 function resolucionFuenteBodegaFq(estado: EstadoPedido) {
   const resoluciones: Record<EstadoPedido, string> = {
     pendiente: 'En proceso',
-    en_revision: 'Sin revisar',
+    en_revision: 'Revisado',
     aprobado: 'Planificado',
     en_despacho: 'Listo para entregar',
     retrasado: 'En proceso',
@@ -885,6 +900,110 @@ function errorAplicacion(message: string) {
 
 async function sincronizarAlertasPedidoSinBloquear(pedido: Pedido) {
   await sincronizarAlertaSemaforoPedido(pedido).catch(() => undefined)
+}
+
+// Al despachar un pedido el stock baja: se sincroniza la alerta de stock del
+// material (crea "stock_bajo" en rojo/amarillo o cierra la que ya no aplica).
+// Si el material solo existe en el inventario operativo (sin fila en la tabla
+// materiales), se crea la fila primero para poder persistir y mostrar la alerta.
+async function sincronizarAlertaStockPorDespacho(opciones: {
+  materialId: string | null
+  codigoMaterial: string | null
+  nombre: string
+  stockNuevo: number
+}) {
+  try {
+    const { materialId, codigoMaterial, nombre, stockNuevo } = opciones
+    const stock = Math.max(0, Math.floor(stockNuevo) || 0)
+    const campos = 'id,codigo_material,nombre,stock_actual,stock_minimo'
+
+    type MaterialStockRow = {
+      id: string
+      codigo_material: string | null
+      nombre: string
+      stock_actual: number
+      stock_minimo: number
+    }
+
+    let material: MaterialStockRow | null = null
+
+    if (materialId && UUID_MATERIAL_RE.test(materialId)) {
+      const porId = await supabase
+        .from('materiales')
+        .select(campos)
+        .eq('id', materialId)
+        .maybeSingle<MaterialStockRow>()
+
+      if (!porId.error && porId.data) material = porId.data
+    }
+
+    if (!material && codigoMaterial) {
+      const porCodigo = await supabase
+        .from('materiales')
+        .select(campos)
+        .eq('codigo_material', codigoMaterial)
+        .maybeSingle<MaterialStockRow>()
+
+      if (!porCodigo.error && porCodigo.data) material = porCodigo.data
+    }
+
+    if (!material) {
+      if (!codigoMaterial) return
+
+      const catalogo = await supabase
+        .from('material_catalogo')
+        .upsert(
+          {
+            codigo_material: codigoMaterial,
+            nombre_material: nombre,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'codigo_material' }
+        )
+
+      if (
+        catalogo.error &&
+        catalogo.error.code !== '42P01' &&
+        catalogo.error.code !== '42703'
+      ) {
+        return
+      }
+
+      const crear = await supabase
+        .from('materiales')
+        .insert({
+          codigo_material: codigoMaterial,
+          nombre,
+          categoria: 'Sin categoria',
+          stock_actual: stock,
+          stock_minimo: 30,
+          unidad_medida: 'UN',
+          es_critico: false,
+        })
+        .select(campos)
+        .maybeSingle<MaterialStockRow>()
+
+      if (crear.error || !crear.data) return
+      material = crear.data
+    }
+
+    await sincronizarAlertaStockMaterial(
+      {
+        id: material.id,
+        codigo_material: material.codigo_material,
+        nombre: material.nombre,
+        stock_actual: material.stock_actual,
+        stock_minimo: material.stock_minimo,
+        pedido_maximo_material: material.stock_minimo,
+        stock_objetivo_material: Math.max(1, material.stock_minimo || 1) * 3,
+        demanda_bodega_fq: material.stock_minimo,
+      },
+      stock,
+      { responsable: 'Departamento de inventario' }
+    )
+  } catch {
+    // La alerta de stock no bloquea el despacho.
+  }
 }
 
 function invalidarDatosPedidos() {
