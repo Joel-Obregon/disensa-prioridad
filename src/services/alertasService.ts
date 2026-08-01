@@ -767,7 +767,7 @@ function stockResuelto(alerta: Alerta, contexto: ContextoAlertas) {
 
   if (!esAlertaStock(alerta)) return false
 
-  return stock > umbralNormalStock(alerta, material, inventario)
+  return stock > umbralNormalStock()
 }
 
 function obtenerMaterialContexto(alerta: Alerta, contexto: ContextoMaterialesAlertas) {

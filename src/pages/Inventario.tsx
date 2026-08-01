@@ -140,6 +140,12 @@ export default function Inventario() {
 
     const payload = prepararPayload(formulario, 0)
 
+    if (!payload) {
+      setError('Los datos del material no son validos.')
+      setGuardando(false)
+      return
+    }
+
     if (!formulario.suministrador_nombre.trim()) {
       setError('Selecciona el suministrador del material.')
       setGuardando(false)
