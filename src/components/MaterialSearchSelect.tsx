@@ -102,7 +102,7 @@ export default function MaterialSearchSelect({
             setBusqueda(materialSeleccionado ? etiquetaMaterial(materialSeleccionado) : '')
             setAbierto(true)
           }}
-          className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-10 outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500"
+          className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-10 outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-500"
           placeholder={placeholder}
         />
         {value && !disabled && (
@@ -132,8 +132,8 @@ export default function MaterialSearchSelect({
               aria-selected={material.id === value}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => seleccionarMaterial(material)}
-              className={`block w-full px-3 py-2 text-left hover:bg-orange-50 ${
-                material.id === value ? 'bg-orange-100 text-orange-900' : 'text-slate-700'
+              className={`block w-full px-3 py-2 text-left hover:bg-red-50 ${
+                material.id === value ? 'bg-red-100 text-red-900' : 'text-slate-700'
               }`}
             >
               <span className="block truncate font-semibold">{material.nombre}</span>

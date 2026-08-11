@@ -10,8 +10,8 @@
  * Reglas que afectan la PRIORIDAD del pedido (0-100):
  *   - Material sin existencia: stock disponible = 0
  *   - Stock critico: stock disponible por debajo de la cantidad requerida
- *   - Retraso vs SLA por tramos: amarillo (1-6 d), naranja/reprogramado (7-30 d) y
- *     rojo critico (+30 d), segun los dias de retraso del dia de entrega del SLA
+ *   - Retraso vs SLA por tramos: amarillo (1-7 d) y rojo critico (8+ d),
+ *     segun los dias de retraso del dia de entrega del SLA
  *   - Franquiciado solicita NC: nota de credito pendiente
  *
  * Las reglas de inventario y de franquiciado (por agotarse, multifranquiciado,
@@ -29,7 +29,6 @@ const NOMBRE_REGLA = {
   sin_existencia: 'Material sin existencia',
   stock_critico: 'Stock critico',
   retraso_amarillo: 'Retraso del pedido (amarillo)',
-  retraso_naranja: 'Reprogramado por retraso (naranja)',
   retraso_critico: 'Retraso critico (rojo)',
   franquiciado_nc: 'Franquiciado solicita NC',
 } as const
@@ -41,15 +40,11 @@ const PESO_DEFECTO = {
   sin_existencia: 0,
   stock_critico: 0,
   retraso_amarillo: 20,
-  retraso_naranja: 30,
   retraso_critico: 40,
   franquiciado_nc: 30,
 } as const
 
 const PARAMETROS_DEFECTO = {
-  retraso_amarillo: { diasDesde: 1, diasHasta: 6 },
-  retraso_naranja: { diasDesde: 7, diasHasta: 30 },
-  retraso_critico: { diasDesde: 31 },
   stock_critico: { factorMinimo: 1 },
 } as const
 
@@ -87,30 +82,17 @@ export function calcularPrioridad(
     puntaje += pesoStockCritico
   }
 
-  // Retraso vs SLA por tramos (excluyentes): amarillo 1-6 d, naranja/reprogramado
-  // 7-30 d, rojo critico +30 d. Solo aplica a pedidos abiertos.
+  // Retraso vs SLA por tramos (excluyentes): amarillo 1-7 d y rojo desde 8 d.
+  // Los limites son operativos y no dependen de configuraciones antiguas.
+  // Solo aplica a pedidos abiertos.
   if (!pedidoCerrado(pedido)) {
     const retraso = calcularDiasRetraso(pedido.fecha_compromiso)
     const pesoRojo = pesoRegla(reglas, 'retraso_critico')
-    const paramRojo = parametrosRegla(reglas, 'retraso_critico')
-    const pesoNaranja = pesoRegla(reglas, 'retraso_naranja')
-    const paramNaranja = parametrosRegla(reglas, 'retraso_naranja')
     const pesoAmarillo = pesoRegla(reglas, 'retraso_amarillo')
-    const paramAmarillo = parametrosRegla(reglas, 'retraso_amarillo')
 
-    if (pesoRojo > 0 && retraso >= paramRojo.diasDesde) {
+    if (pesoRojo > 0 && retraso >= 8) {
       puntaje += pesoRojo
-    } else if (
-      pesoNaranja > 0 &&
-      retraso >= paramNaranja.diasDesde &&
-      retraso <= paramNaranja.diasHasta
-    ) {
-      puntaje += pesoNaranja
-    } else if (
-      pesoAmarillo > 0 &&
-      retraso >= paramAmarillo.diasDesde &&
-      retraso <= paramAmarillo.diasHasta
-    ) {
+    } else if (pesoAmarillo > 0 && retraso >= 1 && retraso <= 7) {
       puntaje += pesoAmarillo
     }
   }
@@ -131,11 +113,10 @@ export function resolverNivelPrioridad(
   if (pedido && pedidoCerrado(pedido)) return 'Baja'
 
   // El retraso vs SLA define el nivel (coherente con el semaforo):
-  // rojo (+30 d) = critica, naranja (7-30 d) = alta.
+  // rojo desde 8 d = critica.
   if (pedido) {
     const retraso = calcularDiasRetraso(pedido.fecha_compromiso)
-    if (retraso > 30) return 'Critica'
-    if (retraso >= 7) return 'Alta'
+    if (retraso >= 8) return 'Critica'
   }
 
   if (puntaje >= 70) return 'Critica'
@@ -271,7 +252,10 @@ function pedidoCerrado(pedido: Pick<Pedido, 'estado'>): boolean {
 
 function fechaADia(fecha?: string | null): number | null {
   if (!fecha) return null
-  const valor = new Date(fecha)
+  const coincidencia = /^(\d{4})-(\d{2})-(\d{2})/.exec(fecha)
+  const valor = coincidencia
+    ? new Date(Number(coincidencia[1]), Number(coincidencia[2]) - 1, Number(coincidencia[3]))
+    : new Date(fecha)
   if (Number.isNaN(valor.getTime())) return null
   return new Date(valor.getFullYear(), valor.getMonth(), valor.getDate()).getTime()
 }

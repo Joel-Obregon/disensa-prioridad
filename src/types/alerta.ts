@@ -2,6 +2,7 @@ export type Alerta = {
   id: string
   pedido_id: string | null
   material_id: string | null
+  reporte_id?: string | null
   tipo_alerta: string
   nivel: 'informativa' | 'media' | 'alta' | 'critica'
   mensaje: string

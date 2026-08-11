@@ -29,6 +29,10 @@ export function agregarAlertaNoRevisada(id: string) {
   guardarAlertasNoRevisadas([...obtenerAlertasNoRevisadas(), id])
 }
 
+export function quitarAlertaNoRevisada(id: string) {
+  guardarAlertasNoRevisadas(obtenerAlertasNoRevisadas().filter((alertaId) => alertaId !== id))
+}
+
 export function limpiarAlertasNoRevisadas() {
   guardarAlertasNoRevisadas([])
 }

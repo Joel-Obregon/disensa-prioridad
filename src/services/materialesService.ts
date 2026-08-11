@@ -291,6 +291,7 @@ export function escucharMateriales(onChange: () => void) {
     'materiales',
     'inventario',
     'pedidos',
+    'detalles-pedidos',
     'alertas',
     'reportes',
   ])
@@ -434,6 +435,8 @@ async function sincronizarMaterialEnModulos(
         material_id: material.id,
         material: material.nombre,
         unidad_medida: material.unidad_medida,
+        // El pedido muestra el stock vigente, no el valor que tenia al crearse.
+        stock_disponible: Math.max(0, material.stock_actual),
       })
       .eq('id', pedido.id)
 
@@ -816,5 +819,5 @@ function llaveMaterial(nombre: string, unidad: string) {
 }
 
 function invalidarDatosMateriales() {
-  invalidarCache('materiales', 'inventario', 'pedidos', 'alertas', 'reportes')
+  invalidarCache('materiales', 'inventario', 'pedidos', 'detalles-pedidos', 'alertas', 'reportes')
 }

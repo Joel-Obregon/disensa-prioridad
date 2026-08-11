@@ -91,7 +91,7 @@ export default function Calendario() {
         titulo: 'Vencidos',
         valor: pedidosDelMes.filter((pedido) => {
           const semaforo = resolverSemaforoPedido(pedido)
-          return semaforo === 'critico' || semaforo === 'alto' || semaforo === 'riesgo'
+          return semaforo === 'critico' || semaforo === 'riesgo'
         }).length,
         detalle: 'Con retraso operativo',
         icono: TimerReset,
@@ -494,10 +494,9 @@ function pedidoCerrado(pedido: Pedido) {
 
 function prioridadSemaforo(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 0
-  if (semaforo === 'alto') return 1
-  if (semaforo === 'riesgo') return 2
-  if (semaforo === 'a_tiempo') return 3
-  return 4
+  if (semaforo === 'riesgo') return 1
+  if (semaforo === 'a_tiempo') return 2
+  return 3
 }
 
 function fechaCalendarioDia(pedido: Pedido) {
@@ -569,7 +568,6 @@ function formatearHoraFecha(pedido: Pedido) {
 
 function colorPunto(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 'bg-red-600'
-  if (semaforo === 'alto') return 'bg-orange-500'
   if (semaforo === 'riesgo') return 'bg-yellow-500'
   if (semaforo === 'a_tiempo') return 'bg-green-500'
   return 'bg-slate-400'

@@ -43,7 +43,10 @@ export function alertaSilenciada(alerta: {
   const silenciadoPorPedido = activo(`p:${alerta.pedido_id ?? ''}`)
   const silenciadoPorMaterial = activo(`m:${alerta.material_id ?? ''}`)
 
-  if (esAlertaStock) return silenciadoPorMaterial
+  // El cruce de umbral de inventario siempre debe avisarse. La gestion de un
+  // pedido puede silenciar su propio toast, pero no ocultar una alerta nueva
+  // de stock amarillo o rojo del material.
+  if (esAlertaStock) return false
 
   return silenciadoPorPedido || silenciadoPorMaterial
 }

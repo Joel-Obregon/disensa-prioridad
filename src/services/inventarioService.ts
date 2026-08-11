@@ -421,6 +421,7 @@ export function escucharInventarioOperativo(onChange: () => void) {
     'inventario',
     'materiales',
     'pedidos',
+    'detalles-pedidos',
     'alertas',
     'reportes',
     'otif',

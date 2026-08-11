@@ -323,7 +323,7 @@ export default function Inventario() {
         titulo: 'Suministradores',
         valor: suministradores.size,
         icono: Users,
-        tono: 'text-orange-600',
+        tono: 'text-red-600',
       },
       {
         titulo: 'Reabastecimiento',
@@ -524,7 +524,7 @@ export default function Inventario() {
                 onChange={(event) =>
                   setFormulario({ ...formulario, categoria: event.target.value })
                 }
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
               >
                 <option value="">Selecciona catman</option>
                 {catmanOpciones.map((catman) => (
@@ -547,7 +547,7 @@ export default function Inventario() {
                     suministrador_codigo: opcion?.codigo || '',
                   })
                 }}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
               >
                 <option value="">Selecciona suministrador</option>
                 {suministradorLista.map((item) => (
@@ -749,7 +749,7 @@ export default function Inventario() {
                               suministrador_codigo: opcion?.codigo || '',
                             })
                           }}
-                          className="w-full min-w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-full min-w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-red-500"
                         >
                           {edicion.suministrador_nombre &&
                             !suministradorLista.some((item) => item.nombre === edicion.suministrador_nombre) && (
@@ -783,7 +783,7 @@ export default function Inventario() {
                           onChange={(event) =>
                             setEdicion({ ...edicion, categoria: event.target.value })
                           }
-                          className="w-full min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-full min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-red-500"
                         >
                           {edicion.categoria && !catmanOpciones.includes(edicion.categoria) && (
                             <option value={edicion.categoria}>{etiquetaCatman(edicion.categoria)}</option>
@@ -833,7 +833,7 @@ export default function Inventario() {
                         <select
                           value={edicion.unidad_medida}
                           onChange={(event) => setEdicion({ ...edicion, unidad_medida: event.target.value })}
-                          className="w-24 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-24 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-red-500"
                         >
                           <option value="UN">UN</option>
                           <option value="CAJ">CAJ</option>
@@ -985,7 +985,7 @@ function CampoTexto({
         min={type === 'number' ? 0 : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border-2 border-slate-400 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+        className="mt-1 w-full rounded-lg border-2 border-slate-400 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
         placeholder={placeholder}
       />
     </label>
@@ -1009,7 +1009,7 @@ function CampoInline({
       min={type === 'number' ? 0 : undefined}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full min-w-32 rounded-lg border-2 border-slate-400 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+      className="w-full min-w-32 rounded-lg border-2 border-slate-400 px-3 py-2 outline-none focus:ring-2 focus:ring-red-500"
       placeholder={placeholder}
     />
   )
@@ -1032,7 +1032,7 @@ function FiltroSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border-2 border-slate-400 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+        className="mt-1 w-full rounded-lg border-2 border-slate-400 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
       >
         {opciones.map((opcion) => (
           <option key={opcion} value={opcion}>

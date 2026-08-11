@@ -238,7 +238,7 @@ export async function obtenerUltimaAlertaVisualActiva() {
       .from('alertas')
       .select('*')
       .eq('estado', 'activa')
-      .in('nivel', ['critica', 'alta', 'media'])
+      .in('nivel', ['critica', 'alta', 'media', 'informativa'])
       .order('created_at', { ascending: false })
       .limit(20)
       .returns<Alerta[]>()
@@ -260,7 +260,7 @@ export async function obtenerAlertasVisualesActivas(limite = 100) {
       .from('alertas')
       .select('*')
       .eq('estado', 'activa')
-      .neq('nivel', 'informativa')
+      .in('nivel', ['critica', 'alta', 'media', 'informativa'])
       .order('created_at', { ascending: false })
       .limit(limite)
       .returns<Alerta[]>()
@@ -441,7 +441,10 @@ function normalizarVigenciaAlerta(alerta: Alerta, contexto: ContextoAlertas): Al
 }
 
 function alertaVisualVigente(alerta: Alerta) {
-  return alerta.estado === 'activa' && alerta.nivel !== 'informativa'
+  return (
+    alerta.estado === 'activa' &&
+    (alerta.nivel !== 'informativa' || esAlertaReporte(alerta))
+  )
 }
 
 function cerrarLocalmente(alerta: Alerta): Alerta {
@@ -466,7 +469,7 @@ function normalizarEstadoOperativoAlerta(alerta: Alerta): Alerta {
   if (
     alerta.estado !== 'cerrada' &&
     pedidoCerradoAlerta(alerta) &&
-    !esAlertaReporteFranquiciado(alerta)
+    !esAlertaReporte(alerta)
   ) {
     return { ...alerta, estado: 'cerrada' }
   }
@@ -493,13 +496,13 @@ function pedidoCerradoAlerta(alerta: Pick<Alerta, 'pedido_estado'>) {
   )
 }
 
-function esAlertaReporteFranquiciado(alerta: Pick<Alerta, 'tipo_alerta' | 'mensaje'>) {
+function esAlertaReporte(alerta: Pick<Alerta, 'tipo_alerta' | 'mensaje'>) {
   const texto = `${alerta.tipo_alerta || ''} ${alerta.mensaje || ''}`
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
 
-  return texto.includes('reporte_franquiciado') || texto.includes('reporte del franquiciado')
+  return texto.includes('reporte') || texto.includes('nota_credito') || texto.includes('nota credito')
 }
 
 function enriquecerAlertasDesdePedidos(alertas: Alerta[], contexto: ContextoPedidosAlertas) {
@@ -852,7 +855,7 @@ function esAlertaPedido(alerta: Alerta) {
     texto.includes('despacho') ||
     texto.includes('nota_credito') ||
     texto.includes('nota credito') ||
-    texto.includes('reporte_franquiciado')
+    texto.includes('reporte')
   )
 }
 

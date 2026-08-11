@@ -17,6 +17,7 @@ import {
   confirmarEntregaFranquiciado,
   consultarPedidosInvitado,
   crearReporteFranquiciado,
+  escucharReportesFranquiciado,
   normalizarCedula,
   solicitarReposicionDefectuoso,
   tieneReporteActivoPedido,
@@ -29,6 +30,7 @@ import {
   describirTiempoPedido,
   etiquetaSemaforo,
   resolverSemaforoPedido,
+  resolverSemaforoPedidoReabierto,
 } from '../lib/semaforoOperativo'
 import {
   esCodigoClienteORucValido,
@@ -104,9 +106,17 @@ export default function ConsultaPedido() {
   const [cargando, setCargando] = useState(false)
   const [enviandoReporte, setEnviandoReporte] = useState(false)
   const [confirmandoEntrega, setConfirmandoEntrega] = useState(false)
-  const [reporteActivo, setReporteActivo] = useState(false)
+  // Solo los reportes que requieren una gestion especial reabren el pedido.
+  // El reporte por retraso se conserva como alerta y deja el despacho normal.
+  const [reporteQueReabreActivo, setReporteQueReabreActivo] = useState(false)
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
+
+  async function cargarEstadoReportes(pedidoAConsultar: Pedido) {
+    setReporteQueReabreActivo(
+      await tieneReporteActivoPedido(pedidoAConsultar, { incluirRetrasos: false }),
+    )
+  }
 
   async function consultar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -145,7 +155,7 @@ export default function ConsultaPedido() {
     setPedidosGrupo(data)
     setPedido(principal)
     setConsulta({ codigo, cedula })
-    setReporteActivo(await tieneReporteActivoPedido(principal))
+    await cargarEstadoReportes(principal)
     setCargando(false)
   }
 
@@ -163,7 +173,11 @@ export default function ConsultaPedido() {
       return
     }
 
-    const esDefectuoso = reporte.motivo === 'material_defectuoso'
+    const reporteParaEnviar: ReporteForm = {
+      ...reporte,
+      motivo: pedido.estado === 'entregado' ? 'material_defectuoso' : reporte.motivo,
+    }
+    const esDefectuoso = reporteParaEnviar.motivo === 'material_defectuoso'
 
     if (esDefectuoso && !materialEnManos(pedido.estado)) {
       setError('Solo puedes reportar material defectuoso cuando bodega ya despacho el pedido y lo tienes contigo.')
@@ -171,14 +185,14 @@ export default function ConsultaPedido() {
       return
     }
 
-    if (reporte.motivo === 'retraso' && !pedidoReagendadoPorRetraso(pedido)) {
+    if (reporteParaEnviar.motivo === 'retraso' && !pedidoReagendadoPorRetraso(pedido)) {
       setError('El reporte por retraso se habilita cuando el pedido se reagenda por retraso.')
       setEnviandoReporte(false)
       return
     }
 
     const cantidadPedida = cantidadParaDespacho(pedido)
-    const defectuosas = Number(reporte.cantidadDefectuosa)
+    const defectuosas = Number(reporteParaEnviar.cantidadDefectuosa)
 
     if (
       esDefectuoso &&
@@ -191,24 +205,24 @@ export default function ConsultaPedido() {
 
     const buenas = cantidadPedida - defectuosas
     const remedioTexto =
-      reporte.remedio === 'nota_credito'
+      reporteParaEnviar.remedio === 'nota_credito'
         ? 'Nota de credito por lo defectuoso'
         : 'Reposicion del material defectuoso'
     const descripcionFinal = esDefectuoso
-      ? `Material: ${pedido.material}\nPidio: ${cantidadPedida} ${pedido.unidad_medida}\nDefectuoso: ${defectuosas} ${pedido.unidad_medida}\nLe queda bueno: ${buenas} ${pedido.unidad_medida}\nRemedio solicitado: ${remedioTexto}\n\n${reporte.descripcion.trim()}`
-      : `Material reportado: ${pedido.material}\n\n${reporte.descripcion}`
+      ? `Material: ${pedido.material}\nPidio: ${cantidadPedida} ${pedido.unidad_medida}\nDefectuoso: ${defectuosas} ${pedido.unidad_medida}\nLe queda bueno: ${buenas} ${pedido.unidad_medida}\nRemedio solicitado: ${remedioTexto}\n\n${reporteParaEnviar.descripcion.trim()}`
+      : `Material reportado: ${pedido.material}\n\n${reporteParaEnviar.descripcion}`
 
     const { error } = await crearReporteFranquiciado({
       pedido_id: pedido.id,
       codigo_consulta: pedido.codigo,
       cedula_solicitante: pedido.cedula_solicitante || consulta.cedula,
       solicitante: pedido.solicitante,
-      motivo: reporte.motivo,
+      motivo: reporteParaEnviar.motivo,
       descripcion: descripcionFinal,
       material_reportado: esDefectuoso ? pedido.material : null,
       cantidad_pedida: esDefectuoso ? cantidadPedida : null,
       cantidad_defectuosa: esDefectuoso ? defectuosas : null,
-      remedio: esDefectuoso ? reporte.remedio : null,
+      remedio: esDefectuoso ? reporteParaEnviar.remedio : null,
     })
 
     if (error) {
@@ -218,11 +232,12 @@ export default function ConsultaPedido() {
     }
 
     const pideNotaCredito =
-      reporte.motivo === 'nota_credito' || (esDefectuoso && reporte.remedio === 'nota_credito')
-    const pideReposicion = esDefectuoso && reporte.remedio === 'reposicion'
+      reporteParaEnviar.motivo === 'nota_credito' ||
+      (esDefectuoso && reporteParaEnviar.remedio === 'nota_credito')
+    const pideReposicion = esDefectuoso && reporteParaEnviar.remedio === 'reposicion'
     const notaNc = esDefectuoso
-      ? `Nota de credito por ${defectuosas} ${pedido.unidad_medida} defectuosas de ${pedido.material}. ${reporte.descripcion.trim()}`
-      : reporte.descripcion.trim()
+      ? `Nota de credito por ${defectuosas} ${pedido.unidad_medida} defectuosas de ${pedido.material}. ${reporteParaEnviar.descripcion.trim()}`
+      : reporteParaEnviar.descripcion.trim()
 
     if (pideNotaCredito) {
       const { error: errorNc } = await solicitarNotaCredito(pedido.id, notaNc)
@@ -236,14 +251,16 @@ export default function ConsultaPedido() {
       await solicitarReposicionDefectuoso(pedido.id)
     }
 
-    setReporte(reporteInicial)
-    setReporteActivo(true)
+    setReporte(reporteInicialParaPedido(pedido))
+    await cargarEstadoReportes(pedido)
     setMensaje(
       pideNotaCredito
         ? 'Solicitud de nota de credito enviada. Bodega la revisara y confirmara el reembolso del material.'
         : pideReposicion
           ? 'Reporte enviado. Pediste la reposicion del material defectuoso; bodega la gestionara.'
-          : 'Reporte recibido. El equipo operativo lo revisara en el modulo de reportes.',
+          : reporteParaEnviar.motivo === 'retraso'
+            ? 'Reporte por retraso recibido. El material sigue pendiente y bodega puede despacharlo normalmente.'
+            : 'Reporte recibido. El equipo operativo lo revisara en el modulo de reportes.',
     )
     setEnviandoReporte(false)
   }
@@ -280,17 +297,22 @@ export default function ConsultaPedido() {
       responsable: 'Franquiciado',
     })
 
-    setPedido((data as Pedido | null) || { ...pedido, estado: 'entregado', fecha_entrega: new Date().toISOString() })
+    const pedidoEntregado =
+      (data as Pedido | null) || { ...pedido, estado: 'entregado', fecha_entrega: new Date().toISOString() }
+    setPedido(pedidoEntregado)
+    setPedidosGrupo((prev) => prev.map((item) => (item.id === pedidoEntregado.id ? pedidoEntregado : item)))
+    setReporte(reporteInicialParaPedido(pedidoEntregado))
+    await cargarEstadoReportes(pedidoEntregado)
     setMensaje('Entrega confirmada. El equipo operativo ya vera el pedido como entregado.')
     setConfirmandoEntrega(false)
   }
 
   async function seleccionarMaterial(seleccionado: Pedido) {
     setPedido(seleccionado)
-    setReporte(reporteInicial)
+    setReporte(reporteInicialParaPedido(seleccionado))
     setError('')
     setMensaje('')
-    setReporteActivo(await tieneReporteActivoPedido(seleccionado))
+    await cargarEstadoReportes(seleccionado)
   }
 
   const pedidoConsultadoId = pedido?.id
@@ -306,22 +328,37 @@ export default function ConsultaPedido() {
       setPedidosGrupo(data)
       const actual = data.find((item) => item.id === pedidoConsultadoId) || data[0]
       setPedido(actual)
-      setReporteActivo(await tieneReporteActivoPedido(actual))
+      await cargarEstadoReportes(actual)
     }
 
     const dejarDeEscucharPedidos = escucharPedidos(refrescarPedidoConsultado)
+    const dejarDeEscucharReportes = escucharReportesFranquiciado(refrescarPedidoConsultado)
 
     return () => {
       cancelado = true
       dejarDeEscucharPedidos()
+      dejarDeEscucharReportes()
     }
   }, [consulta.cedula, consulta.codigo, pedidoConsultadoId])
 
-  const progreso = useMemo(
-    () => (reporteActivo ? 80 : calcularProgreso(pedido?.estado)),
-    [pedido?.estado, reporteActivo],
-  )
-  const semaforo = reporteActivo ? 'riesgo' : pedido ? resolverSemaforoPedido(pedido) : null
+  const motivoReporteSeleccionado =
+    pedido?.estado === 'entregado' ? 'material_defectuoso' : reporte.motivo
+  // Un reporte es una gestión adicional, no una etapa del flujo del pedido.
+  // El avance debe reflejar exclusivamente el estado operativo ya alcanzado.
+  const progreso = useMemo(() => calcularProgreso(pedido?.estado), [pedido?.estado])
+  // Al reabrir por defecto o NC se vuelve a mostrar el rango real de entrega,
+  // sin forzar un color por el motivo del reporte.
+  const semaforo = pedido
+    ? reporteQueReabreActivo
+      ? resolverSemaforoPedidoReabierto(pedido)
+      : resolverSemaforoPedido(pedido)
+    : null
+  const claseReporteReabierto =
+    semaforo === 'critico'
+      ? 'border-red-300 bg-red-50 text-red-800'
+      : semaforo === 'riesgo'
+        ? 'border-yellow-300 bg-yellow-50 text-yellow-800'
+        : 'border-green-300 bg-green-50 text-green-800'
   const cantidadPedidaReporte = pedido ? cantidadParaDespacho(pedido) : 0
   const defectuosasReporte = Math.min(
     cantidadPedidaReporte,
@@ -370,7 +407,7 @@ export default function ConsultaPedido() {
           <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
         <section className="self-start rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-orange-100 p-3 text-orange-700">
+            <div className="rounded-lg bg-red-100 p-3 text-red-700">
               <Search size={22} />
             </div>
             <div>
@@ -392,7 +429,7 @@ export default function ConsultaPedido() {
                     codigo: textoMixtoOperativo(event.target.value, 60),
                   })
                 }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Ej. PED-394049"
               />
             </label>
@@ -408,7 +445,7 @@ export default function ConsultaPedido() {
                 onChange={(event) =>
                   setConsulta({ ...consulta, cedula: soloDigitos(event.target.value, 13) })
                 }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Ej. 6192102"
               />
             </label>
@@ -428,7 +465,7 @@ export default function ConsultaPedido() {
             <button
               type="submit"
               disabled={cargando}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 font-semibold text-white transition hover:bg-orange-700 disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
             >
               <Search size={18} />
               {cargando ? 'Consultando...' : 'Consultar estado'}
@@ -439,7 +476,7 @@ export default function ConsultaPedido() {
         <section className="space-y-6">
           {!pedido && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-              <ClipboardList className="mx-auto text-orange-600" size={36} />
+              <ClipboardList className="mx-auto text-red-600" size={36} />
               <p className="mt-3 font-semibold text-slate-800">Busca un pedido para ver su avance.</p>
               <p className="mt-1 text-sm">
                 El franquiciado no necesita correo ni contrasena; debe coincidir pedido y cliente.
@@ -476,13 +513,13 @@ export default function ConsultaPedido() {
               <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-orange-700">
+                    <p className="text-sm font-semibold text-red-700">
                       {pedido.codigo_consulta || pedido.codigo}
                     </p>
                     <h2 className="mt-1 text-2xl font-bold text-slate-900">{pedido.material}</h2>
                     <p className="mt-1 text-sm text-slate-500">{pedido.solicitante}</p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${colorEstado(pedido)}`}>
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${claseSemaforoBadge(semaforo!)}`}>
                     {semaforo ? etiquetaSemaforo(semaforo) : formatearEtiqueta(pedido.estado)}
                   </span>
                 </div>
@@ -506,16 +543,16 @@ export default function ConsultaPedido() {
                   <Dato
                     icono={<AlertTriangle size={18} />}
                     label="Tiempo"
-                    valor={describirTiempoPedido(pedido, { reabiertoPorReporte: reporteActivo })}
+                    valor={describirTiempoPedido(pedido, { reabiertoPorReporte: reporteQueReabreActivo })}
                   />
                 </div>
 
-                {reporteActivo && (
-                  <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+                {reporteQueReabreActivo && (
+                  <div className={`mt-6 rounded-lg border p-4 text-sm ${claseReporteReabierto}`}>
                     <p className="font-semibold">Pedido reabierto por tu reporte</p>
                     <p className="mt-1">
-                      El equipo operativo esta gestionando tu reporte. El avance se mantiene en 80%
-                      hasta resolverlo.
+                      El equipo operativo esta gestionando tu reporte. El avance operativo del pedido
+                      se conserva hasta resolverlo.
                     </p>
                   </div>
                 )}
@@ -535,7 +572,7 @@ export default function ConsultaPedido() {
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
                     <div
                       className={`h-full rounded-full transition-all ${
-                        semaforo ? claseSemaforoBarra(semaforo) : 'bg-orange-500'
+                        semaforo ? claseSemaforoBarra(semaforo) : 'bg-red-500'
                       }`}
                       style={{ width: `${progreso}%` }}
                     />
@@ -546,7 +583,7 @@ export default function ConsultaPedido() {
                         key={estado}
                         className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
                           estadoCompletado(pedido.estado, estado)
-                            ? 'border-orange-200 bg-orange-50 text-orange-700'
+                            ? 'border-red-200 bg-red-50 text-red-700'
                             : 'border-slate-200 bg-slate-50 text-slate-500'
                         }`}
                       >
@@ -605,14 +642,14 @@ export default function ConsultaPedido() {
                   <label className="block text-sm font-medium text-slate-700">
                     Motivo
                     <select
-                      value={reporte.motivo}
+                      value={motivoReporteSeleccionado}
                       onChange={(event) =>
                         setReporte({
                           ...reporte,
                           motivo: event.target.value as MotivoReporteFranquiciado,
                         })
                       }
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-red-500"
                     >
                       {motivosDisponiblesReporte(pedido).map((motivo) => (
                         <option key={motivo.valor} value={motivo.valor}>
@@ -633,13 +670,13 @@ export default function ConsultaPedido() {
                         })
                       }
                       rows={3}
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-red-500"
                       placeholder="Describe lo ocurrido"
                     />
                   </label>
                 </div>
 
-                {reporte.motivo === 'material_defectuoso' && (
+                {motivoReporteSeleccionado === 'material_defectuoso' && (
                   <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
                     {!materialEnManos(pedido.estado) ? (
                       <p className="text-sm font-medium text-amber-800">
@@ -662,7 +699,7 @@ export default function ConsultaPedido() {
                                   cantidadDefectuosa: soloDigitos(event.target.value, 6),
                                 })
                               }
-                              className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-500"
+                              className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:ring-2 focus:ring-red-500"
                               placeholder={`Max. ${cantidadPedidaReporte}`}
                             />
                           </label>
@@ -742,7 +779,7 @@ function Dato({
 }) {
   return (
     <div className="rounded-lg bg-slate-50 p-4">
-      <div className="flex items-center gap-2 text-orange-700">{icono}</div>
+      <div className="flex items-center gap-2 text-red-700">{icono}</div>
       <p className="mt-3 text-xs font-semibold uppercase text-slate-500">{label}</p>
       <p className="mt-1 font-semibold text-slate-900">{valor}</p>
     </div>
@@ -817,10 +854,16 @@ function materialEnManos(estado: EstadoPedido) {
 
 function pedidoReagendadoPorRetraso(pedido: Pedido) {
   const semaforo = resolverSemaforoPedido(pedido)
-  return semaforo === 'alto' || semaforo === 'critico'
+  return semaforo === 'critico'
 }
 
 function motivosDisponiblesReporte(pedido: Pedido) {
+  // Tras confirmar la recepcion no se solicita una NC directa: el reporte de
+  // material defectuoso ya permite elegir entre reposicion o nota de credito.
+  if (pedido.estado === 'entregado') {
+    return motivosReporte.filter((motivo) => motivo.valor === 'material_defectuoso')
+  }
+
   const enManos = materialEnManos(pedido.estado)
   const reagendado = pedidoReagendadoPorRetraso(pedido)
   return motivosReporte.filter((motivo) => {
@@ -830,8 +873,11 @@ function motivosDisponiblesReporte(pedido: Pedido) {
   })
 }
 
-function colorEstado(pedido: Pedido) {
-  return claseSemaforoBadge(resolverSemaforoPedido(pedido))
+function reporteInicialParaPedido(pedido?: Pick<Pedido, 'estado'>): ReporteForm {
+  return {
+    ...reporteInicial,
+    motivo: pedido?.estado === 'entregado' ? 'material_defectuoso' : reporteInicial.motivo,
+  }
 }
 
 function cantidadParaDespacho(pedido: Pedido) {

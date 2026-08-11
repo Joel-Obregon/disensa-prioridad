@@ -54,6 +54,7 @@ import type { InventarioOperativo } from '../types/material'
 import type { Pedido } from '../types/pedido'
 import type { ReglaNegocio } from '../types/regla'
 import type { RolUsuario } from '../types/usuario'
+import { alertaVisiblePorVisibilidad, leerVisibilidadAlertas } from '../lib/reglasAlertas'
 
 type TarjetaDashboard = {
   titulo: string
@@ -211,17 +212,23 @@ export default function Dashboard() {
   }, [materialesFiltrados])
 
   const alertasActivas = useMemo(() => {
+    // Regla de visibilidad: el dashboard solo muestra las alertas permitidas
+    // (por color y categoria). Si la regla esta inactiva no muestra ninguna.
+    const visibilidad = leerVisibilidadAlertas(reglas)
     const mapa = new Map<string, Alerta>()
 
     alertasVisibles
-      .filter((alerta) => alerta.estado === 'activa')
+      .filter(
+        (alerta) =>
+          alerta.estado === 'activa' && alertaVisiblePorVisibilidad(alerta, visibilidad),
+      )
       .forEach((alerta) => {
         const llave = `${alerta.tipo_alerta}-${alerta.mensaje}`
         if (!mapa.has(llave)) mapa.set(llave, alerta)
       })
 
     return Array.from(mapa.values())
-  }, [alertasVisibles])
+  }, [alertasVisibles, reglas])
 
   const metricas = useMemo(() => {
     const pedidosCriticos = pedidosVisibles.filter(
@@ -584,7 +591,7 @@ function VistaBodega({
                 Pedidos abiertos agrupados por prioridad operativa.
               </p>
             </div>
-            <BarChart3 className="text-orange-600" size={22} />
+            <BarChart3 className="text-red-600" size={22} />
           </div>
           <GraficoPrioridad datos={distribucionPrioridad} />
         </section>
@@ -848,7 +855,7 @@ function PanelCola({
           <h2 className="text-lg font-semibold text-slate-900">{titulo}</h2>
           <p className="mt-1 text-sm text-slate-500">{descripcion}</p>
         </div>
-        <Truck className="text-orange-600" size={22} />
+        <Truck className="text-red-600" size={22} />
       </div>
 
       <div className="divide-y divide-slate-100">
@@ -1001,7 +1008,7 @@ function PanelAlertas({
         {alertas.slice(0, 4).map((alerta) => (
           <div key={alerta.id} className="p-5">
             <div className="flex items-start gap-3">
-              <Bell size={18} className="mt-0.5 text-orange-600" />
+              <Bell size={18} className="mt-0.5 text-red-600" />
               <div>
                 <p className="font-semibold text-slate-800">{alerta.tipo_alerta}</p>
                 <p className="mt-1 text-sm leading-5 text-slate-600">{alerta.mensaje}</p>
@@ -1413,9 +1420,9 @@ function construirGradienteDonut(datos: Array<{ color: string; valor: number }>)
 }
 
 function descripcionNivelPrioridad(nombre: string) {
-  if (nombre === 'Critica') return 'Rojo: +30 d de retraso o quiebre de stock.'
-  if (nombre === 'Alta') return 'Naranja: reprogramado, 7-30 d de retraso.'
-  if (nombre === 'Media') return 'Amarillo: 1-6 d de retraso.'
+  if (nombre === 'Critica') return 'Rojo: 8+ d de retraso o quiebre de stock.'
+  if (nombre === 'Alta') return 'Amarillo: prioridad alta o 1-7 d de retraso.'
+  if (nombre === 'Media') return 'Amarillo: seguimiento de prioridad media.'
   return 'Verde: dentro del plazo del SLA.'
 }
 
@@ -1479,7 +1486,6 @@ function fechaLocal(fecha: string) {
 
 function etiquetaSemaforoCola(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 'Prioridad critica'
-  if (semaforo === 'alto') return 'Prioridad alta'
   if (semaforo === 'riesgo') return 'Con retraso'
   if (semaforo === 'a_tiempo') return 'En tiempo'
   return 'Cerrado'
@@ -1487,7 +1493,6 @@ function etiquetaSemaforoCola(semaforo: SemaforoOperativo) {
 
 function porcentajeSemaforo(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 100
-  if (semaforo === 'alto') return 85
   if (semaforo === 'riesgo') return 65
   if (semaforo === 'a_tiempo') return 35
   return 100
@@ -1760,9 +1765,8 @@ function construirAntiguedad(pedidos: Pedido[]) {
   // Dias de retraso vs la fecha de entrega del SLA (mismos tramos del semaforo).
   const buckets = [
     { nombre: 'Sin retraso', min: 0, max: 0, valor: 0, clase: 'bg-green-500' },
-    { nombre: '1-6 d (amarillo)', min: 1, max: 6, valor: 0, clase: 'bg-yellow-500' },
-    { nombre: '7-30 d (naranja)', min: 7, max: 30, valor: 0, clase: 'bg-orange-500' },
-    { nombre: '+30 d (rojo)', min: 31, max: Number.POSITIVE_INFINITY, valor: 0, clase: 'bg-red-600' },
+    { nombre: '1-7 d (amarillo)', min: 1, max: 7, valor: 0, clase: 'bg-yellow-500' },
+    { nombre: '8+ d (rojo)', min: 8, max: Number.POSITIVE_INFINITY, valor: 0, clase: 'bg-red-600' },
   ]
 
   pedidos

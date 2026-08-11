@@ -39,6 +39,14 @@ type FiltrosReporte = {
   condicion: 'todos' | CondicionMaterial
 }
 
+type MaterialDespacho = {
+  material: string
+  solicitado: number
+  stock: number
+  unidad: string
+  pedidos: number
+  operativo: boolean
+}
 
 const filtrosIniciales: FiltrosReporte = {
   busqueda: '',
@@ -88,6 +96,7 @@ export default function Reportes() {
   const [cargando, setCargando] = useState(true)
   const [reporteDetalle, setReporteDetalle] = useState<ReporteFranquiciado | null>(null)
   const [verHistorialReportes, setVerHistorialReportes] = useState(false)
+  const [verHistorialDespacho, setVerHistorialDespacho] = useState(false)
   const [pestana, setPestana] = useState<'despacho' | 'franquiciado'>('despacho')
 
   async function cargarReportes() {
@@ -150,11 +159,8 @@ export default function Reportes() {
     })
   }, [filtros, pedidosNormalizados])
 
-  const materialesPorDespachar = useMemo(() => {
-    const mapa = new Map<
-      string,
-      { material: string; solicitado: number; stock: number; unidad: string; pedidos: number }
-    >()
+  const materialesSeguimientoDespacho = useMemo(() => {
+    const mapa = new Map<string, MaterialDespacho>()
 
     pedidosFiltrados
       .filter((pedido) => pedidoPendienteDespacho(pedido.estado))
@@ -174,6 +180,7 @@ export default function Reportes() {
           stock: material?.stock_disponible_operativo ?? pedido.stock_disponible,
           unidad: material?.unidad_medida || pedido.unidad_medida,
           pedidos: (anterior?.pedidos || 0) + 1,
+          operativo: anterior?.operativo || Boolean(material && materialNecesitaSeguimiento(material)),
         })
       })
 
@@ -190,14 +197,28 @@ export default function Reportes() {
       mapa.set(nombre, {
         material: nombre,
         solicitado,
-        stock: material.stock_disponible_operativo,
-        unidad: material.unidad_medida,
-        pedidos: anterior?.pedidos || material.casos_bodega_fq || 0,
-      })
+          stock: material.stock_disponible_operativo,
+          unidad: material.unidad_medida,
+          pedidos: anterior?.pedidos || material.casos_bodega_fq || 0,
+          operativo: true,
+        })
     })
 
     return [...mapa.values()].sort((a, b) => b.solicitado - a.solicitado)
   }, [materiales, pedidosFiltrados])
+
+  // El listado operativo debe coincidir con Falta de materiales: solo los que
+  // tienen stock operativo de 60 o menos. Los demas pedidos se conservan en
+  // historial para consulta, sin inflar el conteo activo.
+  const materialesPorDespachar = useMemo(
+    () => materialesSeguimientoDespacho.filter((material) => material.operativo),
+    [materialesSeguimientoDespacho],
+  )
+
+  const materialesHistorialDespacho = useMemo(
+    () => materialesSeguimientoDespacho.filter((material) => !material.operativo),
+    [materialesSeguimientoDespacho],
+  )
 
   const resumenOperativo = useMemo(() => {
     const entregados = pedidosFiltrados.filter((pedido) => pedido.estado === 'entregado').length
@@ -316,7 +337,7 @@ export default function Reportes() {
           <button
             type="button"
             onClick={() => exportarDespachoCsv(materialesPorDespachar)}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
           >
             <Download size={16} />
             Exportar despacho
@@ -327,13 +348,13 @@ export default function Reportes() {
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center gap-2 font-semibold text-slate-800">
-          <Filter size={18} className="text-orange-600" />
+          <Filter size={18} className="text-red-600" />
           Filtros del reporte
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(3,minmax(160px,1fr))]">
           <label className="block text-sm font-medium text-slate-700">
             Busqueda
-            <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border-2 border-[#ed1c24] bg-white px-4 focus-within:ring-2 focus-within:ring-orange-500">
+            <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border-2 border-[#ed1c24] bg-white px-4 focus-within:ring-2 focus-within:ring-red-500">
               <Search size={17} className="text-slate-400" />
               <input
                 value={filtros.busqueda}
@@ -429,7 +450,7 @@ export default function Reportes() {
       <div className="mt-6">
         <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-slate-200 p-5 font-semibold text-slate-800">
-            <Boxes size={18} className="text-orange-600" />
+            <Boxes size={18} className="text-red-600" />
             Materiales que necesitan despacho
           </div>
           <div className="overflow-x-auto">
@@ -469,6 +490,57 @@ export default function Reportes() {
           </div>
         </section>
 
+        {materialesHistorialDespacho.length > 0 && (
+          <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <button
+              type="button"
+              onClick={() => setVerHistorialDespacho((valor) => !valor)}
+              className="flex w-full items-center justify-between gap-2 border-b border-slate-200 p-5 text-left font-semibold text-slate-800"
+            >
+              <span className="flex items-center gap-2">
+                <Boxes size={18} className="text-slate-400" />
+                Historial de materiales fuera de la regla operativa ({materialesHistorialDespacho.length})
+              </span>
+              <span className="text-xs font-medium text-slate-500">
+                {verHistorialDespacho ? 'Ocultar' : 'Ver'}
+              </span>
+            </button>
+            {verHistorialDespacho && (
+              <>
+                <p className="border-b border-slate-100 bg-slate-50 px-5 py-3 text-sm text-slate-600">
+                  Materiales de pedidos pendientes que no pertenecen al conjunto operativo de
+                  Falta de materiales; no inflan el conteo de despacho.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-100 text-slate-600">
+                      <tr>
+                        <th className="px-5 py-3 text-left">Material</th>
+                        <th className="px-5 py-3 text-left">Solicitado</th>
+                        <th className="px-5 py-3 text-left">Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialesHistorialDespacho.map((item) => (
+                        <tr key={item.material} className="border-t border-slate-100">
+                          <td className="px-5 py-4">
+                            <p className="font-semibold text-slate-800">{item.material}</p>
+                            <p className="text-xs text-slate-500">{item.pedidos} pedidos</p>
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">
+                            {item.solicitado} {item.unidad}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">{item.stock}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
       </div>
       )}
 
@@ -476,7 +548,7 @@ export default function Reportes() {
       <>
       <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-slate-200 p-5 font-semibold text-slate-800">
-          <FileWarning size={18} className="text-orange-600" />
+          <FileWarning size={18} className="text-red-600" />
           Reportes activos de franquiciados invitados
         </div>
         <div className="overflow-x-auto">
@@ -756,7 +828,7 @@ function FiltroSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border-2 border-slate-400 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+        className="mt-1 w-full rounded-lg border-2 border-slate-400 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
       >
         {opciones.map((opcion) => (
           <option key={opcion} value={opcion}>

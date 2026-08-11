@@ -12,6 +12,7 @@ import {
   escucharAlertasNoRevisadas,
   limpiarAlertasNoRevisadas,
   obtenerAlertasNoRevisadas,
+  quitarAlertaNoRevisada,
 } from '../lib/alertNotifications'
 import {
   type OpcionesAlertaVisualLocal,
@@ -21,7 +22,13 @@ import type { Alerta } from '../types/alerta'
 import { alertaSilenciada } from '../lib/alertSilencio'
 import { obtenerReglas } from '../services/reglasService'
 import { supabase } from '../services/supabaseClient'
-import { leerVisibilidadAlertas, leerRecordatorioConfig } from '../lib/reglasAlertas'
+import {
+  alertaVisiblePorVisibilidad,
+  esAlertaDeReporte,
+  hayAlertaVisible,
+  leerVisibilidadAlertas,
+  leerRecordatorioConfig,
+} from '../lib/reglasAlertas'
 import type { VisibilidadAlertas, RecordatorioConfig } from '../lib/reglasAlertas'
 
 const DURACION_TOAST_MS = 6000
@@ -46,6 +53,7 @@ export default function RealtimeAlertToast() {
   const [cargandoCentro, setCargandoCentro] = useState(false)
   const alertasConocidasRef = useRef<Map<string, string>>(new Map())
   const firmasVisualesConocidasRef = useRef<Set<string>>(new Set())
+  const alertaActivaIdRef = useRef<string | null>(null)
   const lineaBaseListaRef = useRef(false)
   const enPaginaAlertasRef = useRef(false)
   const visibilidadRef = useRef<VisibilidadAlertas>({
@@ -53,6 +61,7 @@ export default function RealtimeAlertToast() {
     amarillas: true,
     pedidos: true,
     materiales: true,
+    reportes: true,
   })
   const [recordatorio, setRecordatorio] = useState<RecordatorioConfig>({
     activo: false,
@@ -65,6 +74,10 @@ export default function RealtimeAlertToast() {
     deseleccionadas: [],
   })
   const stockMaterialesRef = useRef<Map<string, { stock: number; expira: number }>>(new Map())
+
+  useEffect(() => {
+    alertaActivaIdRef.current = alerta?.id || null
+  }, [alerta])
 
   const nivelStockMaterialActual = useCallback(
     async (materialId: string): Promise<number | null> => {
@@ -119,18 +132,27 @@ export default function RealtimeAlertToast() {
 
     if (
       nuevaAlerta.estado === 'cerrada' ||
-      (nuevaAlerta.nivel === 'informativa' && !esResolucionForzada)
+      (nuevaAlerta.nivel === 'informativa' &&
+        !esResolucionForzada &&
+        !esAlertaDeReporte(nuevaAlerta))
     ) {
       const firmaAnterior = alertasConocidasRef.current.get(nuevaAlerta.id)
       alertasConocidasRef.current.delete(nuevaAlerta.id)
       if (firmaAnterior) sincronizarFirmasVisualesConocidas()
       setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
+      setCola((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
+      quitarAlertaNoRevisada(nuevaAlerta.id)
+      setIdsNoRevisados(obtenerAlertasNoRevisadas())
+      if (alertaActivaIdRef.current === nuevaAlerta.id) {
+        setAlerta(null)
+        setVisible(false)
+      }
       return
     }
 
     // Regla de visibilidad: si el color/categoria de la alerta no esta marcado,
     // no se notifica ni se cuenta (no aparece el aviso flotante ni en el centro).
-    if (!alertaVisiblePorRegla(nuevaAlerta, visibilidadRef.current)) {
+    if (!alertaVisiblePorVisibilidad(nuevaAlerta, visibilidadRef.current)) {
       alertasConocidasRef.current.set(nuevaAlerta.id, firmaAlerta(nuevaAlerta))
       firmasVisualesConocidasRef.current.add(firmaAlerta(nuevaAlerta))
       setAlertasCentro((actual) => actual.filter((item) => item.id !== nuevaAlerta.id))
@@ -141,6 +163,7 @@ export default function RealtimeAlertToast() {
     // seleccionadas (reposicion / pedidos / reportes). Las desmarcadas no notifican.
     if (
       recordatorioRef.current.activo &&
+      !esAlertaDeReporte(nuevaAlerta) &&
       !alertaEnRecordatorio(nuevaAlerta, recordatorioRef.current.deseleccionadas)
     ) {
       alertasConocidasRef.current.set(nuevaAlerta.id, firmaAlerta(nuevaAlerta))
@@ -150,7 +173,11 @@ export default function RealtimeAlertToast() {
     }
 
     const firma = firmaAlerta(nuevaAlerta)
-    const yaConocidaPorId = alertasConocidasRef.current.get(nuevaAlerta.id) === firma
+    // Una misma alerta puede llegar primero desde el emisor local y despues
+    // enriquecida por Supabase Realtime. El ID es la identidad definitiva:
+    // si ya fue procesado, no debe volver a abrir otro toast aunque cambien
+    // campos auxiliares como el nombre o el estado del pedido.
+    const yaConocidaPorId = alertasConocidasRef.current.has(nuevaAlerta.id)
     const yaConocidaPorFirma = firmasVisualesConocidasRef.current.has(firma)
     alertasConocidasRef.current.set(nuevaAlerta.id, firma)
     firmasVisualesConocidasRef.current.add(firma)
@@ -173,8 +200,6 @@ export default function RealtimeAlertToast() {
       return
     }
 
-    setCola((actual) => actual.filter((item) => !mismaAlertaStockMaterial(item, nuevaAlerta)))
-
     if (opciones.forzarNotificacion && esAlertaStockMaterial(nuevaAlerta)) {
       setAlerta(nuevaAlerta)
       setVisible(true)
@@ -183,7 +208,12 @@ export default function RealtimeAlertToast() {
       return
     }
 
-    setCola((actual) => agregarAlerta(actual, nuevaAlerta))
+    setCola((actual) =>
+      agregarAlerta(
+        actual.filter((item) => !mismaAlertaStockMaterial(item, nuevaAlerta)),
+        nuevaAlerta,
+      ),
+    )
     agregarAlertaNoRevisada(nuevaAlerta.id)
     setIdsNoRevisados(obtenerAlertasNoRevisadas())
   }, [sincronizarFirmasVisualesConocidas])
@@ -192,6 +222,13 @@ export default function RealtimeAlertToast() {
     nuevaAlerta: Alerta,
     opciones: { notificar?: boolean } & OpcionesAlertaVisualLocal = {}
   ) => {
+    // El movimiento de inventario y la alerta llegan casi al mismo tiempo. No
+    // reutilizamos el stock consultado antes del movimiento: una nueva bajada
+    // de 31 a 30 o menos debe validarse contra el stock recien confirmado.
+    if (esAlertaStockMaterial(nuevaAlerta) && nuevaAlerta.material_id) {
+      stockMaterialesRef.current.delete(nuevaAlerta.material_id)
+    }
+
     void alertaStockColorValido(nuevaAlerta).then((valida) => {
       if (!valida) {
         // La alerta no coincide con el color del stock: se marca como conocida
@@ -310,12 +347,24 @@ export default function RealtimeAlertToast() {
             ? prev
             : siguiente,
         )
-      })
+        // Sin alertas visibles (regla de visibilidad inactiva o todo desmarcado):
+        // se ocultan tambien las notificaciones ya acumuladas y el centro.
+        if (!hayAlertaVisible(visibilidadRef.current)) limpiarNotificacionesVistas()
+    })
     cargarReglas()
     const intervalo = window.setInterval(cargarReglas, 20000)
+    const channel = supabase
+      .channel('reglas-alertas-toast-tiempo-real')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reglas_negocio' },
+        () => void cargarReglas(),
+      )
+      .subscribe()
     return () => {
       activo = false
       window.clearInterval(intervalo)
+      supabase.removeChannel(channel)
     }
   }, [])
 
@@ -331,23 +380,22 @@ export default function RealtimeAlertToast() {
       const aRecordar = (data || []).filter(
         (item) =>
           item.estado !== 'cerrada' &&
-          item.nivel !== 'informativa' &&
-          alertaVisiblePorRegla(item, visibilidadRef.current) &&
+          (item.nivel !== 'informativa' || esAlertaDeReporte(item)) &&
+          alertaVisiblePorVisibilidad(item, visibilidadRef.current) &&
           alertaEnRecordatorio(item, recordatorio.deseleccionadas),
       )
 
       if (aRecordar.length === 0) return
 
-      // Recordatorio: TODAS las alertas registradas del/los modulo(s) seleccionado(s)
-      // vuelven a la cola y aparecen una tras otra, en el orden de prioridad
-      // vigente (primero rojas/criticas, luego amarillas), unos segundos cada una.
-      const ordenadas = [...aRecordar].sort(ordenarAlertasPorPrioridad)
+      // Las alertas flotantes siempre se presentan por fecha: la mas reciente
+      // aparece primero y las anteriores quedan debajo/en espera.
+      const ordenadas = [...aRecordar].sort(ordenarAlertasPorFechaReciente)
       setCola((actual) => {
         const nueva = [...actual]
         ordenadas.forEach((item) => {
           if (!nueva.some((x) => x.id === item.id)) nueva.push(item)
         })
-        return nueva.slice(-50).sort(ordenarAlertasPorPrioridad)
+        return nueva.sort(ordenarAlertasPorFechaReciente).slice(0, 50)
       })
       aRecordar.forEach((item) => agregarAlertaNoRevisada(item.id))
       setIdsNoRevisados(obtenerAlertasNoRevisadas())
@@ -385,7 +433,11 @@ export default function RealtimeAlertToast() {
   }, [alerta, visible])
 
   const alertasPendientes = useMemo(
-    () => alertasCentro.filter((item) => item.estado !== 'cerrada').slice(0, 8),
+    () =>
+      [...alertasCentro]
+        .filter((item) => item.estado !== 'cerrada')
+        .sort(ordenarAlertasPorFechaReciente)
+        .slice(0, 8),
     [alertasCentro]
   )
 
@@ -403,12 +455,19 @@ export default function RealtimeAlertToast() {
 
     const visibles: Alerta[] = []
     for (const item of data || []) {
-      if (item.estado === 'cerrada' || item.nivel === 'informativa') continue
+      if (
+        item.estado === 'cerrada' ||
+        (item.nivel === 'informativa' && !esAlertaDeReporte(item))
+      ) {
+        continue
+      }
       if (!(await alertaStockColorValido(item))) continue
+      // La visibilidad configurada (colores y categorias) aplica tambien aqui.
+      if (!alertaVisiblePorVisibilidad(item, visibilidadRef.current)) continue
       visibles.push(item)
     }
 
-    setAlertasCentro(visibles.slice(0, 8))
+    setAlertasCentro(visibles.sort(ordenarAlertasPorFechaReciente).slice(0, 8))
     setCargandoCentro(false)
   }
 
@@ -562,14 +621,31 @@ export default function RealtimeAlertToast() {
 }
 
 function agregarAlerta(alertas: Alerta[], alerta: Alerta) {
-  if (alertas.some((item) => item.id === alerta.id)) {
-    return alertas.map((item) => (item.id === alerta.id ? alerta : item))
-  }
-  return [...alertas, alerta].slice(-5)
+  const actualizadas = alertas.some((item) => item.id === alerta.id)
+    ? alertas.map((item) => (item.id === alerta.id ? alerta : item))
+    : [...alertas, alerta]
+
+  return actualizadas.sort(ordenarAlertasPorFechaReciente).slice(0, 8)
+}
+
+function ordenarAlertasPorFechaReciente(a: Alerta, b: Alerta) {
+  const fechaA = Date.parse(a.created_at || '')
+  const fechaB = Date.parse(b.created_at || '')
+  const marcaA = Number.isFinite(fechaA) ? fechaA : 0
+  const marcaB = Number.isFinite(fechaB) ? fechaB : 0
+
+  // Desempate estable para que dos eventos con la misma marca no alteren el
+  // orden cada vez que llegue una actualizacion de tiempo real.
+  return marcaB - marcaA || b.id.localeCompare(a.id)
 }
 
 function firmaAlerta(alerta: Alerta) {
   return [
+    // La identidad de la alerta forma parte de la firma. Dos caídas distintas
+    // del mismo material pueden tener el mismo nivel y mensaje, pero cada una
+    // debe avisarse una sola vez cuando se crea.
+    alerta.id,
+    alerta.created_at,
     alerta.estado,
     alerta.nivel,
     alerta.tipo_alerta,
@@ -589,18 +665,6 @@ function colorNivel(nivel: Alerta['nivel']) {
   if (nivel === 'critica') return 'bg-red-500'
   if (nivel === 'alta' || nivel === 'media') return 'bg-yellow-400'
   return 'bg-green-400'
-}
-
-// Orden de prioridad vigente: primero las rojas (criticas), luego las amarillas.
-function pesoNivelAlerta(nivel: Alerta['nivel']) {
-  if (nivel === 'critica') return 0
-  if (nivel === 'alta') return 1
-  if (nivel === 'media') return 2
-  return 3
-}
-
-function ordenarAlertasPorPrioridad(a: Alerta, b: Alerta) {
-  return pesoNivelAlerta(a.nivel) - pesoNivelAlerta(b.nivel)
 }
 
 // Clasifica cada alerta flotante en una de las tres categorias del recordatorio:
@@ -624,12 +688,6 @@ function categoriaAlerta(alerta: Alerta): 'inventario' | 'pedidos' | 'reportes' 
 
 function alertaEnRecordatorio(alerta: Alerta, deseleccionadas: string[]) {
   return !deseleccionadas.includes(categoriaAlerta(alerta))
-}
-
-function alertaVisiblePorRegla(alerta: Alerta, visibilidad: VisibilidadAlertas) {
-  const colorOk = alerta.nivel === 'critica' ? visibilidad.rojas : visibilidad.amarillas
-  const categoriaOk = esAlertaStockMaterial(alerta) ? visibilidad.materiales : visibilidad.pedidos
-  return colorOk && categoriaOk
 }
 
 function esAlertaStockMaterial(alerta: Alerta) {

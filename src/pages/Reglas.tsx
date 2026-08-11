@@ -58,7 +58,7 @@ const configuracionNivel: Record<
     descripcion: 'Se atiende de inmediato y aparece al inicio de la cola.',
   },
   alta: {
-    color: 'orange',
+    color: 'yellow',
     etiqueta: 'Atención alta',
     pesoInterno: 30,
     descripcion: 'Se gestiona con prioridad durante la jornada.',
@@ -86,10 +86,18 @@ function esReglaConfigurable(regla: ReglaNegocio): boolean {
 
 const REGLAS_PRIORIDAD_OCULTAS = [
   'Retraso del pedido (amarillo)',
-  'Reprogramado por retraso (naranja)',
   'Retraso critico (rojo)',
   'Franquiciado solicita NC',
 ]
+
+// Reglas que siguen ejecutandose en Supabase, pero no deben exponerse en el
+// editor para usuarios. Se filtran por clave para que un cambio de texto no las
+// vuelva visibles por accidente.
+const REGLAS_SISTEMA_OCULTAS = new Set([
+  'pedido_sin_movimiento',
+  'pendiente_prolongado',
+  'alertas_reportes',
+])
 
 export default function Reglas() {
   const { perfil } = useAuth()
@@ -323,7 +331,12 @@ export default function Reglas() {
           )}
 
           {reglas
-            .filter((regla) => !REGLAS_PRIORIDAD_OCULTAS.includes(regla.nombre))
+            .filter(
+              (regla) =>
+                !REGLAS_PRIORIDAD_OCULTAS.includes(regla.nombre) &&
+                !REGLAS_SISTEMA_OCULTAS.has(regla.clave || '') &&
+                !normalizarTexto(regla.nombre).includes('reprogramado por retraso'),
+            )
             .map((regla) => (
             <TarjetaRegla
               key={regla.id}
@@ -515,7 +528,9 @@ function EditorRegla({
             <span>
               <span className="block font-semibold text-slate-900">Regla activa</span>
               <span className="mt-1 block text-sm text-slate-500">
-                Si se desactiva, deja de participar en la prioridad de los pedidos.
+                {regla.clave === 'alertas_reportes'
+                  ? 'Si se desactiva, no se generan alertas ni titila el acceso a Reportes.'
+                  : 'Si se desactiva, deja de participar en la prioridad de los pedidos.'}
               </span>
             </span>
             <input
@@ -562,7 +577,9 @@ function EditorRegla({
             regla={regla}
           />
 
-          {regla.clave !== 'visibilidad_alertas' && regla.clave !== 'recordatorio_alertas' && (
+          {regla.clave !== 'visibilidad_alertas' &&
+            regla.clave !== 'recordatorio_alertas' &&
+            regla.clave !== 'alertas_reportes' && (
             <VistaPreviaRegla formulario={formulario} />
           )}
 
@@ -730,6 +747,17 @@ function ParametrosRegla({
               </label>
             ))}
           </div>
+        </div>
+      </GrupoParametros>
+    )
+  }
+
+  if (regla.clave === 'alertas_reportes') {
+    return (
+      <GrupoParametros descripcion="Esta regla controla las alertas en tiempo real que se crean al registrar un reporte.">
+        <div className="sm:col-span-2 border border-slate-200 bg-white p-4 text-sm text-slate-600">
+          El interruptor “Regla activa” permite o bloquea la alerta flotante y el indicador
+          titilante del módulo Reportes. El color se toma siempre del semáforo actual del pedido.
         </div>
       </GrupoParametros>
     )
@@ -953,8 +981,7 @@ function nivelDesdeRegla(regla: ReglaNegocio): NivelAtencion {
   const color = normalizarTexto(regla.color || '')
 
   if (color === 'red') return 'critica'
-  if (color === 'orange') return 'alta'
-  if (color === 'yellow') return 'media'
+  if (color === 'yellow') return regla.peso >= 25 ? 'alta' : 'media'
   if (color === 'blue') return 'seguimiento'
   if (regla.peso >= 35) return 'critica'
   if (regla.peso >= 25) return 'alta'
@@ -973,29 +1000,29 @@ function IconoArea({ area }: { area: string }) {
 
 function claseBadgeNivel(nivel: NivelAtencion) {
   if (nivel === 'critica') return 'bg-red-50 text-red-700 ring-1 ring-red-200'
-  if (nivel === 'alta') return 'bg-orange-50 text-orange-700 ring-1 ring-orange-200'
-  if (nivel === 'media') return 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+  if (nivel === 'alta') return 'bg-yellow-50 text-yellow-800 ring-1 ring-yellow-200'
+  if (nivel === 'media') return 'bg-yellow-50 text-yellow-800 ring-1 ring-yellow-200'
   return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
 }
 
 function claseBordeNivel(nivel: NivelAtencion) {
   if (nivel === 'critica') return 'border-red-200'
-  if (nivel === 'alta') return 'border-orange-200'
-  if (nivel === 'media') return 'border-amber-200'
+  if (nivel === 'alta') return 'border-yellow-200'
+  if (nivel === 'media') return 'border-yellow-200'
   return 'border-blue-200'
 }
 
 function claseFondoNivel(nivel: NivelAtencion) {
   if (nivel === 'critica') return 'bg-red-600'
-  if (nivel === 'alta') return 'bg-orange-500'
-  if (nivel === 'media') return 'bg-amber-500'
+  if (nivel === 'alta') return 'bg-yellow-500'
+  if (nivel === 'media') return 'bg-yellow-500'
   return 'bg-blue-500'
 }
 
 function claseIconoNivel(nivel: NivelAtencion) {
   if (nivel === 'critica') return 'bg-red-50 text-red-700'
-  if (nivel === 'alta') return 'bg-orange-50 text-orange-700'
-  if (nivel === 'media') return 'bg-amber-50 text-amber-800'
+  if (nivel === 'alta') return 'bg-yellow-50 text-yellow-800'
+  if (nivel === 'media') return 'bg-yellow-50 text-yellow-800'
   return 'bg-blue-50 text-blue-700'
 }
 

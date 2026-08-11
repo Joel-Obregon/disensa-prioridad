@@ -25,10 +25,17 @@ import {
   escucharReportesNoRevisados,
   limpiarReportesNoRevisados,
   obtenerReportesNoRevisados,
+  quitarReporteNoRevisado,
+  type ReporteNoRevisado,
 } from '../lib/reportNotifications'
 import { supabase } from '../services/supabaseClient'
 import { obtenerReglas } from '../services/reglasService'
-import { leerRecordatorioMinutos } from '../lib/reglasAlertas'
+import {
+  esAlertaDeReporte,
+  leerAlertasReportesHabilitadas,
+  leerRecordatorioMinutos,
+} from '../lib/reglasAlertas'
+import type { Alerta } from '../types/alerta'
 import RealtimeAlertToast from './RealtimeAlertToast'
 import ThemeToggle from './ThemeToggle'
 
@@ -55,21 +62,39 @@ export default function MainLayout() {
   const [reportesNoRevisados, setReportesNoRevisados] = useState(obtenerReportesNoRevisados)
   const [segundosTitileo, setSegundosTitileo] = useState(30)
   const [titilando, setTitilando] = useState(true)
+  const [alertasReportesHabilitadas, setAlertasReportesHabilitadas] = useState(true)
   const menuVisible = menu.filter((item) => puedeAcceder(perfil?.rol, item.ruta))
+  const nivelReportePendiente = nivelMasCriticoReporte(reportesNoRevisados)
 
   useEffect(() => escucharAlertasNoRevisadas(setAlertasNoRevisadas), [])
   useEffect(() => escucharReportesNoRevisados(setReportesNoRevisados), [])
 
-  // Regla parametrizable: cada cuantos segundos titila el aviso de alertas.
+  // Las reglas se actualizan en tiempo real: una controla el recordatorio del
+  // menu Alertas y otra permite activar/desactivar los avisos de reportes.
   useEffect(() => {
     let activo = true
-    obtenerReglas().then((resultado) => {
-      if (!activo || resultado.error) return
-      const minutos = leerRecordatorioMinutos(resultado.data || [])
-      setSegundosTitileo(minutos > 0 ? minutos * 60 : 0)
-    })
+    const cargarReglas = () =>
+      obtenerReglas().then((resultado) => {
+        if (!activo || resultado.error) return
+        const reglas = resultado.data || []
+        const minutos = leerRecordatorioMinutos(reglas)
+        setSegundosTitileo(minutos > 0 ? minutos * 60 : 0)
+        setAlertasReportesHabilitadas(leerAlertasReportesHabilitadas(reglas))
+      })
+
+    void cargarReglas()
+    const channel = supabase
+      .channel('reglas-alertas-reportes-menu')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reglas_negocio' },
+        () => void cargarReglas(),
+      )
+      .subscribe()
+
     return () => {
       activo = false
+      supabase.removeChannel(channel)
     }
   }, [])
 
@@ -89,7 +114,7 @@ export default function MainLayout() {
   }, [alertasNoRevisadas.length, segundosTitileo])
 
   // Re-sincroniza por tiempo las alertas de retraso: cuando un pedido cruza de
-  // tramo (amarillo a naranja a rojo o de vuelta) su alerta se actualiza y salta
+  // tramo (verde, amarillo o rojo, o de vuelta) su alerta se actualiza y salta
   // via realtime, sin que nadie tenga que tocar el pedido.
   useEffect(() => {
     let activo = true
@@ -109,30 +134,43 @@ export default function MainLayout() {
   }, [])
 
   useEffect(() => {
+    if (!alertasReportesHabilitadas) {
+      limpiarReportesNoRevisados()
+      return
+    }
+
     const channel = supabase
-      .channel('reportes-menu-tiempo-real')
+      .channel('alertas-reportes-menu-tiempo-real')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
-          table: 'reportes_franquiciado',
+          table: 'alertas',
         },
         (payload) => {
-          const id = (payload.new as { id?: string }).id
-          if (id) agregarReporteNoRevisado(`franquiciado-${id}`)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'reportes_operativos',
-        },
-        (payload) => {
-          const id = (payload.new as { id?: string }).id
-          if (id) agregarReporteNoRevisado(`operativo-${id}`)
+          const alerta = payload.new as Partial<Alerta>
+          if (
+            !alerta.id ||
+            !esAlertaDeReporte({
+              tipo_alerta: alerta.tipo_alerta || '',
+              mensaje: alerta.mensaje || '',
+            })
+          ) {
+            return
+          }
+
+          if (alerta.estado === 'cerrada') {
+            quitarReporteNoRevisado(alerta.id)
+            return
+          }
+
+          if (payload.eventType !== 'INSERT') return
+
+          agregarReporteNoRevisado({
+            id: alerta.id,
+            nivel: nivelAlertaValido(alerta.nivel),
+          })
         }
       )
       .subscribe()
@@ -140,7 +178,7 @@ export default function MainLayout() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [alertasReportesHabilitadas])
 
   useEffect(() => {
     if (location.pathname.startsWith('/alertas')) {
@@ -209,10 +247,16 @@ export default function MainLayout() {
                     <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
                   </span>
                 )}
-                {item.ruta === '/reportes' && reportesNoRevisados.length > 0 && (
+                {item.ruta === '/reportes' &&
+                  alertasReportesHabilitadas &&
+                  reportesNoRevisados.length > 0 && (
                   <span className="absolute right-2 top-1/2 flex h-3 w-3 -translate-y-1/2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75" />
-                    <span className="relative inline-flex h-3 w-3 rounded-full bg-yellow-500" />
+                    <span
+                      className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${clasePulsoReporte(nivelReportePendiente)}`}
+                    />
+                    <span
+                      className={`relative inline-flex h-3 w-3 rounded-full ${claseIndicadorReporte(nivelReportePendiente)}`}
+                    />
                   </span>
                 )}
               </NavLink>
@@ -262,4 +306,29 @@ export default function MainLayout() {
       </main>
     </div>
   )
+}
+
+function nivelAlertaValido(nivel: Alerta['nivel'] | undefined): Alerta['nivel'] {
+  return ['informativa', 'media', 'alta', 'critica'].includes(nivel || '')
+    ? (nivel as Alerta['nivel'])
+    : 'informativa'
+}
+
+function nivelMasCriticoReporte(reportes: ReporteNoRevisado[]): Alerta['nivel'] {
+  if (reportes.some((reporte) => reporte.nivel === 'critica')) return 'critica'
+  if (reportes.some((reporte) => reporte.nivel === 'alta')) return 'alta'
+  if (reportes.some((reporte) => reporte.nivel === 'media')) return 'media'
+  return 'informativa'
+}
+
+function claseIndicadorReporte(nivel: Alerta['nivel']) {
+  if (nivel === 'critica') return 'bg-red-600'
+  if (nivel === 'alta' || nivel === 'media') return 'bg-yellow-500'
+  return 'bg-green-500'
+}
+
+function clasePulsoReporte(nivel: Alerta['nivel']) {
+  if (nivel === 'critica') return 'bg-red-500'
+  if (nivel === 'alta' || nivel === 'media') return 'bg-yellow-400'
+  return 'bg-green-400'
 }

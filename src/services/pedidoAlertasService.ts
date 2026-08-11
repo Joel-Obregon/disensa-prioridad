@@ -99,11 +99,9 @@ export async function sincronizarAlertaSemaforoPedido(
 function nivelAlertaPedido(pedido: Pedido): Alerta['nivel'] | null {
   const semaforo = resolverSemaforoPedido(pedido)
 
-  // El nivel escala con el tramo del semaforo para que cada paso (amarillo a 
-  // naranja a rojo) re-dispare la alerta.
-  if (semaforo === 'critico') return 'critica' // rojo: +30 d de retraso
-  if (semaforo === 'alto') return 'critica'     // naranja/reprogramado: alerta ROJA
-  if (semaforo === 'riesgo') return 'media'     // amarillo: 1-6 d de retraso
+  // El nivel escala cuando el pedido pasa de amarillo a rojo.
+  if (semaforo === 'critico') return 'critica' // rojo: 8+ d de retraso
+  if (semaforo === 'riesgo') return 'media' // amarillo: 1-7 d de retraso
   return null
 }
 
@@ -114,9 +112,7 @@ function mensajeAlertaPedido(pedido: Pedido) {
   const prefijo =
     semaforo === 'critico'
       ? 'Pedido en retraso critico'
-      : semaforo === 'alto'
-        ? 'Pedido reprogramado por retraso'
-        : 'Pedido con retraso'
+      : 'Pedido con retraso'
 
   return `${prefijo}: ${codigo} requiere seguimiento. ${tiempo} para ${pedido.material}.`
 }

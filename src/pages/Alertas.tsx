@@ -26,7 +26,12 @@ import {
 } from '../services/alertasService'
 import { obtenerInventarioOperativo } from '../services/inventarioService'
 import { obtenerReglas } from '../services/reglasService'
-import { leerVisibilidadAlertas } from '../lib/reglasAlertas'
+import {
+  alertaVisiblePorVisibilidad,
+  esAlertaDeReporte,
+  hayAlertaVisible,
+  leerVisibilidadAlertas,
+} from '../lib/reglasAlertas'
 import type { Alerta } from '../types/alerta'
 import type { ReglaNegocio } from '../types/regla'
 import type { SemaforoOperativo } from '../lib/semaforoOperativo'
@@ -183,10 +188,13 @@ export default function Alertas() {
 
   // Regla parametrizable: que alertas se muestran (por color y por categoria).
   const visibilidad = useMemo(() => leerVisibilidadAlertas(reglas), [reglas])
+  const visibilidadApagada = !hayAlertaVisible(visibilidad)
   const categoriasVisibles = useMemo(
     () =>
       categoriasAlertas.filter((item) =>
-        item.id === 'materiales' ? visibilidad.materiales : visibilidad.pedidos,
+        item.id === 'materiales'
+          ? visibilidad.materiales
+          : visibilidad.pedidos || visibilidad.reportes,
       ),
     [visibilidad],
   )
@@ -196,7 +204,14 @@ export default function Alertas() {
     : categoriasVisibles[0]?.id ?? categoria
 
   const conteoCategorias = useMemo(() => {
-    const operativas = alertas.filter(alertaOperativa)
+    // El indicador debe medir exactamente las alertas que el usuario puede ver.
+    // Antes contaba filas ocultas por configuracion (por ejemplo, un reporte ya
+    // resuelto), por lo que podia diferir de las tarjetas mostradas.
+    const alertasPermitidas =
+      rolUsuario === 'suministrador' ? alertas.filter(esAlertaDePedido) : alertas
+    const operativas = alertasPermitidas
+      .filter((alerta) => alertaVisiblePorVisibilidad(alerta, visibilidad))
+      .filter(alertaOperativa)
     return {
       // Materiales en semaforo rojo/amarillo (alertas de stock activas).
       materiales: operativas.filter(esAlertaFaltaMaterial).length,
@@ -206,13 +221,13 @@ export default function Alertas() {
         )
       ).length,
     }
-  }, [alertas])
+  }, [alertas, rolUsuario, visibilidad])
 
   // El suministrador solo ve alertas ligadas a pedidos (no de materiales/stock).
   const alertasRol = useMemo(() => {
-    if (rolUsuario !== 'suministrador') return alertas
-    return alertas.filter(esAlertaDePedido)
-  }, [alertas, rolUsuario])
+    const porRol = rolUsuario === 'suministrador' ? alertas.filter(esAlertaDePedido) : alertas
+    return porRol.filter((alerta) => alertaVisiblePorVisibilidad(alerta, visibilidad))
+  }, [alertas, rolUsuario, visibilidad])
 
   const alertasPorCategoria = useMemo(() => {
     if (categoriaActiva === 'materiales') {
@@ -265,9 +280,9 @@ export default function Alertas() {
         filtros.fechaHasta
       )
 
-      const coincideColor = alerta.nivel === 'critica' ? visibilidad.rojas : visibilidad.amarillas
+      const coincideVisibilidad = alertaVisiblePorVisibilidad(alerta, visibilidad)
 
-      return coincideTexto && coincideNivel && coincideMaterial && coincideFecha && coincideColor
+      return coincideTexto && coincideNivel && coincideMaterial && coincideFecha && coincideVisibilidad
     })
   }, [alertasPorCategoria, filtros, visibilidad])
 
@@ -298,7 +313,7 @@ export default function Alertas() {
           valor: operativas,
           detalle: 'Stock bajo o sin cobertura, segun el semaforo de inventario',
           icono: PackageX,
-          clase: 'border-orange-200 bg-orange-50 text-orange-700',
+          clase: 'border-red-200 bg-red-50 text-red-700',
         },
       ]
     }
@@ -309,7 +324,7 @@ export default function Alertas() {
         valor: operativas,
         detalle: 'Ordenadas por criticidad',
         icono: BellRing,
-        clase: 'border-orange-200 bg-orange-50 text-orange-700',
+        clase: 'border-red-200 bg-red-50 text-red-700',
       },
     ]
   }, [alertasPorCategoria, categoriaActiva])
@@ -328,7 +343,7 @@ export default function Alertas() {
       ]
     }
 
-    const criticas = alertasVisibles.filter((alerta) => ['critico', 'alto'].includes(semaforoAlerta(alerta)))
+    const criticas = alertasVisibles.filter((alerta) => semaforoAlerta(alerta) === 'critico')
     const riesgo = alertasVisibles.filter((alerta) => semaforoAlerta(alerta) === 'riesgo')
     const seguimiento = alertasVisibles.filter((alerta) => semaforoAlerta(alerta) === 'a_tiempo')
 
@@ -398,6 +413,13 @@ export default function Alertas() {
         </div>
       )}
 
+      {!cargando && visibilidadApagada && (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          La regla de visibilidad de alertas esta inactiva o sin opciones marcadas:
+          las alertas estan ocultas en todo el sistema.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {resumen.map((item) => {
           const Icono = item.icono
@@ -421,7 +443,7 @@ export default function Alertas() {
 
       <section className="alertas-panel border border-[#d8d2df] bg-white p-4">
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-[#3f3f46]">
-          <ShieldAlert size={18} className="text-orange-600" />
+          <ShieldAlert size={18} className="text-red-600" />
           Tipo de alerta
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -470,7 +492,7 @@ export default function Alertas() {
 
       <section className="alertas-panel border border-[#d8d2df] bg-white p-4">
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-[#3f3f46]">
-          <Filter size={18} className="text-orange-600" />
+          <Filter size={18} className="text-red-600" />
           Vista
         </div>
         <div className="flex flex-wrap gap-2">
@@ -493,7 +515,7 @@ export default function Alertas() {
 
       <section className="alertas-panel border border-[#d8d2df] bg-white p-4">
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-[#3f3f46]">
-          <Search size={18} className="text-orange-600" />
+          <Search size={18} className="text-red-600" />
           Filtros
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -885,7 +907,7 @@ function colorNivel(nivel?: Alerta['nivel']) {
 
 function colorEstado(estado?: Alerta['estado']) {
   if (estado === 'cerrada') return 'bg-green-100 text-green-700'
-  return 'bg-orange-100 text-orange-700'
+  return 'bg-red-100 text-red-700'
 }
 
 function etiquetaEstadoAlerta(estado?: Alerta['estado'], alerta?: Alerta) {
@@ -902,8 +924,7 @@ function fondoIcono(alerta: Alerta) {
   if (!alertaOperativa(alerta)) return 'bg-green-50 text-green-700 ring-1 ring-green-100'
   const semaforo = semaforoAlerta(alerta)
   if (semaforo === 'critico') return 'bg-red-50 text-red-700 ring-1 ring-red-100'
-  if (semaforo === 'alto') return 'bg-orange-50 text-orange-700 ring-1 ring-orange-100'
-  if (semaforo === 'riesgo') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
+  if (semaforo === 'riesgo') return 'bg-yellow-50 text-yellow-700 ring-1 ring-yellow-100'
   return 'bg-green-50 text-green-700 ring-1 ring-green-100'
 }
 
@@ -911,7 +932,6 @@ function colorRailAlerta(alerta: Alerta) {
   if (!alertaOperativa(alerta)) return 'bg-green-500'
   const semaforo = semaforoAlerta(alerta)
   if (semaforo === 'critico') return 'bg-red-600'
-  if (semaforo === 'alto') return 'bg-orange-500'
   if (semaforo === 'riesgo') return 'bg-yellow-500'
   if (semaforo === 'a_tiempo') return 'bg-green-500'
   return 'bg-slate-400'
@@ -952,6 +972,8 @@ function describirAlerta(alerta: Alerta) {
 }
 
 function esAlertaFaltaMaterial(alerta: Alerta) {
+  if (esAlertaDeReporte(alerta)) return false
+
   const tipo = normalizarTexto(alerta.tipo_alerta || '')
   const texto = normalizarTexto(`${alerta.tipo_alerta || ''} ${alerta.mensaje || ''}`)
 
@@ -1025,6 +1047,8 @@ function esAlertaDePedido(alerta: Alerta): boolean {
 }
 
 function esAlertaPriorizacionPedido(alerta: Alerta) {
+  if (esAlertaDeReporte(alerta)) return true
+
   const tipo = normalizarTexto(alerta.tipo_alerta || '')
   const texto = normalizarTexto(`${alerta.tipo_alerta || ''} ${alerta.mensaje || ''}`)
 
@@ -1062,14 +1086,11 @@ function pedidoAlertaCerrado(alerta: Alerta) {
 }
 
 function esAlertaReporteFranquiciado(alerta: Alerta) {
-  const tipo = normalizarTexto(alerta.tipo_alerta || '')
-  const texto = normalizarTexto(alerta.mensaje || '')
-
-  return tipo.includes('reporte_franquiciado') || texto.includes('reporte del franquiciado')
+  return esAlertaDeReporte(alerta)
 }
 
 // Agrupa en una sola tarjeta las alertas de un mismo pedido (p. ej. retraso y
-// reabierto por reporte) para no mostrar la misma incidencia dos veces.
+// reporte del franquiciado) para no mostrar la misma incidencia dos veces.
 function clavePedidoFusion(alerta: Alerta): string | null {
   if (esAlertaFaltaMaterial(alerta)) return null
   if (!esAlertaPriorizacionPedido(alerta)) return null
@@ -1112,7 +1133,11 @@ function sintetizarAlertaPedido(grupo: Alerta[]): AlertaVista {
   if (retraso) partes.push(`atrasado (${detalleRetrasoDesde(retraso.mensaje)})`)
   if (reporte) {
     const motivo = motivoReporteDesde(reporte.mensaje)
-    partes.push(`reabierto por reporte del franquiciado${motivo ? ` (motivo: ${motivo})` : ''}`)
+    partes.push(
+      motivo === 'retraso'
+        ? 'reporte por retraso; material pendiente de despacho'
+        : `reporte del franquiciado${motivo ? ` (motivo: ${motivo})` : ''}`,
+    )
   }
 
   const nivel: Alerta['nivel'] = grupo.some((alerta) => alerta.nivel === 'critica')
@@ -1125,7 +1150,7 @@ function sintetizarAlertaPedido(grupo: Alerta[]): AlertaVista {
     ...base,
     nivel,
     tipo_alerta:
-      retraso && reporte ? 'pedido_retrasado_reabierto_por_reporte' : base.tipo_alerta,
+      retraso && reporte ? 'pedido_retrasado_con_reporte' : base.tipo_alerta,
     mensaje: partes.length ? `Pedido ${codigo}: ${partes.join(' y ')}.` : base.mensaje,
     fusionadas: grupo.map((alerta) => alerta.id),
   }
@@ -1146,15 +1171,14 @@ function semaforoAlerta(alerta: Alerta): SemaforoOperativo {
   if (pedidoAlertaCerrado(alerta)) return 'cerrado'
 
   // Alerta ligada a un pedido: su color es EXACTAMENTE el del semaforo del pedido
-  // (verde/amarillo/naranja/rojo) para que coincida en todo el sistema.
+  // (verde/amarillo/rojo) para que coincida en todo el sistema.
   if (alerta.pedido_fecha_compromiso) {
     const semaforo = resolverSemaforoPedido({
       estado: estadoPedidoAlerta(alerta.pedido_estado),
       fecha_compromiso: alerta.pedido_fecha_compromiso,
       prioridad_calculada: alerta.pedido_prioridad_calculada ?? undefined,
     })
-    // La alerta se vuelve ROJA desde la reprogramacion (naranja) en adelante.
-    return semaforo === 'alto' ? 'critico' : semaforo
+    return semaforo
   }
 
   // Alertas sin pedido (inventario/stock): color segun su nivel.
@@ -1166,10 +1190,9 @@ function semaforoAlerta(alerta: Alerta): SemaforoOperativo {
 function ordenarPorCriticidad(a: Alerta, b: Alerta) {
   const pesos: Record<SemaforoOperativo, number> = {
     critico: 0,
-    alto: 1,
-    riesgo: 2,
-    a_tiempo: 3,
-    cerrado: 4,
+    riesgo: 1,
+    a_tiempo: 2,
+    cerrado: 3,
   }
 
   const diferencia = pesos[semaforoAlerta(a)] - pesos[semaforoAlerta(b)]
@@ -1262,11 +1285,7 @@ function tiempoPedidoAlerta(alerta: Alerta) {
 }
 
 function colorTiempoPedido(alerta: Alerta) {
-  const texto = normalizarTexto(tiempoPedidoAlerta(alerta) || '')
-
-  if (texto.includes('retraso')) return claseSemaforoBadge('critico')
-  if (texto.includes('vence')) return claseSemaforoBadge('riesgo')
-  return claseSemaforoBadge('a_tiempo')
+  return claseSemaforoBadge(semaforoAlerta(alerta))
 }
 
 function estadoPedidoAlerta(estado?: string | null): EstadoPedido {

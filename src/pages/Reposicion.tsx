@@ -392,7 +392,7 @@ export default function Reposicion() {
                 maxLength={7}
                 value={cantidad}
                 onChange={(event) => setCantidad(soloEnteroNoNegativo(event.target.value, 7))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Ej. 100"
               />
             </label>
@@ -402,7 +402,7 @@ export default function Reposicion() {
                 type="datetime-local"
                 value={fecha}
                 onChange={(event) => setFecha(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
               />
             </label>
 

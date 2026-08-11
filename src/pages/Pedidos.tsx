@@ -25,6 +25,7 @@ import {
   describirTiempoPedido,
   etiquetaSemaforo,
   resolverSemaforoPedido,
+  resolverSemaforoPedidoReabierto,
   type SemaforoOperativo,
 } from '../lib/semaforoOperativo'
 import {
@@ -1044,7 +1045,7 @@ export default function Pedidos() {
     const codigos = new Set<string>()
 
     reportesFranquiciado
-      .filter((reporte) => reporte.estado === 'en_revision')
+      .filter((reporte) => reporte.estado === 'en_revision' && reporte.motivo !== 'retraso')
       .forEach((reporte) => {
         if (reporte.pedido_id) codigos.add(`id:${reporte.pedido_id}`)
         if (reporte.codigo_consulta) codigos.add(`codigo:${normalizarTexto(reporte.codigo_consulta)}`)
@@ -1321,7 +1322,7 @@ export default function Pedidos() {
                     cantidad: soloEnteroNoNegativo(event.target.value, 7),
                   })
                 }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Ej. 50"
               />
             </Campo>
@@ -1374,7 +1375,7 @@ export default function Pedidos() {
                 list="solicitantes-pedido"
                 value={formulario.solicitante}
                 onChange={(event) => actualizarSolicitante(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Selecciona existente o escribe uno nuevo"
               />
             </Campo>
@@ -1388,7 +1389,7 @@ export default function Pedidos() {
                 list="cedulas-pedido"
                 value={formulario.cedula_solicitante}
                 onChange={(event) => actualizarCedula(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Ej. 6192102 o 0912345678"
               />
             </Campo>
@@ -1412,7 +1413,7 @@ export default function Pedidos() {
                     fecha_compromiso: event.target.value,
                   })
                 }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
               />
             </Campo>
 
@@ -1425,7 +1426,7 @@ export default function Pedidos() {
                     tipo_caso: event.target.value as TipoCasoPedido,
                   })
                 }
-                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
               >
                 {Object.entries(ETIQUETAS_TIPO_CASO).map(([valor, etiqueta]) => (
                   <option key={valor} value={valor}>
@@ -1488,12 +1489,9 @@ export default function Pedidos() {
                 const flujo = flujoOperativoPedido(pedido, detalleOperativo)
                 const puedeGestionar = puedeGestionarFlujo(flujo, rol)
                 const resolucion = resolucionPedido(pedido, detalleOperativo)
-                const semaforoBaseRetraso = resolverSemaforoPedido(pedido)
-                const semaforoRetraso =
-                  reabiertoPorReporte &&
-                  (semaforoBaseRetraso === 'cerrado' || semaforoBaseRetraso === 'a_tiempo')
-                    ? 'riesgo'
-                    : semaforoBaseRetraso
+                const semaforoRetraso = reabiertoPorReporte
+                  ? resolverSemaforoPedidoReabierto(pedido)
+                  : resolverSemaforoPedido(pedido)
                 const stockDisponible = stockDisponiblePedido(pedido, material, detalleOperativo)
                 const reabastecimiento =
                   reabastecimientoPedido(detalleOperativo) +
@@ -2134,11 +2132,9 @@ function DetallePedido({
       alerta.pedido_codigo === pedido.codigo ||
       (pedido.material_id ? alerta.material_id === pedido.material_id : false)
   )
-  const semaforoBase = resolverSemaforoPedido(pedido)
-  const semaforo =
-    reabiertoPorReporte && (semaforoBase === 'cerrado' || semaforoBase === 'a_tiempo')
-      ? 'riesgo'
-      : semaforoBase
+  const semaforo = reabiertoPorReporte
+    ? resolverSemaforoPedidoReabierto(pedido)
+    : resolverSemaforoPedido(pedido)
   const stockActual = stockDisponiblePedido(pedido, material, detalleOperativo)
   const reabastecimiento = reabastecimientoPedido(detalleOperativo) + (reposicionPendiente || 0)
   const resolucion = resolucionPedido(pedido, detalleOperativo)
@@ -2150,7 +2146,7 @@ function DetallePedido({
       <section className="mt-10 w-full max-w-5xl rounded-lg bg-white shadow-xl">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-orange-700">Detalle de pedido</p>
+            <p className="text-sm font-semibold text-red-700">Detalle de pedido</p>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">{pedido.codigo}</h2>
             <p className="mt-1 text-sm text-slate-500">{pedido.solicitante}</p>
           </div>
@@ -2529,7 +2525,6 @@ function resolverSemaforoProducto(
 
 function clasePuntoSemaforo(semaforo: ReturnType<typeof resolverSemaforoPedido>) {
   if (semaforo === 'critico') return 'bg-red-600 ring-2 ring-red-100'
-  if (semaforo === 'alto') return 'bg-orange-500 ring-2 ring-orange-100'
   if (semaforo === 'riesgo') return 'bg-yellow-500 ring-2 ring-yellow-100'
   if (semaforo === 'a_tiempo') return 'bg-green-500 ring-2 ring-green-100'
   return 'bg-slate-400 ring-2 ring-slate-100'
@@ -2546,7 +2541,7 @@ function claseResolucion(resolucion: string) {
   if (texto.includes('listo')) return 'bg-sky-100 text-sky-800 ring-1 ring-sky-200'
   if (texto.includes('planificado')) return 'bg-blue-100 text-blue-800 ring-1 ring-blue-200'
   if (texto.includes('entregado')) return 'bg-green-100 text-green-800 ring-1 ring-green-200'
-  if (texto.includes('compra')) return 'bg-orange-100 text-orange-800 ring-1 ring-orange-200'
+  if (texto.includes('compra')) return 'bg-red-100 text-red-800 ring-1 ring-red-200'
   if (texto.includes('revision') || texto.includes('revisado')) return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200'
   if (texto.includes('sin revisar')) return 'bg-red-100 text-red-800 ring-1 ring-red-200'
   if (texto.includes('evaluacion')) return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200'
@@ -2649,7 +2644,6 @@ function generarCodigoPedido() {
 
 function claseBarraSemaforo(semaforo: SemaforoOperativo) {
   if (semaforo === 'critico') return 'bg-red-600'
-  if (semaforo === 'alto') return 'bg-orange-500'
   if (semaforo === 'riesgo') return 'bg-yellow-500'
   if (semaforo === 'a_tiempo') return 'bg-green-500'
   return 'bg-slate-400'

@@ -107,17 +107,27 @@ export async function consultarPedidosInvitado(codigo: string, cedula: string) {
   return base
 }
 
+type OpcionesReporteActivo = {
+  // Los reportes por retraso son informativos: alertan que el material sigue
+  // pendiente, pero no reabren el pedido ni cambian su accion de despacho.
+  incluirRetrasos?: boolean
+}
+
 // Indica si un pedido todavia tiene un reporte del franquiciado sin cerrar.
-// Permite al franquiciado ver que su pedido sigue en gestion por un reporte.
+// Permite distinguir los reportes que requieren una gestion especial de los
+// reportes por retraso, que solo generan una alerta operativa.
 export async function tieneReporteActivoPedido(
   pedido: Pick<Pedido, 'id' | 'codigo' | 'codigo_consulta'>,
+  { incluirRetrasos = true }: OpcionesReporteActivo = {},
 ): Promise<boolean> {
-  const { data, error } = await supabase
+  const consulta = supabase
     .from('reportes_franquiciado')
     .select('id')
     .or(filtroReportesPedido(pedido))
     .neq('estado', 'cerrado')
-    .limit(1)
+
+  const consultaFiltrada = incluirRetrasos ? consulta : consulta.neq('motivo', 'retraso')
+  const { data, error } = await consultaFiltrada.limit(1)
 
   if (error) return false
   return (data?.length ?? 0) > 0
@@ -186,6 +196,9 @@ export async function marcarReposicionEnviada(
     .update({ estado: 'en_revision' })
     .or(filtroReportesPedido(pedido))
     .eq('estado', 'recibido')
+    // Un reporte por retraso no es una reposicion: debe seguir siendo solo una
+    // alerta mientras bodega mantiene el flujo normal de despacho.
+    .neq('motivo', 'retraso')
     .select()
 
   if (!result.error) invalidarDatosReportesFranquiciado()
